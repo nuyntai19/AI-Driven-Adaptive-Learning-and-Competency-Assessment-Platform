@@ -6,6 +6,8 @@ namespace EduTwin.Contracts.Recommendations;
 public class LearningGoalDto
 {
     public List<string> SelfReportedPrerequisiteSkillIds { get; set; } = new();
+    /// <summary>Parts the student left out of the placement check (self-assessed as mastered); each gets a short confirmation review at the end of the route.</summary>
+    public List<string> SelfAssessedSkillIds { get; set; } = new();
     public Guid GoalId { get; set; }
     public Guid StudentId { get; set; }
     public Guid SubjectId { get; set; }
@@ -32,6 +34,8 @@ public class LearningGoalDto
 public class CreateLearningGoalRequest
 {
     public List<string> SelfReportedPrerequisiteSkillIds { get; set; } = new();
+    /// <summary>Parts the student left out of the placement check (self-assessed as mastered); each gets a short confirmation review at the end of the route.</summary>
+    public List<string> SelfAssessedSkillIds { get; set; } = new();
     public Guid SubjectId { get; set; }
     public Guid? ClassId { get; set; }
 

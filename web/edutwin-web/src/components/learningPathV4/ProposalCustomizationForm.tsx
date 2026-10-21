@@ -2,13 +2,15 @@ import { useState } from "react";
 import type { CustomizePathProposalRequest, PathProposalDto, ProposedMilestoneDto } from "../../types/learningPath";
 import { TimeBudgetSlider } from "./TimeBudgetSlider";
 
-export function ProposalCustomizationForm({ proposal, availableMilestones = proposal.milestones, onSubmit, onCancel, pending }: {
+export function ProposalCustomizationForm({ proposal, availableMilestones: allMilestones = proposal.milestones, onSubmit, onCancel, pending }: {
   proposal: PathProposalDto;
   availableMilestones?: ProposedMilestoneDto[];
   onSubmit: (request: CustomizePathProposalRequest) => void;
   onCancel: () => void;
   pending: boolean;
 }) {
+  // Confirmation reviews of self-assessed parts stay at the end of the route and are not edited here.
+  const availableMilestones = allMilestones.filter(m => !m.isSelfAssessedCheck);
   const [minutes, setMinutes] = useState(proposal.availableMinutesPerDay ?? 15);
   const [days, setDays] = useState(proposal.availableDaysPerWeek ?? 5);
   const [questionsBySkill, setQuestionsBySkill] = useState<Record<string, string>>(() => Object.fromEntries(
@@ -24,7 +26,7 @@ export function ProposalCustomizationForm({ proposal, availableMilestones = prop
     const date = new Date(proposal.deadlineDate);
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   });
-  const [targets, setTargets] = useState(proposal.milestones.flatMap(m => m.skillIds));
+  const [targets, setTargets] = useState(proposal.milestones.filter(m => !m.isSelfAssessedCheck).flatMap(m => m.skillIds));
   const input = "mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 dark:bg-slate-900";
   return <form className="mt-6 space-y-5" onSubmit={event => {
     event.preventDefault();

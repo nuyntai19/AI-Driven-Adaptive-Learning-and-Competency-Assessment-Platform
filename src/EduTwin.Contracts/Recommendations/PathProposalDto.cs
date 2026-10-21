@@ -6,6 +6,8 @@ namespace EduTwin.Contracts.Recommendations;
 public class PathProposalDto
 {
     public List<string> SelfReportedPrerequisiteSkillIds { get; set; } = new();
+    /// <summary>Parts the student left out of the placement check (self-assessed as mastered); each gets a short confirmation review at the end of the route.</summary>
+    public List<string> SelfAssessedSkillIds { get; set; } = new();
     public bool IsPlacement { get; set; }
     public string GoalType { get; set; } = "Foundation";
     public List<string> RequestedSkillIds { get; set; } = new();
@@ -39,6 +41,7 @@ public class PathProposalDto
 
 public class ProposedMilestoneDto
 {
+    public bool IsSelfAssessedCheck { get; set; }
     public uint Order { get; set; }
     public string Title { get; set; } = string.Empty;
     public string OutcomeDescription { get; set; } = string.Empty;
@@ -61,6 +64,8 @@ public class ProposedMissionDto
     public bool IsRepair { get; set; }
     /// <summary>A probe (quick try or starting-point check) may run before practice.</summary>
     public bool IsProbe { get; set; }
+    /// <summary>Short review confirming a part the student self-assessed as mastered.</summary>
+    public bool IsSelfAssessedCheck { get; set; }
     public uint QuestionCount { get; set; }
     public DateTime? AvailableFrom { get; set; }
     public Guid? ContentVersionId { get; set; }

@@ -42,6 +42,7 @@ public static class LearningPathFollowUp
         var setSize = (uint)Math.Min(skillSetSize, (uint)Math.Max(0, available));
 
         ProposedMissionDto? next = null;
+        ProposedMissionDto? extra = null;
         string explanation;
         string code;
         ProposedMissionDto Set(string title, byte target, bool repair, uint streak) => new()
@@ -86,6 +87,20 @@ public static class LearningPathFollowUp
                 var days = (int)Math.Min(30, 7 * Math.Pow(2, Math.Max(0, reviews - 1)));
                 explanation = $"Ôn đạt{(accuracy.HasValue ? $" {pct}%" : "")}: hẹn ôn tiếp sau {days} ngày.";
                 next = Review(days, explanation); code = "SPACED_RECALL";
+            }
+            else if (original?.IsSelfAssessedCheck == true)
+            {
+                // The self-assessment did not hold: the part becomes regular learning with a repair set and a self-check.
+                milestone.IsSelfAssessedCheck = false; milestone.ReadyForCheck = false;
+                explanation = $"Ôn xác nhận đạt {pct}%: phần em tự đánh giá đã vững cần củng cố thêm. Đã thêm bộ rèn lại {setSize} câu và bài tự kiểm tra; đạt 2 bộ liên tiếp nên làm tự kiểm tra.";
+                next = Set($"Rèn lại: {milestone.Title} · bộ {lastSet + 1}", 2, true, 0); code = "SELF_ASSESSMENT_NOT_CONFIRMED";
+                if (checkMission == null)
+                    extra = new ProposedMissionDto
+                    {
+                        MissionId = Guid.NewGuid().ToString(), SkillId = run.Session.TopicNodeId.ToString(), Purpose = "IndependentCheck", ActivityTypes = ["IndependentCheck"],
+                        Title = $"Tự kiểm tra: {milestone.Title}", QuestionCount = 5, EstimatedMinutes = 15, CanStart = available >= 5,
+                        SelectionReason = available >= 5 ? "Kiểm tra bằng câu chưa lộ đáp án; cần ít nhất 5 câu độc lập, đạt 80%." : $"Hiện có {available}/5 câu hợp lệ; chưa đủ để xác nhận kỹ năng."
+                    };
             }
             else
             {
@@ -144,17 +159,19 @@ public static class LearningPathFollowUp
         }
         else return;
 
-        if (next != null)
+        foreach (var (mission, reason) in new[] { (next, explanation), (extra, extra?.SelectionReason ?? "") })
         {
-            next.SelectionReason = explanation;
-            // New practice sets sit before the check so the route reads in learning order; reviews go last.
+            if (mission == null) continue;
+            mission.SelectionReason = reason;
+            // New practice sets sit before the check so the route reads in learning order; reviews and checks go last.
             var checkIndex = checkMission == null ? -1 : milestone.Missions.IndexOf(checkMission);
-            if (next.Purpose == "Practice" && checkIndex >= 0) milestone.Missions.Insert(checkIndex, next); else milestone.Missions.Add(next);
+            if (mission.Purpose == "Practice" && checkIndex >= 0) milestone.Missions.Insert(checkIndex, mission); else milestone.Missions.Add(mission);
             db.LearningPathSessions.Add(new LearningPathSession { CenterId = run.CenterId, LearningPathId = path.LearningPathId,
-                SessionId = Guid.Parse(next.MissionId), TopicNodeId = run.Session.TopicNodeId, ClassId = run.Session.ClassId,
+                SessionId = Guid.Parse(mission.MissionId), TopicNodeId = run.Session.TopicNodeId, ClassId = run.Session.ClassId,
                 PhaseNumber = run.Session.PhaseNumber, WeekNumber = run.Session.WeekNumber,
-                SessionOrder = (await db.LearningPathSessions.Where(s => s.CenterId == run.CenterId && s.LearningPathId == path.LearningPathId).MaxAsync(s => (uint?)s.SessionOrder, ct) ?? 0) + 1,
-                Title = next.Title, Objective = next.Purpose, Rationale = explanation, MinimumQuestions = next.QuestionCount,
+                SessionOrder = (await db.LearningPathSessions.Where(s => s.CenterId == run.CenterId && s.LearningPathId == path.LearningPathId).MaxAsync(s => (uint?)s.SessionOrder, ct) ?? 0) + 1
+                    + (mission == extra ? 1u : 0u),
+                Title = mission.Title, Objective = mission.Purpose, Rationale = reason, MinimumQuestions = mission.Purpose == "IndependentCheck" ? 5u : mission.QuestionCount,
                 RequiredCorrectRate = .8m, PolicyVersion = LearningPathV4Data.Policy, CreatedAt = now, UpdatedAt = now, RowVersion = 1 });
         }
         path.PlanJson = JsonSerializer.SerializeToDocument(plan, LearningPathV4Data.Json); path.UpdatedAt = now; path.RowVersion++;

@@ -8,6 +8,8 @@ namespace EduTwin.BLL.Recommendations.Planning;
 /// </summary>
 public static class LearningPathPacing
 {
+    /// <summary>Questions in the end-of-route review of a self-assessed part.</summary>
+    public const uint ConfirmationSize = 3;
     public const uint MinDailyMinutes = 5;
     public const uint MaxDailyMinutes = 300;
     public const uint MinutesPerQuestion = 2;

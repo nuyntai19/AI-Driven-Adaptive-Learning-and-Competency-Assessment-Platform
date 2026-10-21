@@ -9,6 +9,10 @@ internal sealed class LearningGoalScope
     public LearningGoalScope() { }
     public List<string> TargetSkillIds { get; set; } = [];
     public List<string> SelfReportedPrerequisiteSkillIds { get; set; } = [];
+    /// <summary>Parts left out of the placement check; reviewed briefly at the end of the route, never counted as mastered.</summary>
+    public List<string> SelfAssessedSkillIds { get; set; } = [];
+    /// <summary>Skills the student vouched for (self-reported prerequisites and self-assessed parts).</summary>
+    public static List<string> Vouched(IEnumerable<string> selfReported, IEnumerable<string>? selfAssessed) => selfReported.Concat(selfAssessed ?? []).Distinct().ToList();
 
     public static LearningGoalScope Read(JsonDocument? document)
     {
@@ -18,7 +22,7 @@ internal sealed class LearningGoalScope
             : JsonSerializer.Deserialize<LearningGoalScope>(document.RootElement.GetRawText(), LearningPathV4Data.Json) ?? new();
     }
 
-    public JsonDocument Store() => SelfReportedPrerequisiteSkillIds.Count == 0
+    public JsonDocument Store() => SelfReportedPrerequisiteSkillIds.Count == 0 && SelfAssessedSkillIds.Count == 0
         ? JsonSerializer.SerializeToDocument(TargetSkillIds)
         : JsonSerializer.SerializeToDocument(this, LearningPathV4Data.Json);
 

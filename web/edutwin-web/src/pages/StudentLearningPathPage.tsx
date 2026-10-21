@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { organizationApi } from "../api/organizationApi";
@@ -10,7 +10,7 @@ import { GoalAndProposalModal } from "../components/learningPathV4/GoalAndPropos
 import { MissionPlayerModal } from "../components/learningPathV4/MissionPlayerModal";
 import { TimeBudgetSlider } from "../components/learningPathV4/TimeBudgetSlider";
 import { formatStudyMinutes, splitReason } from "../utils/studyTime";
-import type { AgendaItemDto, MissionRunSummaryDto } from "../types/learningPath";
+import type { AgendaItemDto, LearningAgendaDto, MissionRunSummaryDto } from "../types/learningPath";
 import { missionAction } from "../utils/learningMission";
 import { PlacementReport } from "../components/learningPathV4/PlacementReport";
 
@@ -53,11 +53,16 @@ export function StudentLearningPathPage() {
   // The slider updates its readout immediately; the plan is recalculated once dragging pauses.
   useEffect(() => { const timer = setTimeout(() => setMinutes(sliderMinutes), 350); return () => clearTimeout(timer); }, [sliderMinutes]);
   const [showGoal, setShowGoal] = useState(false);
-  const [entryMode, setEntryMode] = useState<"Placement" | "Foundation" | "Update" | "Next" | undefined>();
+  const [entryMode, setEntryMode] = useState<"Placement" | "Foundation" | "Update" | "Next" | "FromPlacement" | undefined>();
   const [initialScope, setInitialScope] = useState<string[]>([]);
-  const openSetup = (mode?: typeof entryMode, scope: string[] = []) => {
-    setEntryMode(mode); setInitialScope(scope); setShowGoal(true);
+  const [selfAssessed, setSelfAssessed] = useState<string[]>([]);
+  const openSetup = (mode?: typeof entryMode, scope: string[] = [], assessed: string[] = []) => {
+    setEntryMode(mode); setInitialScope(scope); setSelfAssessed(assessed); setShowGoal(true);
   };
+  // Placement runs as one test: after each section closes, the next untested section opens automatically.
+  const placementFlow = useRef(false);
+  const [placementRunning, setPlacementRunning] = useState(false);
+  const setFlow = (on: boolean) => { placementFlow.current = on; setPlacementRunning(on); };
   const [mission, setMission] = useState<AgendaItemDto | null>(null);
   const [acceptedNotice, setAcceptedNotice] = useState("");
   const map = useQuery({ queryKey: ["learning-paths", "capability-map", actor?.centerId, actor?.userId, subjectId, access.classId],
@@ -65,6 +70,26 @@ export function StudentLearningPathPage() {
   const agenda = useQuery({ queryKey: ["learning-agenda", actor?.centerId, actor?.userId, subjectId, access.classId, minutes],
     queryFn: () => getLearningAgenda(subjectId, minutes, access.classId), enabled: !!subjectId && access.writable, placeholderData: keepPreviousData });
   const missions = agenda.data?.missions ?? [];
+  // Proposal from a finished placement: tested parts become the scope; untested parts are self-assessed.
+  const openFromPlacement = (data: LearningAgendaDto) => {
+    const tested = [...new Set(data.missions.map(m => m.skillId))];
+    const selfReported = data.selfReportedPrerequisiteSkillIds ?? [];
+    const assessed = (map.data?.skills ?? []).filter(s => !tested.includes(s.skillId) && !selfReported.includes(s.skillId) && s.state !== "Confirmed").map(s => s.skillId);
+    openSetup("FromPlacement", tested, assessed);
+  };
+  const nextPlacementSection = (data?: LearningAgendaDto) => data?.isPlacement
+    ? data.missions.find(m => m.canStart && m.status !== "Completed" && !m.activeRunId && !m.latestRunId) : undefined;
+  const advancePlacement = (data?: LearningAgendaDto) => {
+    const next = nextPlacementSection(data);
+    if (next) { setMission({ ...next, reviewOnly: false }); return; }
+    setFlow(false);
+    if (data?.placementReport?.isComplete && data.ongoingRuns.length === 0) openFromPlacement(data);
+  };
+  const placementSections = agenda.data?.isPlacement ? missions : [];
+  const sectionLabel = (m: AgendaItemDto) => {
+    const index = placementSections.findIndex(x => x.missionId === m.missionId);
+    return index >= 0 ? `Kiểm tra đầu vào · phần ${index + 1}/${placementSections.length}` : undefined;
+  };
   const primary = agenda.data?.primaryMission;
   const todayPlan = agenda.data?.todayPlan ?? (primary ? [primary, ...(agenda.data?.alternativeOptions ?? [])] : []);
   const planSummary = agenda.data?.learningPathId
@@ -101,7 +126,14 @@ export function StudentLearningPathPage() {
       {!map.data?.skills.length && <p className="mt-3 text-sm text-amber-700">Môn học chưa có kỹ năng trong giáo trình. Cần giáo viên bổ sung để bắt đầu.</p>}
     </section>}
     {agenda.data?.placementReport && <PlacementReport report={agenda.data.placementReport} pending={agenda.data.ongoingRuns.length > 0}
-      onBuild={() => openSetup("Update", agenda.data?.targetSkillIds)} />}
+      onBuild={() => agenda.data && openFromPlacement(agenda.data)}
+      onContinue={!placementRunning && (nextPlacementSection(agenda.data) || agenda.data.ongoingRuns.some(m => m.runs?.some(r => r.sessionRunId === m.activeRunId && r.status === "InProgress")))
+        ? () => { const ongoing = agenda.data?.ongoingRuns.find(m => m.runs?.some(r => r.sessionRunId === m.activeRunId && r.status === "InProgress"));
+          setFlow(true); if (ongoing) setMission({ ...ongoing, reviewOnly: false }); else advancePlacement(agenda.data); } : undefined} />}
+    {!!agenda.data?.selfAssessedSkillIds?.length && <section className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
+      <p>Phần em tự đánh giá đã vững (không chọn kiểm tra): <strong>{agenda.data.selfAssessedSkillIds.map(id => map.data?.skills.find(s => s.skillId === id)?.skillName ?? id).join(", ")}</strong>.</p>
+      <p className="mt-1">Mỗi phần có một bài ôn ngắn ở cuối lộ trình để xác nhận. Đạt thì giữ lịch ôn; chưa đạt sẽ thêm bộ rèn lại và bài tự kiểm tra.</p>
+    </section>}
     {!!agenda.data?.selfReportedPrerequisiteSkillIds?.length && <section className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
       <p>Nền tảng em tự xác nhận và chọn bỏ qua: <strong>{agenda.data.selfReportedPrerequisiteSkillIds.map(id => map.data?.skills.find(s => s.skillId === id)?.skillName ?? id).join(", ")}</strong>.</p>
       <p className="mt-1">Tuyến tập trung vào các phần em đã chọn. Thông tin tự xác nhận chưa thay thế kết quả đánh giá trên web; em có thể cập nhật mục tiêu để ôn thêm bất cứ lúc nào.</p>
@@ -178,10 +210,11 @@ export function StudentLearningPathPage() {
         const group = missions.filter(m => m.skillId === id); const skill = map.data?.skills.find(s => s.skillId === id);
         return <article className={panel} key={id}><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 font-semibold text-indigo-800">{index + 1}</span>
           <div><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-semibold">{group[0].skillName}</h3>
+            {group.every(m => m.isSelfAssessedCheck) && <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">Tự đánh giá đã vững · ôn xác nhận</span>}
             {group[0].weaknessLevel && weaknessLabels[group[0].weaknessLevel] && <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${weaknessLabels[group[0].weaknessLevel][1]}`}>{weaknessLabels[group[0].weaknessLevel][0]}</span>}</div><p className="mt-1 text-sm text-slate-500">{skill?.description || "Học và tự thực hiện các nhiệm vụ thuộc kỹ năng này."}</p>
             <p className="mt-2 text-xs font-semibold text-indigo-600">{stateLabels[skill?.state ?? "Unknown"]} · {skill?.evidenceCount ?? 0} câu có bằng chứng hợp lệ</p></div></div>
           <div className="mt-5 grid gap-3 sm:grid-cols-3">{group.map(m => <div key={m.missionId} className="flex flex-col rounded-xl border border-slate-200 p-4 dark:border-slate-700">
-            <p className="text-xs font-semibold text-indigo-600">{activityLabels[m.purpose] ?? m.purpose}</p><h4 className="mt-2 font-medium">{m.title}</h4>
+            <p className="text-xs font-semibold text-indigo-600">{m.isSelfAssessedCheck ? "Ôn xác nhận" : activityLabels[m.purpose] ?? m.purpose}</p><h4 className="mt-2 font-medium">{m.title}</h4>
             <Reason className="mt-2 flex-1 text-xs leading-relaxed text-slate-500" text={m.recommendationReason} />
             {m.questionCount > 0 && <p className="mt-2 text-xs font-medium">{m.setNumber ? `Bộ ${m.setNumber}${m.estimatedSets ? ` (dự kiến ${m.estimatedSets} bộ)` : ""} · ` : ""}{m.questionCount} câu · khoảng {m.questionCount * 2 > 0 && (m.purpose === "Practice" || m.purpose === "Review") ? m.questionCount * 2 : m.estimatedDurationMinutes} phút</p>}
             {m.advice && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{m.advice}</p>}
@@ -220,8 +253,10 @@ export function StudentLearningPathPage() {
     {showGoal && <GoalAndProposalModal key={`${subjectId}:${access.classId}:${entryMode}`} isOpen onClose={() => setShowGoal(false)}
       entryMode={entryMode} initialMinutes={agenda.data?.availableMinutesPerDay} initialDays={agenda.data?.availableDaysPerWeek}
       initialGoalType={agenda.data?.goalType} initialTitle={agenda.data?.goalTitle ?? undefined} initialDeadline={agenda.data?.deadlineDate}
-      initialSelfReportedPrerequisiteSkillIds={entryMode === "Update" ? agenda.data?.selfReportedPrerequisiteSkillIds : undefined}
-      insights={agenda.data?.insights} suggestedSkillIds={initialScope}
+      insights={agenda.data?.insights} suggestedSkillIds={initialScope} selfAssessedSkillIds={selfAssessed}
+      placementReport={entryMode === "FromPlacement" ? agenda.data?.placementReport : undefined}
+      initialSelfReportedPrerequisiteSkillIds={entryMode === "Update" || entryMode === "FromPlacement" ? agenda.data?.selfReportedPrerequisiteSkillIds : undefined}
+      onPlacementStarted={async () => { setFlow(true); const fresh = await agenda.refetch(); void map.refetch(); advancePlacement(fresh.data); }}
       subjectId={subjectId} classId={access.classId} skills={map.data?.skills ?? []} subjectName={subject?.subjectName ?? ""}
       onOpenBlockingMission={blocked => {
         setShowGoal(false);
@@ -231,7 +266,17 @@ export function StudentLearningPathPage() {
       }}
       onAccepted={res => { setAcceptedNotice(`${res.message} Các nhiệm vụ của tuyến đã được cập nhật.`); void agenda.refetch(); void map.refetch(); }} />}
     {mission && <MissionPlayerModal key={`${mission.missionId}:${mission.retry ? "retry" : mission.reviewOnly ? `review-${mission.latestRunId}` : "open"}`} isOpen mission={mission} subjectId={subjectId}
+      contextLabel={placementRunning ? sectionLabel(mission) : undefined}
+      nextLabel={placementRunning && sectionLabel(mission) ? placementSections.filter(m => m.missionId !== mission.missionId).some(m => m.canStart && m.status !== "Completed" && !m.latestRunId) ? "Sang phần tiếp theo" : "Xem kết quả và lộ trình đề xuất" : undefined}
       onResumeMission={setMission}
-      onClose={() => { setMission(null); void agenda.refetch(); void map.refetch(); }} />}
+      onClose={async () => {
+        const closedId = mission.missionId; setMission(null);
+        const [fresh] = await Promise.all([agenda.refetch(), map.refetch()]);
+        if (!placementFlow.current) return;
+        // Saved and left mid-section: stop here; "Tiếp tục kiểm tra" resumes later.
+        const closed = fresh.data?.missions.find(m => m.missionId === closedId);
+        if (closed?.runs?.some(r => r.sessionRunId === closed.activeRunId && r.status === "InProgress")) { setFlow(false); return; }
+        advancePlacement(fresh.data);
+      }} />}
   </div>;
 }

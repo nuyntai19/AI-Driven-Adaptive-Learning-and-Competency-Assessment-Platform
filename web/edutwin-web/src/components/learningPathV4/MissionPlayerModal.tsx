@@ -15,7 +15,7 @@ const activityNames: Record<string, string> = { Study: "Tìm hiểu và ví dụ
   Explore: "Khám phá", Practice: "Luyện có hướng dẫn", IndependentCheck: "Tự kiểm tra", Explain: "Giải thích", CompleteSolution: "Hoàn thiện lời giải" };
 const done = (a: ActivityRunDto) => a.status === "Submitted" || a.status === "Completed";
 
-export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, subjectId }: { isOpen: boolean; onClose: () => void; onResumeMission: (mission: AgendaItemDto) => void; mission: AgendaItemDto | null; subjectId: string }) {
+export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, subjectId, contextLabel, nextLabel }: { isOpen: boolean; onClose: () => void; onResumeMission: (mission: AgendaItemDto) => void; mission: AgendaItemDto | null; subjectId: string; contextLabel?: string; nextLabel?: string }) {
   const cache = useQueryClient();
   const actor = useAuthStore(s => s.user);
   const [feedbackActivity, setFeedbackActivity] = useState<ActivityRunDto | null>(null);
@@ -46,10 +46,10 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
   const cancelBlocked = independentRun && submittedCount > 0;
   if (!isOpen || !mission) return null;
   const ongoing = ongoingMissionFromError(run.error, mission);
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-transparent p-3 sm:p-6">
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-3 sm:p-6">
     <section role="dialog" aria-modal="true" aria-labelledby="mission-title" className="flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100">
       <header className="z-10 flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-        <div><p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">{mission.skillName}</p><h2 id="mission-title" className="mt-1 text-xl font-semibold">{mission.title}</h2>
+        <div>{contextLabel && <p className="mb-1 text-xs font-medium text-slate-500">{contextLabel}</p>}<p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">{mission.skillName}</p><h2 id="mission-title" className="mt-1 text-xl font-semibold">{mission.title}</h2>
           {run.data && <p className="mt-2 text-xs text-slate-500">{run.data.activities.filter(done).length}/{run.data.activities.length} hoạt động đã nộp · Tiến độ lưu theo tài khoản</p>}</div>
         <div className="flex shrink-0 items-center gap-2">
           {runActive && <span className="font-mono text-sm tabular-nums text-slate-500" title="Thời gian học thực tế (không tính lúc tạm dừng)">{clock(activeSeconds)}</span>}
@@ -122,13 +122,13 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
             </div>
           ) : (
             <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-5 text-indigo-950">
-              <h3 className="text-xl font-semibold">{outcomeNames[evaluation.data.outcome] ?? evaluation.data.outcome}</h3>
+              <h3 className="text-xl font-semibold">{nextLabel ? "Đã xong phần kiểm tra này" : outcomeNames[evaluation.data.outcome] ?? evaluation.data.outcome}</h3>
               {evaluation.data.isProvisional && <p className="mt-2 inline-block rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900">Tạm đạt · chờ giáo viên xác nhận</p>}
               {evaluation.data.practiceAccuracy != null && <p className="mt-3 text-3xl font-bold">{Math.round(evaluation.data.practiceAccuracy * 100)}%</p>}
               {evaluation.data.decisionReasons.map((r, i) => <p className="mt-3 text-sm leading-relaxed" key={i}>{r}</p>)}
               {evaluation.data.nextStep && <p className="mt-3 rounded-lg bg-white p-3 text-sm font-medium dark:bg-slate-900">Bước tiếp theo: {evaluation.data.nextStep}</p>}
-              <p className="mt-4 text-sm">Quay lại tuyến học để xem bước tiếp theo và lịch ôn. Hoàn thành phần luyện chưa thay thế kết quả tự kiểm tra.</p>
-              <button className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-white" onClick={close}>Về tuyến học</button>
+              <p className="mt-4 text-sm">{nextLabel ? "Kết quả phần này được dùng để lập lộ trình. Nhận xét chi tiết có trong trang kết quả sau khi làm xong các phần." : "Quay lại tuyến học để xem bước tiếp theo và lịch ôn. Hoàn thành phần luyện chưa thay thế kết quả tự kiểm tra."}</p>
+              <button className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-white" onClick={close}>{nextLabel ?? "Về tuyến học"}</button>
             </div>
           )
         )}

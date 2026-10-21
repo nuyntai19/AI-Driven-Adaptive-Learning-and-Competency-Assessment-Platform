@@ -5,8 +5,8 @@ const statusLabels: Record<string, string> = {
   NotStarted: "Chưa kiểm tra", Unavailable: "Thiếu câu kiểm tra mới"
 };
 
-export function PlacementReport({ report, pending, onBuild }: {
-  report: PlacementReportDto; pending: boolean; onBuild: () => void;
+export function PlacementReport({ report, pending, onBuild, onContinue }: {
+  report: PlacementReportDto; pending: boolean; onBuild: () => void; onContinue?: () => void;
 }) {
   const topics = [...new Set(report.skills.map(s => s.topicName))];
   return <section className="space-y-5 rounded-2xl border border-indigo-200 bg-white p-5 dark:bg-slate-900" aria-labelledby="placement-report-title">
@@ -28,7 +28,8 @@ export function PlacementReport({ report, pending, onBuild }: {
       </article>)}</div>
     </div>; })}
     <p className="text-xs text-slate-500">Số bộ luyện là ước lượng. Kết quả từng bộ sẽ điều chỉnh lượng luyện và độ khó; kiểm tra độc lập dùng để xác nhận đã nắm vững.</p>
-    <button disabled={pending} onClick={onBuild} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-40">{report.isComplete ? "Lập lộ trình từ kết quả này" : "Xem tuyến tạm từ dữ liệu hiện có"}</button>
+    {onContinue && !report.isComplete && <button onClick={onContinue} className="mr-3 rounded-xl border border-indigo-300 px-4 py-3 text-sm font-semibold text-indigo-700">Tiếp tục kiểm tra</button>}
+    <button disabled={pending} onClick={onBuild} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-40">{report.isComplete ? "Xem lộ trình đề xuất từ kết quả này" : "Xem tuyến tạm từ dữ liệu hiện có"}</button>
     {pending && <p className="text-xs text-amber-700">Hoàn thành phần đang làm hoặc chờ chấm trước khi chuyển sang tuyến luyện.</p>}
   </section>;
 }

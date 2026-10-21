@@ -24,7 +24,10 @@ public sealed partial class LearningPathV4Planner
         var plan = JsonSerializer.Deserialize<PathProposalDto>(source.CandidatePlan.RootElement.GetRawText(), LearningPathV4Data.Json)
             ?? throw new InvalidOperationException("Không đọc được tuyến đề xuất.");
         var originalSkills = plan.Milestones.SelectMany(m => m.SkillIds).ToHashSet();
-        var selected = request.TargetSkillIds.ToHashSet();
+        // Confirmation reviews of self-assessed parts always stay at the end of the route; they are not learning targets.
+        var selfAssessed = plan.SelfAssessedSkillIds.ToHashSet();
+        var selected = request.TargetSkillIds.Where(id => !selfAssessed.Contains(id)).ToHashSet();
+        if (selected.Count == 0) throw new ArgumentException("Chọn ít nhất một phần học ngoài các bài ôn xác nhận.");
         if (!selected.IsSubsetOf(originalSkills)) throw new ArgumentException("Chỉ tùy chỉnh các phần trong tuyến đang xem.");
         if (!request.PracticeQuestionsBySkill.Keys.ToHashSet().IsSubsetOf(originalSkills))
             throw new ArgumentException("Chỉ phân bổ câu hỏi cho các phần trong tuyến đang xem.");
@@ -35,15 +38,16 @@ public sealed partial class LearningPathV4Planner
         {
             if (!prerequisites.TryGetValue(skill, out var required))
                 throw new InvalidOperationException("Phạm vi giáo trình đã thay đổi. Hãy tạo đề xuất mới.");
-            foreach (var prerequisite in required.Where(id => originalSkills.Contains(id) && !plan.SelfReportedPrerequisiteSkillIds.Contains(id)))
+            foreach (var prerequisite in required.Where(id => originalSkills.Contains(id) && !plan.SelfReportedPrerequisiteSkillIds.Contains(id) && !selfAssessed.Contains(id)))
                 if (selected.Add(prerequisite)) pending.Enqueue(prerequisite);
         }
         var nodes = await LearningPathV4Data.NodesAsync(db, centerId, studentId, source.SubjectId, source.Goal.ClassId, cancellationToken);
         var questions = await LearningPathV4Data.QuestionsAsync(db, centerId, source.SubjectId, nodes.Select(n => n.NodeId).ToList(), cancellationToken);
         var used = (await db.Attempts.AsNoTracking().Where(a => a.CenterId == centerId && a.StudentId == studentId &&
             a.Question.SubjectId == source.SubjectId).Select(a => a.QuestionId).Distinct().ToListAsync(cancellationToken)).ToHashSet();
-        plan.Milestones = plan.Milestones.Where(m => m.SkillIds.Any(selected.Contains)).ToList();
-        plan.RequestedSkillIds = request.TargetSkillIds.Distinct().ToList();
+        plan.Milestones = plan.Milestones.Where(m => !m.IsSelfAssessedCheck && m.SkillIds.Any(selected.Contains))
+            .Concat(plan.Milestones.Where(m => m.IsSelfAssessedCheck)).ToList();
+        plan.RequestedSkillIds = request.TargetSkillIds.Where(id => !selfAssessed.Contains(id)).Distinct().ToList();
         uint order = 0;
         foreach (var milestone in plan.Milestones)
         {
@@ -69,8 +73,8 @@ public sealed partial class LearningPathV4Planner
             GoalId = Guid.NewGuid(), CenterId = centerId, StudentId = studentId, SubjectId = source.SubjectId,
             ClassId = source.Goal.ClassId, Title = source.Goal.Title, GoalType = source.Goal.GoalType,
             Description = source.Goal.Description, PreferredMode = source.Goal.PreferredMode, PreferredPace = source.Goal.PreferredPace,
-            TargetSkillIds = new LearningGoalScope { TargetSkillIds = request.TargetSkillIds.Distinct().ToList(),
-                SelfReportedPrerequisiteSkillIds = plan.SelfReportedPrerequisiteSkillIds }.Store(),
+            TargetSkillIds = new LearningGoalScope { TargetSkillIds = plan.RequestedSkillIds,
+                SelfReportedPrerequisiteSkillIds = plan.SelfReportedPrerequisiteSkillIds, SelfAssessedSkillIds = plan.SelfAssessedSkillIds }.Store(),
             AvailableMinutesPerDay = request.AvailableMinutesPerDay, AvailableDaysPerWeek = request.AvailableDaysPerWeek,
             DeadlineDate = request.DeadlineDate, Status = "Draft", CreatedAt = Now, UpdatedAt = Now, RowVersion = 1
         };

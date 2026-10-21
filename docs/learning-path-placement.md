@@ -2,6 +2,14 @@
 
 Trang lộ trình hỗ trợ hai cách bắt đầu: kiểm tra đầu vào theo phạm vi được chọn hoặc học từ nền tảng. Checklist gom các kỹ năng lá theo chủ đề trong giáo trình; chọn một chủ đề chọn các kỹ năng con. Quan hệ tiên quyết lấy từ Knowledge Graph, bao gồm quan hệ giữa các chủ đề cha được mở rộng xuống kỹ năng lá. Với nền tảng chưa có bằng chứng trên web, học sinh chọn bổ sung vào tuyến hoặc tự xác nhận đã học ở trường và bỏ qua. Không tự mở rộng tuyến qua các nền tảng đã chọn bỏ qua.
 
+## Luồng kiểm tra đầu vào → lộ trình
+
+1. Bấm "Kiểm tra đầu vào", chọn một, vài hoặc tất cả các phần (chủ đề) rồi bấm "Bắt đầu kiểm tra". Không có bước xem trước: bài kiểm tra được tạo và mở ngay.
+2. Các phần nối tiếp nhau trong một bài (`Kiểm tra đầu vào · phần x/y`). Đóng giữa chừng thì lưu lại; nút "Tiếp tục kiểm tra" làm tiếp.
+3. Xong phần cuối và chấm xong, hộp "Lộ trình đề xuất từ kết quả kiểm tra" tự mở: điểm từng phần, nhận xét, rồi lộ trình chi tiết. Học sinh có thể tùy chỉnh (phần học, số câu, lịch) trước khi chọn.
+4. Phần không chọn kiểm tra được ghi là "Tự đánh giá đã vững" (`SelfAssessedSkillIds` trong `LearningGoal.TargetSkillIds`). Không tính là đã nắm vững, không kéo vào học như tiên quyết, không chặn tự kiểm tra của phần khác. Cuối lộ trình mỗi phần có một bài "Ôn xác nhận" 3 câu (`IsSelfAssessedCheck`, mục đích `Review`), chỉ đưa vào kế hoạch hôm nay khi các phần chính đã xong; học sinh vẫn có thể làm sớm.
+5. Ôn xác nhận đạt: giữ lịch ôn giãn cách. Chưa đạt: phần đó thành phần học bình thường, thêm bộ rèn lại và bài tự kiểm tra 5 câu.
+
 ## Kiểm tra đầu vào
 
 - Mục tiêu `Placement` tạo một tuyến kiểm tra riêng: mỗi kỹ năng chưa được xác nhận có 5 câu độc lập chưa làm/chưa lộ lời giải. Câu hỏi có mức vừa/khó được đưa vào nếu ngân hàng có sẵn. Có thể lưu tiến độ theo từng phần.

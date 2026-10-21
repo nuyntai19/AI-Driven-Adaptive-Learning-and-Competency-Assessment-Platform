@@ -259,6 +259,8 @@ export interface LearningGoalDto {
 
 export interface CreateLearningGoalRequest {
   selfReportedPrerequisiteSkillIds?: string[];
+  /** Parts left out of the placement check (self-assessed as mastered). */
+  selfAssessedSkillIds?: string[];
   subjectId: string;
   classId?: string;
   goalType?: string;
@@ -273,6 +275,7 @@ export interface CreateLearningGoalRequest {
 }
 
 export interface ProposedMissionDto {
+  isSelfAssessedCheck?: boolean;
   difficultyFloor?: number | null;
   isProbe?: boolean;
   estimatedSets?: number;
@@ -290,6 +293,7 @@ export interface ProposedMissionDto {
 }
 
 export interface ProposedMilestoneDto {
+  isSelfAssessedCheck?: boolean;
   order: number;
   title: string;
   outcomeDescription: string;
@@ -300,6 +304,7 @@ export interface ProposedMilestoneDto {
 
 export interface PathProposalDto {
   selfReportedPrerequisiteSkillIds?: string[];
+  selfAssessedSkillIds?: string[];
   isPlacement?: boolean;
   goalType?: string;
   requestedSkillIds?: string[];
@@ -368,6 +373,7 @@ export interface CapabilityMapDto {
 }
 
 export interface AgendaItemDto {
+  isSelfAssessedCheck?: boolean;
   latestRunId?: number | null;
   reviewOnly?: boolean;
   questionCount: number;
@@ -435,6 +441,7 @@ export interface PathHistoryItemDto {
 
 export interface LearningAgendaDto {
   selfReportedPrerequisiteSkillIds?: string[];
+  selfAssessedSkillIds?: string[];
   isPlacement?: boolean;
   goalType?: string;
   deadlineDate?: string | null;
