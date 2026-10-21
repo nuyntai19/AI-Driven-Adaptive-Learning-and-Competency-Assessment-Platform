@@ -17,7 +17,7 @@ interface Props { isOpen: boolean; onClose: () => void; subjectId: string; class
   suggestedSkillIds?: string[]; recommendationSummary?: string; automatic?: boolean; insights?: LearningInsightsDto;
   entryMode?: "Placement" | "Foundation" | "Update" | "Next" | "FromPlacement";
   /** Parts left out of the placement check; the route ends with a short confirmation review for each. */
-  selfAssessedSkillIds?: string[]; onPlacementStarted?: () => void; placementReport?: PlacementReportDto;
+  selfAssessedSkillIds?: string[]; onPlacementStarted?: () => void; placementReport?: PlacementReportDto | null;
   initialMinutes?: number; initialDays?: number; initialGoalType?: string; initialTitle?: string; initialDeadline?: string | null; initialSelfReportedPrerequisiteSkillIds?: string[] }
 export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAccepted, onOpenBlockingMission, skills = [], subjectName = "môn đang học", suggestedSkillIds = [], recommendationSummary, automatic = false, insights, entryMode, initialMinutes = 15, initialDays = 5, initialGoalType, initialTitle, initialDeadline, initialSelfReportedPrerequisiteSkillIds = [], selfAssessedSkillIds = [], onPlacementStarted, placementReport }: Props) {
   const fromPlacement = entryMode === "FromPlacement";

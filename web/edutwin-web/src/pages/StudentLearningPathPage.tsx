@@ -255,7 +255,7 @@ export function StudentLearningPathPage() {
       entryMode={entryMode} initialMinutes={agenda.data?.availableMinutesPerDay} initialDays={agenda.data?.availableDaysPerWeek}
       initialGoalType={agenda.data?.goalType} initialTitle={agenda.data?.goalTitle ?? undefined} initialDeadline={agenda.data?.deadlineDate}
       insights={agenda.data?.insights} suggestedSkillIds={initialScope} selfAssessedSkillIds={selfAssessed}
-      placementReport={entryMode === "FromPlacement" ? agenda.data?.placementReport : undefined}
+      placementReport={entryMode === "FromPlacement" ? (agenda.data?.placementReport ?? undefined) : undefined}
       initialSelfReportedPrerequisiteSkillIds={entryMode === "Update" || entryMode === "FromPlacement" ? agenda.data?.selfReportedPrerequisiteSkillIds : undefined}
       onPlacementStarted={async () => { setFlow(true); const fresh = await agenda.refetch(); void map.refetch(); advancePlacement(fresh.data); }}
       subjectId={subjectId} classId={access.classId} skills={map.data?.skills ?? []} subjectName={subject?.subjectName ?? ""}
