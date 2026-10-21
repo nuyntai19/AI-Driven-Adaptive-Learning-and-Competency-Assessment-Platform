@@ -360,7 +360,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
                     ? newEvidence
                     : latestEvidenceByAttempt.GetValueOrDefault(att.AttemptId);
 
-                decimal reasoningWeight = ev?.ReasoningWeight ?? 0m;
+                decimal reasoningWeight = att.Skipped ? 0m : ev?.ReasoningWeight ?? 0m;
                 bool? correctness = att.AttemptId == attempt.AttemptId
                     ? effectiveCorrectness
                     : (a?.OverrideIsCorrect ?? att.IsCorrect);

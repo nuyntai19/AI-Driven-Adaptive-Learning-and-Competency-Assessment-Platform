@@ -201,6 +201,7 @@ export function StudentLearningPathPage() {
     </section>}
     {agenda.data && (agenda.data.reviewDueTasks.length > 0 || agenda.data.recentChanges?.length > 0) && <section className={panel}>
       <h2 className="text-xl font-semibold">Tiến bộ và lịch ôn</h2>
+      {!!agenda.data.recentChanges?.length && <p className="mt-3 text-xs font-semibold text-slate-500">Lịch sử cập nhật tuyến · số liệu tại thời điểm cập nhật; tiến độ hiện tại xem ở trên.</p>}
       {agenda.data.recentChanges?.map((r, i) => <p className="mt-3 text-sm text-slate-500" key={i}>{r}</p>)}
       {agenda.data.reviewDueTasks.map(r => <div key={r.missionId} className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-indigo-50 p-4 dark:bg-indigo-950/40"><p className="text-sm">{r.title} · {r.availableFrom ? new Date(r.availableFrom).toLocaleDateString("vi-VN") : "Đến lượt ôn"}</p><button disabled={!r.canStart} className={action} onClick={() => setMission(r)}>{r.canStart ? "Ôn ngay" : "Đã hẹn lịch"}</button></div>)}
     </section>}

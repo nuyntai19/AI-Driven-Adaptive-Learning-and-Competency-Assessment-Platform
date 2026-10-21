@@ -7,6 +7,19 @@ namespace EduTwin.BLL.Tests.AssessmentAndReasoning.Evidence;
 
 public sealed class EvidenceAssessmentFactoryTests
 {
+    [Theory]
+    [InlineData(EvidenceSourceType.TeacherApproval)]
+    [InlineData(EvidenceSourceType.TeacherOverride)]
+    public void Create_SkippedAnswer_CannotBecomeMasteryEvidence(EvidenceSourceType source)
+    {
+        var attempt = new Attempt { CenterId = Guid.NewGuid(), AttemptId = 17, Skipped = true };
+        var decision = Decision() with { SourceType = source };
+        var evidence = new EvidenceAssessmentFactory().Create(attempt, null, null, decision, DateTime.UtcNow, null);
+        Assert.Equal(0m, evidence.ReasoningWeight);
+        Assert.Contains(EvidenceReasonCodes.AttemptSkipped,
+            evidence.ReasonCodes.RootElement.EnumerateArray().Select(item => item.GetString()));
+    }
+
     [Fact]
     public void Create_SameTenantAttemptAndAnalysis_MapsDecisionExactly()
     {

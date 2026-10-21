@@ -36,6 +36,12 @@ public sealed class EvidenceAssessmentFactory : IEvidenceAssessmentFactory
                 "Superseded evidence must be persisted and belong to the same center and attempt.");
         }
 
+        // Reviewing a skipped answer finalizes its grade, but cannot turn an
+        // absence of work into evidence about the student's knowledge.
+        var reasonCodes = attempt.Skipped
+            ? decision.ReasonCodes.Append(EvidenceReasonCodes.AttemptSkipped).Distinct().ToArray()
+            : decision.ReasonCodes;
+
         return new EvidenceAssessment
         {
             CenterId = attempt.CenterId,
@@ -47,8 +53,8 @@ public sealed class EvidenceAssessmentFactory : IEvidenceAssessmentFactory
             SourceType = decision.SourceType,
             TrustLevel = decision.TrustLevel,
             DecisionMode = decision.DecisionMode,
-            ReasoningWeight = decision.ReasoningWeight,
-            ReasonCodes = JsonSerializer.SerializeToDocument(decision.ReasonCodes),
+            ReasoningWeight = attempt.Skipped ? 0m : decision.ReasoningWeight,
+            ReasonCodes = JsonSerializer.SerializeToDocument(reasonCodes),
             RequiresTeacherReview = decision.RequiresTeacherReview,
             PolicyVersion = decision.PolicyVersion,
             AnalysisOverrideVersion = decision.AnalysisOverrideVersion,

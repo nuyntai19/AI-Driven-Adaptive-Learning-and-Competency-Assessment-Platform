@@ -422,7 +422,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                     effectiveCorrectness = a?.OverrideIsCorrect ?? att.IsCorrect;
                 }
 
-                decimal reasoningWeight = ev?.ReasoningWeight ?? 0m;
+                decimal reasoningWeight = att.Skipped ? 0m : ev?.ReasoningWeight ?? 0m;
                 decimal? effectiveQuality = EduTwin.BLL.AssessmentAndReasoning.EffectiveReasoningQuality.Resolve(a);
 
                 // Fail closed if positive weight evidence has unresolved correctness

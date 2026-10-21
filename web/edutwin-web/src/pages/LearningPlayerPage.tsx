@@ -2525,6 +2525,7 @@ const PracticePlayerPage = () => {
           {/* 4-Tier Hierarchy: Student Work -> AI Reasoning -> Teacher Solution -> Teacher Evaluation */}
           <AttemptFeedbackHierarchy
             feedbackData={feedbackData}
+            isVoided={assignmentQuestions.find((item) => item.questionId === feedbackData.questionId)?.isVoided}
             practiceMode={!assignmentId}
             assignmentQuestionCount={assignmentId ? assignmentQuestions.length : undefined}
             questionType={
@@ -2658,7 +2659,7 @@ const PracticePlayerPage = () => {
       </div>}
       {/* Top Header Bar */}
       <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#151d2f]/95 backdrop-blur-md border-b border-stone-200/80 dark:border-stone-800/80 shadow-xs">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex items-center justify-between h-14 sm:h-16">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-2 py-2 min-h-14 sm:min-h-16">
           <div className="flex items-center gap-3">
             <Link
               to={
@@ -2679,7 +2680,7 @@ const PracticePlayerPage = () => {
             </span>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5 min-w-0">
             {/* Timer / Countdown */}
             {isAssignmentSubmitted ? (
               <AssignmentReviewReceipt {...submissionTiming} />
@@ -3202,7 +3203,7 @@ const PracticePlayerPage = () => {
                       <span>🛡️</span>
                       <span>
                         Câu hỏi này đã được giáo viên miễn và tính trọn điểm
-                        {assignmentQuestion.voidedScore != null ? ` (+${assignmentQuestion.voidedScore} điểm)` : " (+điểm tối đa)"}.
+                        {assignmentQuestion.voidedScore != null ? ` (+${Number(assignmentQuestion.voidedScore.toFixed(2))} điểm)` : " (+điểm tối đa)"}.
                       </span>
                     </div>
                     <p className="text-purple-700 dark:text-purple-300">
@@ -3552,6 +3553,7 @@ const PracticePlayerPage = () => {
                     isFeedbackForQuestion(assignmentQuestion?.questionId ?? "", reviewFeedbackQuery.data.questionId) ? (
                     <AttemptFeedbackHierarchy
                       feedbackData={reviewFeedbackQuery.data}
+                      isVoided={assignmentQuestion?.isVoided}
                       assignmentQuestionCount={assignmentQuestions.length}
                       questionType={assignmentQuestion?.questionType}
                       showStudentSubmission={false}

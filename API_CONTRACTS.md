@@ -3078,6 +3078,18 @@ Response 200:
 }
 ~~~
 
+## Tự quản lý bảo mật tài khoản trung tâm
+
+Các tài khoản Student, Teacher, CenterManager đã đăng nhập sử dụng:
+
+- `GET /account/me/security`: hồ sơ và số phiên còn hiệu lực của chính tài khoản.
+- `POST /account/me/change-password`: `{ currentPassword, newPassword, confirmPassword }`; mật khẩu mới tối thiểu 12 ký tự, khác mật khẩu cũ và phải khớp xác nhận.
+- `POST /account/me/revoke-sessions`: `{ reason? }`; thu hồi toàn bộ phiên, gồm phiên hiện tại, và tăng AuthVersion.
+
+Không nhận userId/centerId đích từ client; lấy trực tiếp từ tenant đã xác thực, đối chiếu vai trò và giới hạn truy vấn theo cả user lẫn center. Tài khoản platform bị từ chối ở các endpoint này và tiếp tục dùng `/platform/me/*` với policy riêng. Thành công trả `{ data: ... }`. Thay mật khẩu hoặc thu hồi phiên yêu cầu đăng nhập lại. Sai mật khẩu hiện tại là lỗi 400 trong self-service, không kích hoạt cơ chế làm mới token của client. Hai POST có giới hạn 5 lần/phút theo user và route. Audit không ghi mật khẩu hoặc hash.
+
+Feedback bài làm có thêm `studentSubmission.skipped` để phân biệt câu bỏ qua với lỗi dịch vụ AI. Giáo viên xác nhận/điều chỉnh điểm của câu bỏ qua không tạo bằng chứng năng lực; trọng số luôn bằng 0 và câu này bị loại khỏi hiệu chỉnh mức tự tin.
+
 ## 88. POST /platform/me/revoke-sessions và GET /platform/me/security
 
 Quyền: PlatformAdmin (thuộc Root Tenant PLATFORM, có quyền `platform.account.manage_own`).

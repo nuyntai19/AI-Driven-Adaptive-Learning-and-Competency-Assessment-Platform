@@ -195,6 +195,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
         // 1. Student Submission
         var studentSubmissionDto = new AttemptFeedbackStudentSubmissionDto
         {
+            Skipped = attempt.Skipped,
             FinalAnswer = finalAnswerDisplay,
             AnswerDisplayLatex = answerDisplayLatex,
             ReasoningText = attempt.ReasoningText,

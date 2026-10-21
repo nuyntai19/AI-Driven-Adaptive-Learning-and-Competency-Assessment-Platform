@@ -35,6 +35,7 @@ interface AttemptFeedbackHierarchyProps {
   questionType?: string;
   assignmentQuestionCount?: number;
   practiceMode?: boolean;
+  isVoided?: boolean;
 }
 
 export function AttemptFeedbackHierarchy({
@@ -47,6 +48,7 @@ export function AttemptFeedbackHierarchy({
   questionType,
   assignmentQuestionCount,
   practiceMode = false,
+  isVoided = false,
 }: AttemptFeedbackHierarchyProps) {
   const {
     attemptId,
@@ -189,7 +191,7 @@ export function AttemptFeedbackHierarchy({
     }
   };
 
-  const processingNotice = getAIProcessingNotice(feedbackData, scoreAndFeedbackOnly);
+  const processingNotice = studentSubmission?.skipped ? null : getAIProcessingNotice(feedbackData, scoreAndFeedbackOnly);
   const hasReasoningAnalysis = Boolean(analysis && !analysis.isFallback && analysis.isRawAI !== false && (studentSubmission?.reasoningText?.trim() || studentSubmission?.attachmentUrl));
   const presentation = getAttemptFeedbackPresentation(grading, analysis, feedbackData.status);
   const reviewNotice = getAttemptReviewNotice(presentation, analysis, practiceMode);
@@ -322,7 +324,7 @@ export function AttemptFeedbackHierarchy({
             ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300"
             : grading.isCorrect === false ? "bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300"
             : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"}`}>
-            {formatPreliminaryResult(grading.isCorrect)}
+            {isVoided ? "Được miễn · Tính trọn điểm" : studentSubmission?.skipped ? "Đã bỏ qua" : formatPreliminaryResult(grading.isCorrect)}
           </span>
           <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-300">
             {formatAwardedScore(displayedAwardedScore, displayedMaxScore)}
@@ -379,7 +381,7 @@ export function AttemptFeedbackHierarchy({
           </div>
         )}
 
-        {analysis && !hasReasoningAnalysis && <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{analysis.isFallback ? "Phân tích AI chưa hoàn tất. Chưa có đánh giá chất lượng lập luận từ AI." : "Chưa có nội dung lập luận để đánh giá chất lượng tư duy."}</p>}
+        {studentSubmission?.skipped ? <p role="status" className="text-sm text-slate-600 dark:text-slate-300">Câu này đã bỏ qua, được chấm 0 điểm. Hệ thống không gọi AI và không dùng câu này để cập nhật mức độ thành thạo.</p> : analysis && !hasReasoningAnalysis && <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{analysis.isFallback ? "Phân tích AI chưa hoàn tất. Chưa có đánh giá chất lượng lập luận từ AI." : "Chưa có nội dung lập luận để đánh giá chất lượng tư duy."}</p>}
         {analysis && (
           <div className="space-y-4">
             {!analysis.isFallback && analysis.suggestedScore != null && <section className="rounded-2xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 p-4 space-y-2">
@@ -506,7 +508,7 @@ export function AttemptFeedbackHierarchy({
                 ? "text-amber-200"
                 : "text-purple-200"
             }`}>
-              "{reviewRequest.studentComment}"
+              "{reviewRequest.studentComment?.replace(/^\[(?:DEFECTIVE_QUESTION|QUESTION)[^\]]*\]\s*/, "")}"
             </p>
             {reviewRequest.teacherNote && (
               <div className={`pt-2 border-t text-xs ${
@@ -737,7 +739,9 @@ export function AttemptFeedbackHierarchy({
 
             {teacherFinalEvaluation.isApprovedAsIs && (
               <p className="text-xs text-emerald-800 dark:text-emerald-300 leading-relaxed font-medium">
-                Thầy/cô đã kiểm tra bài làm và xác nhận các luận điểm, phân tích và số điểm do AI đề xuất là hoàn toàn chính xác.
+                {studentSubmission?.skipped
+                  ? "Thầy/cô đã xác nhận điểm cho câu bỏ trống. Câu này không có phân tích AI và không cập nhật mức độ thành thạo."
+                  : "Thầy/cô đã kiểm tra và xác nhận kết quả câu hỏi. Điểm và nhận xét được lưu bên dưới."}
               </p>
             )}
 
@@ -759,7 +763,7 @@ export function AttemptFeedbackHierarchy({
       {/* STUDENT REVIEW REQUEST MODAL */}
       {isReviewModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-2xl space-y-5">
+          <div role="dialog" aria-modal="true" aria-label="Yêu cầu xem xét kết quả" className="w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
                 <span>🙋</span> Yêu Cầu Xem Xét Kết Quả AI
@@ -831,7 +835,7 @@ export function AttemptFeedbackHierarchy({
       {/* STUDENT DISPUTE MODAL */}
       {isDisputeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-2xl space-y-5">
+          <div role="dialog" aria-modal="true" aria-label="Báo cáo đề bài bị sai sót" className="w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
                 <span>🚩</span> Báo Cáo Đề Bài Bị Sai Sót

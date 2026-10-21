@@ -26,7 +26,8 @@ public sealed class TeacherApproveAIProposalTests
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]
-    public async Task ExplicitTeacherApproval_PromotesManualProposalOnly_AndRecordsRubricHistory(bool rubric, bool deterministic)
+    [InlineData(false, true, true)]
+    public async Task ExplicitTeacherApproval_PromotesManualProposalOnly_AndRecordsRubricHistory(bool rubric, bool deterministic, bool skipped = false)
     {
         var center = Guid.NewGuid(); var teacher = Guid.NewGuid(); var student = Guid.NewGuid(); var subject = Guid.NewGuid();
         var tenant = new TenantContext(); tenant.Initialize(center, teacher, nameof(UserRole.Teacher), 1);
@@ -48,6 +49,11 @@ public sealed class TeacherApproveAIProposalTests
             ReasoningQuality = 95, AnalysisConfidence = 95, Feedback = "Dùng thì hiện tại đơn nên chọn goes.",
             RootCauseNodeIds = JsonDocument.Parse("[]"), MissingSteps = JsonDocument.Parse("[]"), NeedsTeacherReview = true,
             CreatedAt = now, UpdatedAt = now };
+        if (skipped)
+        {
+            attempt.Skipped = true; attempt.FinalAnswer = "SKIPPED";
+            attempt.IsCorrect = false; attempt.AwardedScore = 0m;
+        }
         if (rubric) analysis.SuggestedRubricGradeJson = RubricGrade.Serialize(new() { MaxScore = 2, AwardedScore = 2,
             Criteria = [new() { CriterionId = "method", Title = "Phương pháp", MaxScore = 1, AwardedScore = 1 },
                 new() { CriterionId = "answer", Title = "Kết quả", MaxScore = 1, AwardedScore = 1 }] });
@@ -61,13 +67,20 @@ public sealed class TeacherApproveAIProposalTests
             new StudentGoalRiskUpdater(db), new StudentTwinUpdater(db), new TwinUpdateHistoryWriter(db), TimeProvider.System, scopeGuard: scope.Object);
         var result = await sut.ExecuteAsync(1, new TeacherApproveRequest { OverrideVersion = 0, Note = "Giáo viên đã kiểm tra." }, default);
         Assert.Equal(TeacherApproveStatus.Success, result.Status);
-        Assert.Equal(2m, result.Data!.EffectiveAwardedScore); Assert.True(result.Data.EffectiveIsCorrect);
+        Assert.Equal(skipped ? 0m : 2m, result.Data!.EffectiveAwardedScore);
+        Assert.Equal(!skipped, result.Data.EffectiveIsCorrect);
         Assert.Equal(TeacherReviewDecision.Approved, analysis.ReviewDecision);
         Assert.Equal(teacher, analysis.ReviewedByUserId);
         Assert.Equal(deterministic ? null : 2m, analysis.OverrideAwardedScore);
-        Assert.Equal(deterministic ? 2m : null, attempt.AwardedScore); // Immutable submitted/deterministic grade.
+        Assert.Equal(skipped ? 0m : deterministic ? 2m : null, attempt.AwardedScore); // Immutable submitted/deterministic grade.
         var history = Assert.Single(await db.TeacherReviewHistories.ToListAsync());
-        Assert.Equal(2m, history.NewScore);
+        Assert.Equal(skipped ? 0m : 2m, history.NewScore);
+        if (skipped)
+        {
+            Assert.Equal(0m, Assert.Single(await db.EvidenceAssessments.ToListAsync()).ReasoningWeight);
+            Assert.Equal(0m, Assert.Single(await db.KnowledgeTwins.ToListAsync()).MasteryPercentage);
+            Assert.Equal(0u, Assert.Single(await db.KnowledgeTwins.ToListAsync()).EvidenceCount);
+        }
         if (rubric) Assert.Equal(2m, RubricGrade.Deserialize(history.RubricResultJson)!.AwardedScore);
         else Assert.Null(history.RubricResultJson);
         Assert.Equal(TeacherApproveStatus.Conflict, (await sut.ExecuteAsync(1, new TeacherApproveRequest { OverrideVersion = 0 }, default)).Status);

@@ -2,6 +2,8 @@ import React, { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import { platformApi } from "../api/platformApi";
+import { accountSecurityApi } from "../api/accountSecurityApi";
+import { useNavigate } from "react-router-dom";
 import type { ProblemDetails } from "../types/auth";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
 import { useAuthStore } from "../stores/authStore";
@@ -16,6 +18,16 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
   onClose,
 }) => {
   const queryClient = useQueryClient();
+  const user = useAuthStore((state) => state.user);
+  const navigate = useNavigate();
+  const securityApi = user?.accountType === "PlatformAdmin" ? platformApi : accountSecurityApi;
+  const profileKey = ["account-security-profile", user?.centerId, user?.userId];
+  const finishSession = () => {
+    queryClient.removeQueries({ queryKey: profileKey });
+    useAuthStore.getState().clearSession();
+    onClose();
+    navigate("/dang-nhap", { replace: true });
+  };
   const modalRef = useRef<HTMLDivElement>(null);
 
   useModalAccessibility({
@@ -31,15 +43,15 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
 
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const { data: profile, isLoading, refetch } = useQuery({
-    queryKey: ["platform-security-profile"],
-    queryFn: () => platformApi.getSecurityProfile(),
+  const { data: profile, isLoading, error: profileError, refetch } = useQuery({
+    queryKey: profileKey,
+    queryFn: () => securityApi.getSecurityProfile(),
     enabled: isOpen,
   });
 
   const changePasswordMutation = useMutation({
     mutationFn: () =>
-      platformApi.changePassword({
+      securityApi.changePassword({
         currentPassword,
         newPassword,
         confirmPassword,
@@ -49,8 +61,7 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      queryClient.invalidateQueries({ queryKey: ["platform-security-profile"] });
-      refetch();
+      finishSession();
     },
     onError: (error) => {
       if (isAxiosError<ProblemDetails>(error)) {
@@ -66,14 +77,13 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
 
   const revokeSessionsMutation = useMutation({
     mutationFn: () =>
-      platformApi.revokeSessions({
+      securityApi.revokeSessions({
         reason: revokeReason.trim() || undefined,
       }),
     onSuccess: (res) => {
       setMessage({ type: "success", text: res.message || "Đã thu hồi tất cả phiên làm việc thành công." });
       setRevokeReason("");
-      queryClient.invalidateQueries({ queryKey: ["platform-security-profile"] });
-      refetch();
+      finishSession();
     },
     onError: (error) => {
       if (isAxiosError<ProblemDetails>(error)) {
@@ -86,8 +96,6 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
       }
     },
   });
-
-  const user = useAuthStore((state) => state.user);
 
   if (!isOpen) return null;
 
@@ -190,7 +198,7 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
                 </span>
               </div>
             </div>
-          ) : null}
+          ) : profileError ? <div role="alert" className="text-xs text-red-700 dark:text-red-300">Không tải được thông tin bảo mật. <button type="button" className="underline" onClick={() => void refetch()}>Thử lại</button></div> : null}
         </div>
 
         {/* Change Password Form */}
@@ -258,7 +266,7 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
             Thu Hồi Toàn Bộ Phiên Đăng Nhập
           </h4>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Thao tác này sẽ ngay lập tức vô hiệu hóa toàn bộ refresh token đang hoạt động của tài khoản này trên tất cả trình duyệt và thiết bị khác.
+            Thao tác này thu hồi toàn bộ phiên đăng nhập của tài khoản, bao gồm phiên hiện tại. Bạn sẽ cần đăng nhập lại trên các thiết bị.
           </p>
           <form onSubmit={handleRevokeSessionsSubmit} className="space-y-3">
             <div>
@@ -279,7 +287,7 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
                 disabled={revokeSessionsMutation.isPending}
                 className="px-4 py-2 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg disabled:opacity-50 transition-colors"
               >
-                {revokeSessionsMutation.isPending ? "Đang thu hồi..." : "Thu hồi tất cả phiên khác"}
+                {revokeSessionsMutation.isPending ? "Đang thu hồi..." : "Thu hồi toàn bộ phiên và đăng xuất"}
               </button>
             </div>
           </form>

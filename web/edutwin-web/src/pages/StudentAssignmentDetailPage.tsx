@@ -343,7 +343,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                   <span className="font-bold">Được miễn / Tính trọn điểm:</span>
                   <span>{question.voidReason || "Giáo viên đã hủy câu hỏi này do sự cố đề bài."}</span>
                   {question.voidedScore != null && (
-                    <span className="ml-auto font-bold shrink-0">+{question.voidedScore} điểm</span>
+                    <span className="ml-auto font-bold shrink-0">+{Number(question.voidedScore.toFixed(2))} điểm</span>
                   )}
                 </div>
               )}

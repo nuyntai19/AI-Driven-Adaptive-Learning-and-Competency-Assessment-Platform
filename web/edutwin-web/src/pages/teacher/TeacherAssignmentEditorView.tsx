@@ -1197,7 +1197,7 @@ export function TeacherAssignmentEditorView() {
                             {q.gradeLevel ? `Khối ${q.gradeLevel}` : "Chưa phân loại"}
                           </span>
                           <span className="text-[var(--th-text-muted)]">Độ khó: {q.difficulty}/5</span>
-                          <span className="text-[var(--th-text-muted)]" title={`Điểm tối đa gốc: ${q.maxScore}; giữ nguyên để tính trọng số bài tập.`}>Thang điểm hiển thị: 10 · Trọng số gốc: {q.maxScore}</span>
+                          <span className="text-[var(--th-text-muted)]" title={`Điểm tối đa gốc: ${q.maxScore}; mỗi câu được chuẩn hóa về thang 10 và đóng góp bằng nhau vào điểm toàn bài.`}>Thang điểm hiển thị: 10 · Thang điểm gốc: {q.maxScore} · Trọng số bằng nhau</span>
                         </div>
                         <div className="text-xs text-[var(--th-text)] leading-relaxed font-medium">
                           <RichMathText text={q.questionText} />

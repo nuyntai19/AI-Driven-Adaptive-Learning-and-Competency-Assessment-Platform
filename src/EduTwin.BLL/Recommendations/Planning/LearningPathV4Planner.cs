@@ -359,9 +359,14 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             AgendaMessage = path == null ? "Chọn phần muốn học và kiểm tra đầu vào, hoặc bắt đầu từ nền tảng. EduTwin sẽ đề xuất tuyến từ kết quả của em." : "Kế hoạch hôm nay được xếp theo thời gian bạn chọn: phần yếu được ưu tiên và nhận nhiều câu hơn." };
         result.Insights = await LearningPathInsights.ReadAsync(db, centerId, studentId, subjectId, classId, Now, cancellationToken);
         result.PathHistory = await PathHistoryAsync(centerId, studentId, subjectId, path?.LearningPathId, cancellationToken);
-        if (path != null) result.RecentChanges = await db.PathDecisions.AsNoTracking().Where(d => d.CenterId == centerId &&
-            d.LearningPathId == path.LearningPathId && d.TriggerType != "MissionEvaluation").OrderByDescending(d => d.CreatedAt)
-            .Select(d => d.DecisionSummary).Take(3).ToListAsync(cancellationToken);
+        if (path != null)
+        {
+            var decisions = await db.PathDecisions.AsNoTracking().Where(d => d.CenterId == centerId &&
+                d.LearningPathId == path.LearningPathId && d.TriggerType != "MissionEvaluation").OrderByDescending(d => d.CreatedAt)
+                .Select(d => new { d.CreatedAt, d.DecisionSummary }).Take(3).ToListAsync(cancellationToken);
+            result.RecentChanges = decisions.Select(d =>
+                $"Khi cập nhật tuyến lúc {d.CreatedAt.AddHours(7):HH:mm dd/MM/yyyy} (UTC+7): {d.DecisionSummary}").ToList();
+        }
         if (path?.PlanJson == null) return result;
         var plan = JsonSerializer.Deserialize<PathProposalDto>(path.PlanJson.RootElement.GetRawText(), LearningPathV4Data.Json);
         if (plan == null) return result;
