@@ -14,6 +14,8 @@ public class CurriculumApplicationDto
     public Guid ApplicationId { get; set; }
     public Guid ClassId { get; set; }
     public string ClassName { get; set; } = "";
+    public string AcademicYear { get; set; } = "";
+    public byte? GradeLevel { get; set; }
     public bool PausedByClass { get; set; }
     public string ApplicationRole { get; set; } = "";
     public DateTime StartedAt { get; set; }

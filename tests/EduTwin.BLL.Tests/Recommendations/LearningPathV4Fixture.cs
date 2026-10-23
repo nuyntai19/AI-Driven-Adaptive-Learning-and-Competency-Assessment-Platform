@@ -29,6 +29,7 @@ internal sealed class LearningPathV4Fixture : IDisposable
     public Guid English { get; } = Guid.NewGuid();
     public Guid Math { get; } = Guid.NewGuid();
     public EduTwinDbContext Db { get; }
+    public Guid EnglishGraphVersionId { get; }
     public LearningPathV4Planner Planner { get; }
     public LearningActivityExecutionService Execution { get; }
     public LearningPathV4Evaluator Evaluator { get; }
@@ -50,10 +51,12 @@ internal sealed class LearningPathV4Fixture : IDisposable
             Db.KnowledgeNodes.Add(new KnowledgeNode { NodeId = id, CenterId = Center, SubjectId = subject, NodeCode = $"SKILL-{id}", NodeName = name,
                 NodeType = NodeType.Skill, ParentNodeId = parent, Description = $"Kiến thức đã biên soạn: {name}", IsActive = true, OrderIndex = (uint)id, CreatedAt = now, UpdatedAt = now });
             for (ulong i = 1; i <= 12; i++) Db.Questions.Add(new Question { QuestionId = id * 100 + i, CenterId = Center, SubjectId = subject,
-                PrimaryTopicNodeId = id, QuestionType = QuestionType.ShortAnswer, AnswerEvaluationMode = QuestionAnswerEvaluationMode.TextExact,
+                PrimaryTopicNodeId = id, GradeLevel = 10, QuestionType = QuestionType.ShortAnswer, AnswerEvaluationMode = QuestionAnswerEvaluationMode.TextExact,
                 QuestionText = $"Câu hỏi {name} #{i}", CorrectAnswer = $"answer-{i}", Solution = $"Giải thích đã xuất bản cho {name} #{i}",
                 LanguageCode = "vi", Status = QuestionStatus.Active, MaxScore = 10, Difficulty = 1, CreatedAt = now, UpdatedAt = now });
         }
+        EnglishGraphVersionId = GraphScopeFixture.Approve(Db, Center, English, 10, 100, 101, 102, 103);
+        GraphScopeFixture.Approve(Db, Center, Math, 10, 201);
         Db.SaveChanges();
         Planner = new LearningPathV4Planner(Db, TimeProvider.System);
         Evaluator = new LearningPathV4Evaluator(Db, TimeProvider.System);
@@ -61,6 +64,16 @@ internal sealed class LearningPathV4Fixture : IDisposable
         var submit = new SubmitAttemptUseCase(Db, validator, TimeProvider.System);
         Execution = new LearningActivityExecutionService(Db, TimeProvider.System, submit,
             new LearningSessionExecutionService(Db, NullLogger<LearningSessionExecutionService>.Instance));
+    }
+
+    public void AddPrerequisite(ulong source, ulong target)
+    {
+        var edge = new KnowledgeEdge { CenterId = Center, SubjectId = English, SourceNodeId = source,
+            TargetNodeId = target, RelationType = RelationType.PrerequisiteOf, Weight = 1,
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+        Db.KnowledgeEdges.Add(edge);
+        Db.KnowledgeEdgeGrades.Add(new KnowledgeEdgeGrade { CenterId = Center, GraphVersionId = EnglishGraphVersionId,
+            EdgeId = edge.EdgeId, RelationType = RelationType.PrerequisiteOf, Weight = 1, CreatedAt = DateTime.UtcNow });
     }
 
     public async Task<PathProposalDto> Proposal(params string[] skills)

@@ -42,7 +42,7 @@ public sealed partial class LearningPathV4Planner
                 if (selected.Add(prerequisite)) pending.Enqueue(prerequisite);
         }
         var nodes = await LearningPathV4Data.NodesAsync(db, centerId, studentId, source.SubjectId, source.Goal.ClassId, cancellationToken);
-        var questions = await LearningPathV4Data.QuestionsAsync(db, centerId, source.SubjectId, nodes.Select(n => n.NodeId).ToList(), cancellationToken);
+        var questions = await LearningPathV4Data.QuestionsAsync(db, centerId, studentId, source.SubjectId, nodes.Select(n => n.NodeId).ToList(), source.Goal.ClassId, cancellationToken);
         var used = (await db.Attempts.AsNoTracking().Where(a => a.CenterId == centerId && a.StudentId == studentId &&
             a.Question.SubjectId == source.SubjectId).Select(a => a.QuestionId).Distinct().ToListAsync(cancellationToken)).ToHashSet();
         plan.Milestones = plan.Milestones.Where(m => !m.IsSelfAssessedCheck && m.SkillIds.Any(selected.Contains))

@@ -39,9 +39,7 @@ public sealed class LearningPathPlacementTests
     public async Task TopicPrerequisites_ExpandToLeaves_AndPlacementCanAssessWithoutPriorMastery()
     {
         using var f = new LearningPathV4Fixture();
-        f.Db.KnowledgeEdges.Add(new KnowledgeEdge { CenterId = f.Center, SubjectId = f.English,
-            SourceNodeId = 100, TargetNodeId = 103, RelationType = RelationType.PrerequisiteOf,
-            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        f.AddPrerequisite(100, 103);
         await f.Db.SaveChangesAsync();
         var map = await f.Planner.GetCapabilityMapAsync(f.Center, f.Student, f.English);
         Assert.Equal("Thì", map.Skills.Single(s => s.SkillId == "101").TopicName);

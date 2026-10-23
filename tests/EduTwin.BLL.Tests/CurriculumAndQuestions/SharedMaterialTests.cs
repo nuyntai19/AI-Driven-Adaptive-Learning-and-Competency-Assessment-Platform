@@ -68,6 +68,7 @@ public sealed class SharedMaterialTests : IDisposable
         question.GradingCriteria = new() { RequiredIdeas = ["first", "second"], CommonErrors = ["invalid division"] };
         _db.Questions.Add(question);
         _db.KnowledgeNodes.Add(new() { CenterId = _center, SubjectId = _subject, NodeId = 5, NodeCode = "topic", NodeName = "Topic", IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        GraphScopeFixture.Approve(_db, _center, _subject, 10, 5);
         await _db.SaveChangesAsync();
         var useCase = new UpdateQuestionUseCase(_db, _tenant, TimeProvider.System);
         var saved = await useCase.ExecuteAsync("1", Update());

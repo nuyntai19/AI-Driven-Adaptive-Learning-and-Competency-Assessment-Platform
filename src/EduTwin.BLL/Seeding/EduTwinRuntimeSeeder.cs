@@ -85,9 +85,8 @@ public class EduTwinRuntimeSeeder
         await using var transaction = await _dbContext.Database.BeginTransactionAsync();
         try
         {
-            if (dataA != null) InsertData(dataA);
-            if (dataB != null) InsertData(dataB);
-
+            if (dataA != null) await InsertDataAsync(dataA);
+            if (dataB != null) await InsertDataAsync(dataB);
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
 
@@ -113,8 +112,10 @@ public class EduTwinRuntimeSeeder
             throw new InvalidOperationException("Cross-tenant leak detected: Topic A used in Edge B.");
     }
 
-    private void InsertData(SeedDataContainer data)
+    private async Task InsertDataAsync(SeedDataContainer data)
     {
+        if (data.SkippedQuestionTemplates.Count > 0)
+            _logger.LogWarning("Seed templates excluded because grade/topic scope needs review: {TemplateCodes}", string.Join(", ", data.SkippedQuestionTemplates));
         _dbContext.Centers.Add(data.Center);
         _dbContext.Users.AddRange(data.Users);
         _dbContext.Teachers.AddRange(data.Teachers);
@@ -126,10 +127,30 @@ public class EduTwinRuntimeSeeder
         _dbContext.KnowledgeNodes.AddRange(data.Topics);
         _dbContext.KnowledgeEdges.AddRange(data.Edges);
 
+        foreach (var version in data.GraphVersions) { version.Status = "Draft"; version.IsCurrent = false; }
+        _dbContext.KnowledgeGraphVersions.AddRange(data.GraphVersions);
+        await _dbContext.SaveChangesAsync();
+        // Publish prerequisites before dependent grade versions. Frozen topology is never edited after publication.
+        foreach (var version in data.GraphVersions.OrderBy(v => v.GradeLevel).ThenBy(v => v.GraphVersionId))
+        {
+            _dbContext.KnowledgeNodeGrades.AddRange(data.NodeGrades.Where(m => m.GraphVersionId == version.GraphVersionId));
+            // Endpoint membership is a trigger dependency, not an EF FK to the mapping table.
+            // Persist it before edges so batching cannot insert a relation before its mapped nodes.
+            await _dbContext.SaveChangesAsync();
+            _dbContext.KnowledgeEdgeGrades.AddRange(data.EdgeGrades.Where(m => m.GraphVersionId == version.GraphVersionId));
+            await _dbContext.SaveChangesAsync();
+            version.Status = "Published"; version.IsCurrent = true;
+            await _dbContext.SaveChangesAsync();
+        }
+
+        foreach (var curriculum in data.Curriculums) curriculum.ReviewStatus = EduTwin.Contracts.CurriculumAndQuestions.ReviewStatus.Draft;
         _dbContext.Curriculums.AddRange(data.Curriculums);
         _dbContext.CurriculumClasses.AddRange(data.CurriculumClasses);
-        _dbContext.ClassCurriculumApplications.AddRange(data.CurriculumApplications);
         _dbContext.CurriculumNodes.AddRange(data.CurriculumNodes);
+        await _dbContext.SaveChangesAsync();
+        foreach (var curriculum in data.Curriculums) curriculum.ReviewStatus = EduTwin.Contracts.CurriculumAndQuestions.ReviewStatus.Published;
+        await _dbContext.SaveChangesAsync();
+        _dbContext.ClassCurriculumApplications.AddRange(data.CurriculumApplications);
 
         _dbContext.Questions.AddRange(data.Questions);
         _dbContext.QuestionOptions.AddRange(data.QuestionOptions);

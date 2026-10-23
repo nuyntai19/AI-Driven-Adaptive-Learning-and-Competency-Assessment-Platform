@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { curriculumApi } from "../../api/curriculumApi";
 import { knowledgeGraphApi } from "../../api/knowledgeGraphApi";
@@ -21,11 +21,13 @@ import { formatCurriculumSaveError } from "../curriculumEditorHelpers";
 import { extractProblemDetails, mapSafeOperationalError } from "../../utils/problemDetails";
 import { academicLifecycleError } from "../../utils/academicLifecycleError";
 import { CurriculumApplicationPanel } from "../../components/teacher/CurriculumApplicationPanel";
+import { curriculumGraphLinkScope, incompatibleKnowledgeNodes, knowledgeKeys, knowledgeScopeSearch } from "../../utils/knowledgeScope";
 
 export const TeacherCurriculumEditorView: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const isCreateMode = !id || id === "tao-moi";
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const actorId = useAuthStore(state => state.user?.userId);
   const centerId = useAuthStore(state => state.user?.centerId);
@@ -37,8 +39,10 @@ export const TeacherCurriculumEditorView: React.FC = () => {
 
   // Form State
   const [title, setTitle] = useState("");
-  const [subjectId, setSubjectId] = useState("");
-  const [gradeLevel, setGradeLevel] = useState<number | "">("");
+  const [subjectId, setSubjectId] = useState(searchParams.get("subjectId") || "");
+  const [gradeLevel, setGradeLevel] = useState<number | "">([10,11,12].includes(Number(searchParams.get("gradeLevel"))) ? Number(searchParams.get("gradeLevel")) : "");
+  const [graphVersionId, setGraphVersionId] = useState(searchParams.get("graphVersionId") || "");
+  const nodeLabels = useRef(new Map<string, KnowledgeNodeDto>());
   const [description, setDescription] = useState("");
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
@@ -54,17 +58,17 @@ export const TeacherCurriculumEditorView: React.FC = () => {
 
   // Fetch subjects
   const { data: subjectsData } = useQuery({
-    queryKey: ["teacherSubjectsList"],
+    queryKey: ["teacherSubjectsList", centerId, actorId],
     queryFn: () => organizationApi.listSubjects(true),
   });
-  const subjects = subjectsData?.data ?? [];
+  const subjects = useMemo(() => subjectsData?.data ?? [], [subjectsData]);
 
   // Fetch classes
-  const { data: classesData } = useQuery({
+  const { data: classesData, isFetching: isFetchingClasses, isError: isClassesError } = useQuery({
     queryKey: ["teacherClassesList", "curriculum-plan", centerId, actorId],
     enabled: Boolean(actorId),
     queryFn: async () => {
-      const params = {pageSize:100, teacherId:actorId, status:"Active" as const};
+      const params = {pageSize:100, teacherId:actorId};
       const first = await organizationApi.listClasses({...params,page:1});
       const all = [...first.data];
       for(let page=2;page<=first.meta.totalPages;page++) all.push(...(await organizationApi.listClasses({...params,page})).data);
@@ -92,6 +96,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
       setTitle(c.title || "");
       setSubjectId(c.subjectId || "");
       setGradeLevel(c.gradeLevel ?? "");
+      setGraphVersionId(c.graphVersionId || "");
       setDescription(c.description || "");
       setSelectedNodeIds(c.nodeIds || []);
       setSelectedClassIds(c.classIds || []);
@@ -101,14 +106,42 @@ export const TeacherCurriculumEditorView: React.FC = () => {
     } else if (isCreateMode && subjects.length > 0 && !subjectId) {
       setSubjectId(subjects[0].subjectId);
     }
-  }, [curriculumData, isCreateMode, subjects]);
+  }, [curriculumData, isCreateMode, subjects, subjectId]);
 
-  // Fetch knowledge nodes for the chosen subject
-  const { data: availableNodes = [], isLoading: isLoadingNodes } = useQuery<KnowledgeNodeDto[]>({
-    queryKey: ["knowledgeNodes", subjectId],
-    queryFn: () => (subjectId ? knowledgeGraphApi.listNodes(subjectId) : Promise.resolve([])),
-    enabled: Boolean(subjectId),
+  const versionsQuery = useQuery({
+    queryKey: knowledgeKeys.versions(centerId, actorId, subjectId, gradeLevel || undefined),
+    queryFn: () => knowledgeGraphApi.listVersions(subjectId, gradeLevel || undefined),
+    enabled: Boolean(subjectId && gradeLevel),
   });
+  const approvedVersions = (versionsQuery.data ?? []).filter(v => v.status === "Published" && !v.isLegacy);
+  const selectedVersion = (versionsQuery.data ?? []).find(v => v.graphVersionId === graphVersionId);
+  useEffect(() => {
+    if (!graphVersionId && gradeLevel && versionsQuery.data) {
+      const current = versionsQuery.data.find(v => v.isCurrent && v.status === "Published" && !v.isLegacy);
+      if (current) setGraphVersionId(current.graphVersionId);
+    }
+  }, [graphVersionId, gradeLevel, versionsQuery.data]);
+  const nodeScope = { gradeLevel: gradeLevel || undefined, graphVersionId: graphVersionId || undefined };
+  const { data: availableNodes = [], isLoading: isLoadingNodes, isFetching: isFetchingNodes, isError: isNodesError, refetch: refetchNodes } = useQuery<KnowledgeNodeDto[]>({
+    queryKey: knowledgeKeys.nodes(centerId, actorId, subjectId, nodeScope),
+    queryFn: () => knowledgeGraphApi.listNodes(subjectId, nodeScope),
+    enabled: Boolean(subjectId && gradeLevel && graphVersionId),
+  });
+  useEffect(() => { availableNodes.forEach(node => nodeLabels.current.set(node.nodeId, node)); }, [availableNodes]);
+  const incompatibleNodes = incompatibleKnowledgeNodes(selectedNodeIds, availableNodes);
+  const incompatibleClasses = classes.filter(c => selectedClassIds.includes(c.classId) && (c.gradeLevel !== gradeLevel ||
+    c.subject.subjectId !== subjectId || c.teacher.teacherId !== actorId || c.status !== "Active" || c.learningScope === "History"));
+  const unresolvedClassIds = classesData ? selectedClassIds.filter(id => !classes.some(c => c.classId === id)) : [];
+  const pendingScope = selectedNodeIds.length > 0 && (isFetchingNodes || versionsQuery.isFetching);
+  const invalidSelection = selectedNodeIds.length > 0 && (!selectedVersion || selectedVersion.isLegacy || selectedVersion.status !== "Published" || isNodesError || incompatibleNodes.length > 0);
+  useEffect(() => {
+    if (!isCreateMode) return;
+    const next = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries({ subjectId, gradeLevel, graphVersionId })) {
+      if (value) next.set(key, String(value)); else next.delete(key);
+    }
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [subjectId, gradeLevel, graphVersionId, isCreateMode, searchParams, setSearchParams]);
 
   // Node toggle helpers
   const handleToggleNode = (nodeId: string) => {
@@ -143,9 +176,13 @@ export const TeacherCurriculumEditorView: React.FC = () => {
       if (title.trim().length > 200) throw new Error("Tên giáo trình không được vượt quá 200 ký tự.");
       if (!subjectId) throw new Error("Vui lòng chọn môn học cho giáo trình.");
       if (description.trim().length > 2000) throw new Error("Mô tả giáo trình không được vượt quá 2000 ký tự.");
+      if (!gradeLevel || ![10,11,12].includes(Number(gradeLevel))) throw new Error("Vui lòng chọn khối học áp dụng.");
+      if (pendingScope || invalidSelection) throw new Error("Các chủ đề đã chọn chưa phù hợp khối hoặc phiên bản khung tri thức. Hãy xử lý danh sách xung đột trước khi lưu.");
+      if (selectedClassIds.length && (isFetchingClasses || isClassesError)) throw new Error("Chờ tải đầy đủ lớp dự kiến trước khi lưu.");
+      if (incompatibleClasses.length || unresolvedClassIds.length) throw new Error("Có lớp dự kiến không còn phù hợp khối hoặc trạng thái. Bỏ chọn các lớp xung đột trước khi lưu.");
 
       if (isCreateMode) {
-        if (gradeLevel === "" || ![10, 11, 12].includes(Number(gradeLevel))) {
+        if (![10, 11, 12].includes(Number(gradeLevel))) {
           throw new Error("Vui lòng chọn khối học áp dụng (Khối 10, 11 hoặc 12) cho giáo trình mới.");
         }
         const payload: CreateCurriculumRequest = {
@@ -153,6 +190,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
           title: title.trim(),
           subjectId,
           gradeLevel: Number(gradeLevel),
+          graphVersionId: graphVersionId || undefined,
           description: description.trim() || undefined,
           nodeIds: selectedNodeIds,
         };
@@ -160,44 +198,39 @@ export const TeacherCurriculumEditorView: React.FC = () => {
         return res.data;
       } else {
         if (!id) throw new Error("Mã giáo trình không hợp lệ");
-        let currentVersion = rowVersion;
-
         // 1. Update basic info
         const updateRes = await curriculumApi.update(id, {
           visibility,
           title: title.trim(),
-          gradeLevel: gradeLevel !== "" ? Number(gradeLevel) : null,
-          description: description.trim() || undefined,
-          rowVersion: currentVersion,
-        });
-        currentVersion = updateRes.data.rowVersion;
-
-        // 2. Update nodes
-        const nodesRes = await curriculumApi.updateNodes(id, {
+          gradeLevel: Number(gradeLevel),
+          graphVersionId: graphVersionId || undefined,
           nodeIds: selectedNodeIds,
-          rowVersion: currentVersion,
-        });
-        currentVersion = nodesRes.data.rowVersion;
-
-        // 3. Update classes
-        const classesRes = await curriculumApi.updateClasses(id, {
           classIds: selectedClassIds,
-          rowVersion: currentVersion,
+          description: description.trim() || undefined,
+          rowVersion,
         });
-
-        return classesRes.data;
+        return updateRes.data;
       }
     },
     onSuccess: (data: Curriculum) => {
+      setRowVersion(data.rowVersion);
       setFeedbackMsg({ type: "success", text: "Đã lưu thay đổi giáo trình thành công!" });
       queryClient.invalidateQueries({ queryKey: ["teacherCurriculums"] });
       queryClient.invalidateQueries({ queryKey: ["teacherCurriculumDetail", id] });
+      queryClient.invalidateQueries({ queryKey: knowledgeKeys.all });
 
       if (isCreateMode && data?.curriculumId) {
         navigate(`/giao-vien/giao-trinh/${data.curriculumId}`);
       }
     },
     onError: (err: unknown) => {
+      const scopeConflict = (err as { response?: { data?: { scopeConflict?: { message?: string; invalidNodeIds?: string[]; invalidClassIds?: string[] } } } })?.response?.data?.scopeConflict;
+      if (scopeConflict) {
+        setFeedbackMsg({ type: "error", text: [scopeConflict.message || "Lựa chọn không phù hợp phạm vi đã chọn.",
+          scopeConflict.invalidNodeIds?.length ? `Chủ đề: ${scopeConflict.invalidNodeIds.map(n => nodeLabels.current.get(n)?.nodeName || `#${n}`).join(", ")}.` : "",
+          scopeConflict.invalidClassIds?.length ? `Lớp: ${scopeConflict.invalidClassIds.map(id => { const c = classes.find(c => c.classId === id); return c ? `${c.className} (${c.academicYear})` : id; }).join(", ")}.` : ""].filter(Boolean).join(" ") });
+        return;
+      }
       const text = formatCurriculumSaveError(err, {
         classes,
         selectedClassIds,
@@ -213,6 +246,12 @@ export const TeacherCurriculumEditorView: React.FC = () => {
       setFeedbackMsg(null);
       if (!id || isCreateMode) throw new Error("Cần lưu giáo trình trước khi xuất bản.");
       if (selectedNodeIds.length === 0) throw new Error("Giáo trình cần có ít nhất 1 chủ đề / điểm tri thức trước khi xuất bản chính thức.");
+      if (pendingScope || invalidSelection || incompatibleClasses.length || unresolvedClassIds.length || isFetchingClasses || isClassesError) throw new Error("Xử lý lựa chọn xung đột và lưu bản nháp trước khi xuất bản.");
+      const saved = curriculumData?.data;
+      if (!saved || saved.gradeLevel !== gradeLevel || (saved.graphVersionId || "") !== graphVersionId || saved.title !== title || (saved.description || "") !== description ||
+        saved.nodeIds.join(",") !== selectedNodeIds.join(",") || [...saved.classIds].sort().join(",") !== [...selectedClassIds].sort().join(",")) {
+        throw new Error("Lưu thay đổi bản nháp trước khi xuất bản.");
+      }
       return await curriculumApi.publish(id, { rowVersion });
     },
     onSuccess: (res) => {
@@ -220,6 +259,8 @@ export const TeacherCurriculumEditorView: React.FC = () => {
       setStatus("Published");
       setFeedbackMsg({ type: "success", text: "Giáo trình đã được xuất bản chính thức!" });
       queryClient.invalidateQueries({ queryKey: ["teacherCurriculums"] });
+      queryClient.invalidateQueries({ queryKey: ["teacherCurriculumDetail", id] });
+      queryClient.invalidateQueries({ queryKey: knowledgeKeys.all });
     },
     onError: (err: unknown) => {
       const details = extractProblemDetails(err);
@@ -242,6 +283,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
       setFeedbackMsg({ type: "success", text: "Giáo trình đã được lưu trữ. Danh sách chủ đề và nội dung lịch sử được bảo toàn; thông số ưu tiên của đồ thị dùng chung vẫn có nhật ký riêng." });
       queryClient.invalidateQueries({ queryKey: ["teacherCurriculums"] });
       queryClient.invalidateQueries({ queryKey: ["teacherCurriculumDetail", id] });
+      queryClient.invalidateQueries({ queryKey: knowledgeKeys.all });
     },
     onError: (err: any) => {
       setFeedbackMsg({ type: "error", text: academicLifecycleError(err, "Lỗi khi lưu trữ giáo trình") });
@@ -269,9 +311,11 @@ export const TeacherCurriculumEditorView: React.FC = () => {
 
   const isOwned = isCreateMode || curriculumData?.data?.teacherId === actorId;
   const isDraft = isOwned && (isCreateMode || status === "Draft");
-  const plannedClasses = classes.filter(c => c.teacher.teacherId === actorId && c.subject.subjectId === subjectId &&
-    c.status === "Active" && c.learningScope !== "History" &&
-    (c.gradeLevel === gradeLevel || selectedClassIds.includes(c.classId)));
+  const plannedClasses = classes.filter(c => selectedClassIds.includes(c.classId) || (c.teacher.teacherId === actorId && c.subject.subjectId === subjectId &&
+    c.status === "Active" && c.learningScope !== "History" && c.gradeLevel === gradeLevel));
+  const graphLinkScope = curriculumGraphLinkScope(!isCreateMode ? id : undefined,
+    { gradeLevel: gradeLevel || undefined, graphVersionId, nodeIds: selectedNodeIds }, curriculumData?.data);
+  const hasUnsavedComposition = !graphLinkScope.curriculumId;
 
   // Filtered available nodes
   const filteredAvailableNodes = availableNodes.filter((n) =>
@@ -394,7 +438,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
         >
           <div style={{ fontSize: "1.2rem", lineHeight: 1 }}>📦</div>
           <div style={{ flex: 1, fontSize: "0.85rem", color: "var(--th-text-primary)" }}>
-            <strong>Giáo trình đã được lưu trữ (Archived):</strong> Danh sách chủ đề và nội dung lịch sử được bảo toàn. Thông số ưu tiên của đồ thị dùng chung vẫn có thể được cập nhật và ghi nhật ký. Bấm <strong>Nhân Bản (Clone V2)</strong> để tạo giáo trình nháp mới; bản sao vẫn tham chiếu các nút cũ, không cho phép ghi đè nội dung nút lịch sử.
+            <strong>Giáo trình đã được lưu trữ (Archived):</strong> Danh sách chủ đề và phiên bản đồ thị lịch sử được bảo toàn. Nội dung, thông số và quan hệ đã chốt không được sửa trực tiếp. Bấm <strong>Nhân Bản (Clone V2)</strong> để tạo giáo trình nháp mới và chọn khung tri thức đã duyệt phù hợp.
           </div>
         </div>
       )}
@@ -462,6 +506,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                     onChange={(e) => {
                       setSubjectId(e.target.value);
                       setSelectedNodeIds([]);
+                      setGraphVersionId("");
                     }}
                     disabled={!isCreateMode}
                   >
@@ -480,7 +525,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                   <select
                     className="th-select"
                     value={gradeLevel}
-                    onChange={(e) => setGradeLevel(e.target.value ? Number(e.target.value) : "")}
+                    onChange={(e) => { setGradeLevel(e.target.value ? Number(e.target.value) : ""); setGraphVersionId(""); }}
                     disabled={!isDraft}
                   >
                     {isCreateMode ? (
@@ -493,6 +538,16 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                     <option value="12">Khối 12</option>
                   </select>
                 </div>
+
+                <label className="block text-sm">Phiên bản khung tri thức
+                  <select className="th-select block mt-1 w-full" disabled={!isDraft || !gradeLevel || versionsQuery.isFetching} value={graphVersionId} onChange={e => setGraphVersionId(e.target.value)}>
+                    <option value="">{gradeLevel ? "Chưa có khung được duyệt" : "Chọn khối trước"}</option>
+                    {selectedVersion?.isLegacy && <option value={selectedVersion.graphVersionId}>{selectedVersion.title} · Dữ liệu chuyển tiếp</option>}
+                    {approvedVersions.map(v => <option key={v.graphVersionId} value={v.graphVersionId}>{v.title || `Khối ${v.gradeLevel}`}{v.isCurrent ? " · Hiện hành" : ""}</option>)}
+                  </select>
+                  {versionsQuery.isError && <span role="alert">Không tải được khung tri thức. <button type="button" onClick={() => versionsQuery.refetch()}>Tải lại</button></span>}
+                  {gradeLevel && !versionsQuery.isFetching && !approvedVersions.length && <p className="text-sm mt-2">Khối này chưa có khung được duyệt. Có thể lưu bản nháp trống; mở đồ thị để tạo hoặc rà soát khung tri thức.</p>}
+                </label>
 
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
@@ -579,12 +634,23 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                 </span>
               </div>
               <Link
-                to={`/giao-vien/do-thi-tri-thuc?subjectId=${subjectId}`}
+                to={`/giao-vien/do-thi-tri-thuc?${knowledgeScopeSearch(subjectId, graphLinkScope)}`}
                 style={{ fontSize: "0.8rem", color: "var(--th-primary)", fontWeight: 600, textDecoration: "none" }}
               >
                 Mở Đồ Thị Tri Thức ↗
               </Link>
             </div>
+
+            {hasUnsavedComposition && <p className="text-sm mb-3">Liên kết mở thư viện theo khối đang chọn. Lưu bản nháp để xem đúng cấu trúc giáo trình trên đồ thị.</p>}
+
+            {isDraft && (invalidSelection || incompatibleClasses.length > 0 || unresolvedClassIds.length > 0) && !pendingScope && <div role="alert" className="rounded-lg border border-amber-500 p-3 mb-4 text-sm space-y-2">
+              <p className="font-semibold">Lựa chọn cần xử lý trước khi lưu</p>
+              {selectedVersion?.isLegacy && <p>Khung chuyển tiếp chưa được duyệt cho soạn mới. Chọn phiên bản đã rà soát.</p>}
+              {incompatibleNodes.map(nodeId => <div key={nodeId} className="flex justify-between gap-2"><span>{nodeLabels.current.get(nodeId)?.nodeName || `Chủ đề #${nodeId}`} không thuộc khung đã chọn.</span><button type="button" className="th-secondary-button" onClick={() => handleToggleNode(nodeId)}>Bỏ chọn</button></div>)}
+              {incompatibleClasses.map(c => <div key={c.classId} className="flex justify-between gap-2"><span>{c.className} · {c.academicYear} · Khối {c.gradeLevel} · Không phù hợp phạm vi hoặc trạng thái</span><button type="button" className="th-secondary-button" onClick={() => handleToggleClass(c.classId)}>Bỏ lớp dự kiến</button></div>)}
+              {unresolvedClassIds.map(classId => <div key={classId} className="flex justify-between gap-2"><span>Lớp #{classId} không còn khả dụng.</span><button type="button" className="th-secondary-button" onClick={() => handleToggleClass(classId)}>Bỏ lớp dự kiến</button></div>)}
+              {isNodesError && <button type="button" onClick={() => refetchNodes()}>Tải lại chủ đề</button>}
+            </div>}
 
             {/* Selected Nodes List (Ordered) */}
             <div style={{ marginBottom: "20px" }}>
@@ -599,7 +665,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" }}>
                   {selectedNodeIds.map((nodeId, idx) => {
-                    const node = availableNodes.find((n) => n.nodeId === nodeId);
+                    const node = availableNodes.find((n) => n.nodeId === nodeId) ?? nodeLabels.current.get(nodeId);
                     return (
                       <div
                         key={nodeId}
@@ -690,6 +756,8 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                     <TeacherSkeleton height={150} />
                   ) : (
                     <div style={{ maxHeight: "250px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "6px" }}>
+                      {!gradeLevel && <p className="text-sm">Chọn môn và khối để xem chủ đề phù hợp.</p>}
+                      {gradeLevel && !availableNodes.length && <p className="text-sm">Chưa có chủ đề thuộc phiên bản khung đã chọn.</p>}
                       {filteredAvailableNodes.map((n) => {
                         const isSelected = selectedNodeIds.includes(n.nodeId);
                         return (

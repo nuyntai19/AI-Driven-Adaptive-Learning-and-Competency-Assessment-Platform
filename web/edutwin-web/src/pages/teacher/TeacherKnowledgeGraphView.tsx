@@ -20,6 +20,9 @@ import { permissions } from "../../auth/permissions";
 import { mapSafeOperationalError, extractProblemDetails } from "../../utils/problemDetails";
 import { academicLifecycleError } from "../../utils/academicLifecycleError";
 import { KnowledgeGraphCanvas } from "../../components/teacher/KnowledgeGraphCanvas";
+import { KnowledgeVersionPanel } from "../../components/teacher/KnowledgeVersionPanel";
+import { curriculumApi } from "../../api/curriculumApi";
+import { graphOccurrences, knowledgeKeys, knowledgeScopeSearch, readKnowledgeScope } from "../../utils/knowledgeScope";
 import { sameSubject, topicQuickActionSearch } from "../../utils/knowledgeTopicContext";
 import {
   TeacherPageHeader,
@@ -103,21 +106,31 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const urlSubjectId = searchParams.get("subjectId") || "";
+  const scope = useMemo(() => readKnowledgeScope(searchParams), [searchParams]);
+  const scopeKey = knowledgeScopeSearch(urlSubjectId, scope);
+  const canonicalAuthoring = scope.gradeLevel === undefined && !scope.graphVersionId && !scope.curriculumId && !scope.classId && !scope.academicYear && !scope.history;
 
   const user = useAuthStore((state) => state.user);
   const hasPermission = useAuthStore((state) => state.hasPermission);
+  const authorVersions = useQuery({ queryKey: knowledgeKeys.versions(user?.centerId, user?.userId, urlSubjectId, scope.gradeLevel),
+    queryFn: () => knowledgeGraphApi.listVersions(urlSubjectId, scope.gradeLevel),
+    enabled: !!urlSubjectId && !!scope.graphVersionId && hasPermission(permissions.nodesRead) });
+  const authorVersion = authorVersions.data?.find(v => v.graphVersionId === scope.graphVersionId);
+  const draftAuthoring = !scope.classId && !scope.curriculumId && authorVersion?.status === "Draft" && !authorVersion.isLegacy;
 
   const canReadSubjects = hasPermission(permissions.subjectsRead);
   const canReadNodes = hasPermission(permissions.nodesRead);
-  const canCreateNodes = hasPermission(permissions.nodesCreate);
-  const canUpdateNodes = hasPermission(permissions.nodesUpdate);
-  const canDeleteNodes = hasPermission(permissions.nodesDelete);
+  const canCreateNodes = hasPermission(permissions.nodesCreate) && (canonicalAuthoring || draftAuthoring);
+  const canUpdateNodes = hasPermission(permissions.nodesUpdate) && canonicalAuthoring;
+  const canDeleteNodes = hasPermission(permissions.nodesDelete) && canonicalAuthoring;
   const canReadEdges = hasPermission(permissions.edgesRead);
-  const canCreateEdges = hasPermission(permissions.edgesCreate);
-  const canUpdateEdges = hasPermission(permissions.edgesUpdate);
-  const canDeleteEdges = hasPermission(permissions.edgesDelete);
+  const canCreateEdges = hasPermission(permissions.edgesCreate) && (canonicalAuthoring || draftAuthoring);
+  const canUpdateEdges = hasPermission(permissions.edgesUpdate) && canonicalAuthoring;
+  const canDeleteEdges = hasPermission(permissions.edgesDelete) && canonicalAuthoring;
   const canReadQuestions = hasPermission(permissions.questionsRead);
   const canCreateAssignments = hasPermission(permissions.assignmentsCreate);
+  const authoringCatalog = useQuery({ queryKey: knowledgeKeys.graph(user?.centerId, user?.userId, urlSubjectId, {}),
+    queryFn: () => knowledgeGraphApi.getGraph(urlSubjectId), enabled: !!urlSubjectId && draftAuthoring && canReadNodes && canReadEdges });
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(urlSubjectId);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -125,6 +138,11 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   const [viewMode, setViewMode] = useState<"canvas" | "table">("canvas");
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: "success" | "error"; text: string; traceId?: string | null } | null>(null);
   const [hideInactiveNodes, setHideInactiveNodes] = useState<boolean>(false);
+  const [versionDirty, setVersionDirty] = useState(false);
+  const [classYearFilter, setClassYearFilter] = useState(scope.academicYear || "");
+  const [showClassHistory, setShowClassHistory] = useState(scope.history ?? false);
+  useEffect(() => { setClassYearFilter(scope.academicYear || ""); }, [scope.academicYear]);
+  useEffect(() => { if (scope.classId) setShowClassHistory(scope.history ?? false); }, [scope.classId, scope.history]);
 
   // Modals state
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
@@ -171,17 +189,30 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   });
 
   const subjects = useMemo(() => subjectsData?.data ?? [], [subjectsData?.data]);
+  const classesQuery = useQuery({ queryKey: ["teacherClassesList", "knowledge-scope", user?.centerId, user?.userId],
+    enabled: !!user?.userId, queryFn: async () => {
+      const filter = { teacherId: user?.userId, pageSize: 100 };
+      const first = await organizationApi.listClasses({ ...filter, page: 1 }); const result = [...first.data];
+      for (let page = 2; page <= first.meta.totalPages; page++) result.push(...(await organizationApi.listClasses({ ...filter, page })).data);
+      return result;
+    } });
+  const curriculaQuery = useQuery({ queryKey: ["teacherCurriculums", "graph-scope", user?.centerId, user?.userId, selectedSubjectId],
+    queryFn: () => curriculumApi.getAll({ subjectId: selectedSubjectId }), enabled: !!selectedSubjectId && hasPermission(permissions.curriculumsRead) });
+  const updateScope = (next: typeof scope, subject = selectedSubjectId) => setSearchParams(knowledgeScopeSearch(subject, next));
+  useEffect(() => { setSelectedNodeId(null); setSelectedEdgeId(null); setHideInactiveNodes(false);
+    setIsAddNodeOpen(false); setIsAddEdgeOpen(false); setFeedbackMsg(null);
+  }, [scopeKey]);
 
   // Sync selectedSubjectId with URL param
   useEffect(() => {
     if (urlSubjectId && subjects.some((s) => s.subjectId === urlSubjectId)) {
       setSelectedSubjectId(urlSubjectId);
-    } else if (!selectedSubjectId && subjects.length > 0) {
+    } else if (!selectedSubjectId && subjects.length > 0 && !scope.classId && !scope.curriculumId && !scope.graphVersionId) {
       const defaultId = subjects[0].subjectId;
       setSelectedSubjectId(defaultId);
-      setSearchParams({ subjectId: defaultId }, { replace: true });
+      setSearchParams(knowledgeScopeSearch(defaultId, scope), { replace: true });
     }
-  }, [urlSubjectId, subjects, selectedSubjectId, setSearchParams]);
+  }, [urlSubjectId, subjects, selectedSubjectId, setSearchParams, scope]);
 
   const handleSelectSubject = (newSubjectId: string) => {
     setSelectedSubjectId(newSubjectId);
@@ -203,13 +234,28 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     error: graphError,
     refetch: refetchGraph,
   } = useQuery({
-    queryKey: ["teacherKnowledgeGraph", user?.centerId, user?.userId, selectedSubjectId],
-    queryFn: () => (selectedSubjectId ? knowledgeGraphApi.getGraph(selectedSubjectId) : null),
-    enabled: Boolean(user?.centerId && selectedSubjectId.trim() && canReadNodes && canReadEdges),
+    queryKey: knowledgeKeys.graph(user?.centerId, user?.userId, selectedSubjectId, scope),
+    queryFn: () => knowledgeGraphApi.getGraph(selectedSubjectId, scope),
+    enabled: Boolean(user?.centerId && (selectedSubjectId.trim() || scope.classId || scope.curriculumId || scope.graphVersionId) && canReadNodes && canReadEdges),
   });
+  useEffect(() => {
+    if (!urlSubjectId && graphData?.subjectId) {
+      setSelectedSubjectId(graphData.subjectId);
+      setSearchParams(knowledgeScopeSearch(graphData.subjectId, scope), { replace: true });
+    }
+    else if (scope.graphVersionId && !scope.classId && !scope.curriculumId && !scope.gradeLevel && graphData?.resolvedScope?.gradeLevel) {
+      setSearchParams(knowledgeScopeSearch(graphData.subjectId, { ...scope, gradeLevel: graphData.resolvedScope.gradeLevel }), { replace: true });
+    }
+  }, [urlSubjectId, graphData?.subjectId, graphData?.resolvedScope?.gradeLevel, scope, setSearchParams]);
 
-  const nodes = useMemo(() => graphData?.nodes ?? [], [graphData?.nodes]);
-  const edges = useMemo(() => graphData?.edges ?? [], [graphData?.edges]);
+  const projection = useMemo(() => { const result = graphOccurrences(graphData); return { ...result,
+    nodes: result.nodes.map(n => ({ ...n, sources: n.sources?.map(source => ({ ...source,
+      curriculumTitle: source.curriculumTitle || curriculaQuery.data?.data.find(c => c.curriculumId === source.curriculumId)?.title })) })) }; }, [graphData, curriculaQuery.data]);
+  const nodes = projection.nodes;
+  const edges = projection.edges;
+  const canonicalNodes = useMemo(() => [...new Map(nodes.map(node => [node.canonicalNodeId || node.nodeId, node])).values()], [nodes]);
+  const edgeAuthoringSources = draftAuthoring ? authoringCatalog.data?.nodes ?? [] : nodes;
+  const edgeAuthoringTargets = canonicalNodes.map(node => ({ ...node, nodeId: node.canonicalNodeId || node.nodeId }));
 
   const inactiveNodesCount = useMemo(() => nodes.filter((n) => !n.isActive).length, [nodes]);
 
@@ -243,9 +289,14 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   );
 
   const quickActionSearch = selectedNode?.nodeType === "Topic" && selectedNode.isActive
+    && Boolean(selectedNode.gradeLevel ?? scope.gradeLevel)
     && canReadNodes && canReadSubjects && !isErrorSubjects && !isErrorGraph && !isFetchingGraph && sameSubject(graphData?.subjectId, selectedSubjectId)
     && subjects.some((subject) => subject.isActive && sameSubject(subject.subjectId, selectedSubjectId))
-    ? topicQuickActionSearch(selectedSubjectId, selectedNode.nodeId)
+    ? (() => { const search = topicQuickActionSearch(selectedSubjectId, selectedNode.canonicalNodeId || selectedNode.nodeId);
+      if (!search) return null; const params = new URLSearchParams(knowledgeScopeSearch(selectedSubjectId, { ...scope,
+        gradeLevel: selectedNode.gradeLevel ?? scope.gradeLevel, graphVersionId: selectedNode.graphVersionId || scope.graphVersionId,
+        curriculumId: selectedNode.curriculumIds?.[0] || scope.curriculumId }));
+      params.set("topicNodeId", selectedNode.canonicalNodeId || selectedNode.nodeId); return params.toString(); })()
     : null;
 
   // If selected node gets hidden by filter, deselect it
@@ -282,9 +333,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
 
   const invalidateGraph = async () => {
     if (user?.centerId && selectedSubjectId) {
-      await queryClient.invalidateQueries({
-        queryKey: ["teacherKnowledgeGraph", user.centerId, user.userId, selectedSubjectId],
-      });
+      await queryClient.invalidateQueries({ queryKey: knowledgeKeys.all });
     }
   };
 
@@ -295,7 +344,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       await invalidateGraph();
       setIsAddNodeOpen(false);
       resetNodeForm();
-      setFeedbackMsg({ type: "success", text: "Tạo điểm tri thức mới thành công!" });
+      setFeedbackMsg({ type: "success", text: draftAuthoring ? "Đã tạo điểm tri thức trong thư viện. Chọn điểm vừa tạo tại phần Chủ đề và cây cấu trúc bên dưới, đặt nút cha rồi lưu bản nháp." : "Tạo điểm tri thức mới thành công! Chọn khối và phiên bản để đưa điểm này vào khung được áp dụng." });
     },
     onError: (err: any) => {
       const details = extractProblemDetails(err);
@@ -362,7 +411,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     onSuccess: async () => {
       await invalidateGraph();
       setIsAddEdgeOpen(false);
-      setFeedbackMsg({ type: "success", text: "Thiết lập liên kết tiên quyết thành công!" });
+      setFeedbackMsg({ type: "success", text: draftAuthoring ? "Đã tạo quan hệ trong thư viện. Chọn quan hệ vừa tạo tại phần Quan hệ áp dụng, đặt trọng số và lưu cấu trúc nháp." : "Thiết lập liên kết tiên quyết thành công!" });
     },
     onError: (err: any) => {
       const details = extractProblemDetails(err);
@@ -453,7 +502,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
 
     createNodeMutation.mutate({
       subjectId: selectedSubjectId,
-      parentNodeId: newParentNodeId || null,
+      parentNodeId: canonicalAuthoring ? newParentNodeId || null : null,
       nodeType: newNodeType,
       nodeCode: trimmedCode,
       nodeName: trimmedName,
@@ -484,9 +533,10 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     }
 
     createEdgeMutation.mutate({
+      graphVersionId: draftAuthoring ? scope.graphVersionId : undefined,
       subjectId: selectedSubjectId,
-      sourceNodeId: edgeSourceId,
-      targetNodeId: edgeTargetId,
+      sourceNodeId: nodeMap.get(edgeSourceId)?.canonicalNodeId || edgeSourceId,
+      targetNodeId: nodeMap.get(edgeTargetId)?.canonicalNodeId || edgeTargetId,
       relationType: edgeRelation,
       weight: weightNum,
     });
@@ -576,13 +626,14 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
         ]}
         actions={
           <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-            {canCreateEdges && selectedSubjectId && nodes.length >= 2 && (
+            {canCreateEdges && selectedSubjectId && edgeAuthoringSources.length >= 2 && edgeAuthoringTargets.length >= 1 && (
               <button
                 type="button"
                 className="th-secondary-button"
                 onClick={() => {
-                  setEdgeSourceId(nodes[0]?.nodeId || "");
-                  setEdgeTargetId(nodes[1]?.nodeId || "");
+                  const target = edgeAuthoringTargets[0]?.nodeId || "";
+                  setEdgeTargetId(target);
+                  setEdgeSourceId(edgeAuthoringSources.find(n => n.nodeId !== target)?.nodeId || "");
                   setIsAddEdgeOpen(true);
                 }}
               >
@@ -643,8 +694,9 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       <div className="th-stats-grid">
         <TeacherMetricCard
           label="Tổng Số Điểm Tri Thức"
-          value={nodes.length}
-          unit="nút"
+          value={canonicalNodes.length}
+          unit="điểm"
+          supportingText={nodes.length !== canonicalNodes.length ? `${nodes.length} vị trí theo giáo trình/phiên bản` : undefined}
           icon={
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="3" />
@@ -679,7 +731,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
         />
         <TeacherMetricCard
           label="Thời Lượng Toàn Bộ"
-          value={nodes.reduce((acc, curr) => acc + (curr.estimatedLearningMinutes || 0), 0)}
+          value={canonicalNodes.reduce((acc, curr) => acc + (curr.estimatedLearningMinutes || 0), 0)}
           unit="phút học"
           icon={
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -715,6 +767,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
               <select
                 className="th-select"
                 value={selectedSubjectId}
+                disabled={versionDirty}
                 onChange={(e) => handleSelectSubject(e.target.value)}
                 style={{ minWidth: "220px", fontWeight: 600 }}
               >
@@ -795,8 +848,40 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
         )}
       </div>
 
+      <div className="th-surface rounded-xl p-4 my-4 space-y-3" aria-label="Phạm vi đồ thị tri thức">
+        <div className="flex flex-wrap gap-3 items-end">
+          <label className="text-sm">Khối thư viện<select disabled={versionDirty} className="th-select block mt-1" value={scope.gradeLevel ?? ""} onChange={e => updateScope({ gradeLevel: e.target.value ? Number(e.target.value) : undefined })}>
+            <option value="">Thư viện gốc · chưa lọc khối</option>{[10,11,12].map(g => <option key={g} value={g}>Khối {g}</option>)}
+          </select></label>
+          <label className="text-sm">Giáo trình<select disabled={versionDirty} className="th-select block mt-1" value={scope.curriculumId ?? ""} onChange={e => { const c = curriculaQuery.data?.data.find(c => c.curriculumId === e.target.value); updateScope(c ? { curriculumId: c.curriculumId } : {}); }}>
+            <option value="">Chọn giáo trình</option>{curriculaQuery.data?.data.map(c => <option key={c.curriculumId} value={c.curriculumId}>{c.title} · Khối {c.gradeLevel ?? "?"} · {c.reviewStatus}</option>)}
+          </select></label>
+          <label className="text-sm">Lọc lớp theo năm học<select disabled={versionDirty} className="th-select block mt-1" value={classYearFilter} onChange={e => setClassYearFilter(e.target.value)}>
+            <option value="">Tất cả năm học</option>{[...new Set((classesQuery.data ?? []).map(c => c.academicYear))].sort().reverse().map(y => <option key={y} value={y}>{y}</option>)}
+          </select></label>
+          <label className="text-sm">Lớp phụ trách<select disabled={versionDirty} className="th-select block mt-1" value={scope.classId ?? ""} onChange={e => { const c = classesQuery.data?.find(c => c.classId === e.target.value);
+            if (c) { setSelectedSubjectId(c.subject.subjectId); updateScope({ classId: c.classId, academicYear: c.academicYear, history: showClassHistory || scope.history }, c.subject.subjectId); }
+            else updateScope({}); }}>
+            <option value="">Chọn lớp</option>{classesQuery.data?.filter(c => c.classId === scope.classId || (c.subject.subjectId === selectedSubjectId && (!classYearFilter || c.academicYear === classYearFilter) && (showClassHistory || scope.history || (c.status === "Active" && c.learningScope !== "History")))).map(c => <option key={c.classId} value={c.classId}>{c.className} · {c.academicYear} · Khối {c.gradeLevel ?? "?"}</option>)}
+          </select></label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={versionDirty} checked={scope.classId ? scope.history ?? false : showClassHistory} onChange={e => { setShowClassHistory(e.target.checked); if (scope.classId || scope.history) updateScope({ ...scope, history: e.target.checked }); }} />Lớp và lịch sử áp dụng trước đây</label>
+        </div>
+        {classesQuery.isError && <p role="alert">Không tải được lớp phụ trách. <button onClick={() => classesQuery.refetch()}>Tải lại</button></p>}
+        {curriculaQuery.isError && <p role="alert">Không tải được danh sách giáo trình. <button onClick={() => curriculaQuery.refetch()}>Tải lại</button></p>}
+        <p className="text-sm text-[var(--th-text-secondary)]">{graphData?.resolvedScope?.className || classesQuery.data?.find(c => c.classId === scope.classId)?.className || graphData?.resolvedScope?.curriculumTitle || curriculaQuery.data?.data.find(c => c.curriculumId === scope.curriculumId)?.title || (scope.gradeLevel ? `Thư viện Khối ${scope.gradeLevel}` : "Thư viện gốc của môn; các điểm chưa phân khối chưa được dùng cho soạn mới")}{scope.academicYear ? ` · Năm học ${scope.academicYear}` : ""}{scope.history ? " · Lịch sử" : ""}</p>
+        {graphData?.resolvedScope?.isLegacy && <p className="text-sm text-amber-500">Dữ liệu chuyển tiếp giữ nguyên cấu trúc trước khi phân khối. Chọn thư viện theo khối và rà soát bản nháp để soạn mới.</p>}
+        {versionDirty && <p role="status" className="text-sm">Lưu hoặc hủy cấu trúc nháp trước khi đổi phạm vi.</p>}
+        {!canonicalAuthoring && <p className="text-sm">Cấu trúc đang xem được xác định bởi khung tri thức và giáo trình. Quản lý bản nháp theo khối bên dưới; <button disabled={versionDirty} className="underline" onClick={() => updateScope({})}>mở thư viện gốc để tạo điểm tri thức hoặc quan hệ mới</button>.</p>}
+      </div>
+      {!scope.classId && !scope.curriculumId && <KnowledgeVersionPanel key={`${selectedSubjectId}:${scope.gradeLevel ?? ""}:${scope.graphVersionId ?? ""}`} subjectId={selectedSubjectId} gradeLevel={scope.gradeLevel}
+        versionId={scope.graphVersionId} canEdit={hasPermission(permissions.nodesUpdate) && hasPermission(permissions.edgesUpdate)}
+        onDirtyChange={setVersionDirty}
+        onSelect={(id, grade) => updateScope({ gradeLevel: grade, graphVersionId: id || undefined })} />}
+      {graphData && nodes.length === 0 && <div role="status" className="th-surface rounded-xl p-5 my-4">{graphData.resolvedScope?.message || graphData.resolvedScope?.emptyReason || "Phạm vi này chưa có khung đã duyệt hoặc giáo trình đang áp dụng. Chọn phạm vi khác hoặc chuẩn bị khung tri thức cho khối."}</div>}
+      {!!graphData?.externalPrerequisites?.length && <details className="th-surface rounded-xl p-4 my-4"><summary>Tiên quyết ngoài phạm vi ({graphData.externalPrerequisites.length})</summary><ul className="text-sm mt-2 space-y-1">{graphData.externalPrerequisites.map((e, index) => <li key={`${e.edgeId}-${index}`}>{e.sourceNodeName || `Điểm tri thức #${e.sourceNodeId}`}{e.sourceGradeLevel ? ` (Khối ${e.sourceGradeLevel})` : ""} → {graphData.nodes.find(n => n.nodeId === e.targetNodeId)?.nodeName || `#${e.targetNodeId}`}{e.gradeLevel ? ` · Khối đích ${e.gradeLevel}` : ""} · Chỉ là ngữ cảnh tiên quyết, không tính vào chủ đề của giáo trình.</li>)}</ul></details>}
+
       {/* Main Graph Canvas & Inspector Area */}
-      {!selectedSubjectId ? (
+      {!selectedSubjectId && !scope.classId && !scope.curriculumId && !scope.graphVersionId ? (
         <div className="th-surface" style={{ padding: "48px 24px", textAlign: "center" }}>
           <p style={{ fontSize: "1rem", color: "var(--th-text-muted)", margin: 0 }}>
             Vui lòng chọn một môn học ở danh sách phía trên để nạp đồ thị tri thức.
@@ -823,7 +908,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
             }}
           >
 {viewMode === "canvas" ? (
-              <KnowledgeGraphCanvas key={selectedSubjectId}
+              <KnowledgeGraphCanvas key={scopeKey}
                 nodes={visibleNodes} edges={visibleEdges}
                 selectedNodeId={selectedNodeId} selectedEdgeId={selectedEdgeId}
                 onSelectNode={id => { setSelectedNodeId(id); setSelectedEdgeId(null); }}
@@ -844,6 +929,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                       <tr style={{ borderBottom: "1px solid var(--th-border-subtle)", textAlign: "left", color: "var(--th-text-muted)" }}>
                         <th style={{ padding: "8px 10px" }}>Mã</th>
                         <th style={{ padding: "8px 10px" }}>Tên chủ đề</th>
+                        <th style={{ padding: "8px 10px" }}>Khối / Giáo trình</th>
                         <th style={{ padding: "8px 10px" }}>Phân loại</th>
                         <th style={{ padding: "8px 10px" }}>Trạng thái</th>
                         <th style={{ padding: "8px 10px" }}>Thứ tự</th>
@@ -869,6 +955,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                         >
                           <td style={{ padding: "10px", fontFamily: "monospace", color: n.isActive ? "var(--th-teal)" : "#94a3b8", fontWeight: 600 }}>{n.nodeCode}</td>
                           <td style={{ padding: "10px", fontWeight: 600, color: n.isActive ? "var(--th-text)" : "var(--th-text-muted)" }}>{n.nodeName}</td>
+                          <td style={{ padding: "10px" }}>{n.gradeLevel ? `Khối ${n.gradeLevel}` : n.gradeLevels?.length ? `Khối ${n.gradeLevels.join(", ")}` : "Chưa xác định khối"}{n.sources?.map(s => <div key={s.applicationId || s.curriculumId}>{s.curriculumTitle || "Giáo trình"}{s.applicationRole ? ` · ${s.applicationRole === "Primary" ? "Chính" : "Bổ trợ"}` : ""}{s.isGradeException ? " · Ngoại lệ khác khối" : ""}</div>)}</td>
                           <td style={{ padding: "10px" }}>
                             <span className="th-badge th-badge-info">{nodeTypeLabels[n.nodeType] ?? n.nodeType}</span>
                           </td>
@@ -948,6 +1035,10 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                     {selectedNode.description}
                   </p>
                 )}
+                <div className="text-sm space-y-1">
+                  <p>{selectedNode.gradeLevel ? `Khối ${selectedNode.gradeLevel}` : selectedNode.provenance?.length ? `Khối ${[...new Set(selectedNode.provenance.map(p => p.gradeLevel))].join(", ")}` : "Chưa xác định khối"}</p>
+                  {selectedNode.sources?.map(source => <div key={source.applicationId || source.curriculumId}><p>Nguồn: {source.curriculumTitle || "Giáo trình trong phạm vi đang xem"}{source.gradeLevel ? ` · Khối ${source.gradeLevel}` : ""}{source.applicationRole ? ` · ${source.applicationRole === "Primary" ? "Chính" : "Bổ trợ"}` : ""}</p>{source.isGradeException && <p className="text-amber-500">Ngoại lệ khác khối{source.gradeMismatchReason ? `: ${source.gradeMismatchReason}` : ""}</p>}</div>)}
+                </div>
 
                 {/* Quick Pedagogy Action Buttons for Teachers */}
                 {quickActionSearch ? (
@@ -972,7 +1063,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                     )}
                   </div>
                 ) : (
-                  <p className="text-xs text-[var(--th-text-muted)]">Chọn một Chủ đề (Topic) đang hoạt động để xem câu hỏi hoặc tạo bài tập theo chủ đề.</p>
+                  <p className="text-xs text-[var(--th-text-muted)]">Chọn một Chủ đề (Topic) đang hoạt động trong phạm vi khối, giáo trình hoặc lớp để xem câu hỏi hoặc tạo bài tập theo chủ đề.</p>
                 )}
 
                 {/* Connected Prerequisites */}
@@ -1418,6 +1509,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
             <select
               className="th-select"
               value={newParentNodeId}
+              disabled={!canonicalAuthoring}
               onChange={(e) => setNewParentNodeId(e.target.value)}
               style={{ width: "100%" }}
             >
@@ -1428,6 +1520,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                 </option>
               ))}
             </select>
+            {!canonicalAuthoring && <p className="text-sm mt-2">Chọn nút cha tại phần Chủ đề và cây cấu trúc của bản nháp sau khi tạo điểm mới.</p>}
           </div>
 
           <div>
@@ -1486,9 +1579,9 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
               style={{ width: "100%" }}
             >
               <option value="">-- Chọn điểm tri thức nguồn --</option>
-              {nodes.map((n) => (
+              {edgeAuthoringSources.map((n) => (
                 <option key={n.nodeId} value={n.nodeId}>
-                  {n.nodeCode} - {n.nodeName}
+                  {n.nodeCode} - {n.nodeName}{n.gradeLevels?.length ? ` · Khối ${n.gradeLevels.join(", ")}` : " · Chưa phân khối"}
                 </option>
               ))}
             </select>
@@ -1506,7 +1599,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
               style={{ width: "100%" }}
             >
               <option value="">-- Chọn điểm tri thức đích --</option>
-              {nodes.map((n) => (
+              {edgeAuthoringTargets.map((n) => (
                 <option key={n.nodeId} value={n.nodeId}>
                   {n.nodeCode} - {n.nodeName}
                 </option>

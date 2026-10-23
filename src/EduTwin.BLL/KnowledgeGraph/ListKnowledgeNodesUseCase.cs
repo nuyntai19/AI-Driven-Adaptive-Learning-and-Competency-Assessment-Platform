@@ -42,7 +42,7 @@ public class ListKnowledgeNodesUseCase : IListKnowledgeNodesUseCase
         if (!validRoles.Contains(_tenantContext.Role))
             return ListKnowledgeNodesResult.Failure(ErrorCodes.ResourceNotFound);
 
-        if (query.SubjectId == Guid.Empty)
+        if (query.SubjectId == Guid.Empty && !query.CurriculumId.HasValue && !query.ClassId.HasValue && !query.GraphVersionId.HasValue)
             return ListKnowledgeNodesResult.Failure(ErrorCodes.ValidationFailed);
 
         NodeType? parsedNodeType = null;
@@ -83,52 +83,19 @@ public class ListKnowledgeNodesUseCase : IListKnowledgeNodesUseCase
         if (center == null || center.Status != EduTwin.Contracts.Organization.CenterStatus.Active)
             return ListKnowledgeNodesResult.Failure(ErrorCodes.ResourceNotFound);
 
-        var subject = await _dbContext.Subjects
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.SubjectId == query.SubjectId && s.CenterId == _tenantContext.CenterId && !s.IsDeleted, cancellationToken);
-
-        if (subject == null)
-            return ListKnowledgeNodesResult.Failure(ErrorCodes.ResourceNotFound);
-
-        var dbQuery = _dbContext.KnowledgeNodes
-            .AsNoTracking()
-            .Where(n => n.CenterId == _tenantContext.CenterId && n.SubjectId == query.SubjectId && !n.IsDeleted);
-
-        if (parsedNodeType.HasValue)
+        try
         {
-            dbQuery = dbQuery.Where(n => n.NodeType == parsedNodeType.Value);
+            var graph = await KnowledgeGraphScopeReader.ReadAsync(_dbContext, _tenantContext, query, cancellationToken);
+            var scoped = graph.Nodes.AsEnumerable();
+            if (parsedNodeType.HasValue) scoped = scoped.Where(n => n.NodeType == parsedNodeType.Value.ToString());
+            if (parsedParentNodeId.HasValue) scoped = scoped.Where(n => n.ParentNodeId == parsedParentNodeId.Value.ToString(CultureInfo.InvariantCulture));
+            if (query.IsActive.HasValue) scoped = scoped.Where(n => n.IsActive == query.IsActive);
+            return ListKnowledgeNodesResult.Success(scoped.Select(n => new KnowledgeNodeDto { NodeId = n.NodeId, SubjectId = graph.SubjectId,
+                ParentNodeId = n.ParentNodeId, NodeType = n.NodeType, NodeCode = n.NodeCode, NodeName = n.NodeName, Description = n.Description,
+                OrderIndex = n.OrderIndex, ExamImportance = n.ExamImportance, EstimatedLearningMinutes = n.EstimatedLearningMinutes,
+                IsActive = n.IsActive, RowVersion = n.RowVersion, GradeLevels = n.GradeLevels, Provenance = n.Provenance }).ToList());
         }
+        catch (GraphScopeException ex) { return ListKnowledgeNodesResult.Failure(ex.Code); }
 
-        if (parsedParentNodeId.HasValue)
-        {
-            dbQuery = dbQuery.Where(n => n.ParentNodeId == parsedParentNodeId.Value);
-        }
-
-        if (query.IsActive.HasValue)
-        {
-            dbQuery = dbQuery.Where(n => n.IsActive == query.IsActive.Value);
-        }
-
-        var results = await dbQuery
-            .OrderBy(n => n.OrderIndex)
-            .ThenBy(n => n.NodeId)
-            .Select(n => new KnowledgeNodeDto
-            {
-                NodeId = n.NodeId.ToString(CultureInfo.InvariantCulture),
-                SubjectId = n.SubjectId.ToString("D").ToLowerInvariant(),
-                ParentNodeId = n.ParentNodeId.HasValue ? n.ParentNodeId.Value.ToString(CultureInfo.InvariantCulture) : null,
-                NodeType = n.NodeType.ToString(),
-                NodeCode = n.NodeCode,
-                NodeName = n.NodeName,
-                Description = n.Description,
-                OrderIndex = n.OrderIndex,
-                ExamImportance = n.ExamImportance,
-                EstimatedLearningMinutes = n.EstimatedLearningMinutes,
-                IsActive = n.IsActive,
-                RowVersion = n.RowVersion.ToString(CultureInfo.InvariantCulture)
-            })
-            .ToListAsync(cancellationToken);
-
-        return ListKnowledgeNodesResult.Success(results);
     }
 }

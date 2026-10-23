@@ -45,6 +45,7 @@ public sealed class QuestionImportV2UseCaseTests : IDisposable
         _db.Users.Add(user); _db.Teachers.Add(new Teacher { TeacherId = _actor, CenterId = _center, User = user, CreatedAt = _now.UtcDateTime, UpdatedAt = _now.UtcDateTime });
         _db.Subjects.Add(new Subject { SubjectId = _subject, CenterId = _center, SubjectCode = "MATH", SubjectName = "Toán", IsActive = true, CreatedAt = _now.UtcDateTime, UpdatedAt = _now.UtcDateTime });
         _db.KnowledgeNodes.Add(new KnowledgeNode { NodeId = 1, CenterId = _center, SubjectId = _subject, NodeCode = "TOP-1", NodeName = "Topic", NodeType = NodeType.Topic, IsActive = true, CreatedAt = _now.UtcDateTime, UpdatedAt = _now.UtcDateTime }); _db.SaveChanges();
+        GraphScopeFixture.Approve(_db, _center, _subject, 12, 1); _db.SaveChanges();
         _store = new(_root);
     }
     private QuestionImportUseCase Sut() => new(_db, _tenant.Object, _clock.Object, mediaStore: _store);

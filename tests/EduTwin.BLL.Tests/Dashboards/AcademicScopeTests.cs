@@ -30,13 +30,14 @@ public class AcademicScopeTests
         db.Students.Add(new Student {CenterId=CenterId,StudentId=StudentId,FullName="Student",GradeLevel=10,CreatedAt=Now,UpdatedAt=Now});
         db.Subjects.Add(new Subject {CenterId=CenterId,SubjectId=SubjectId,SubjectName="Math",SubjectCode="M",IsActive=true,CreatedAt=Now,UpdatedAt=Now});
         var current=Guid.NewGuid(); var history=Guid.NewGuid(); var curriculum=Guid.NewGuid();
+        var version = GraphScopeFixture.Approve(db, CenterId, SubjectId, 10, 1);
         foreach(var (id,scope) in new[]{(current,ClassLearningScope.Current),(history,ClassLearningScope.History)})
         {
             db.Classes.Add(new Class {CenterId=CenterId,ClassId=id,TeacherId=TeacherId,SubjectId=SubjectId,ClassName=scope.ToString(),
                 AcademicYear="2026-2027",GradeLevel=10,Status=scope==ClassLearningScope.History?ClassStatus.Archived:ClassStatus.Active,LearningScope=scope,CreatedAt=Now,UpdatedAt=Now});
             db.ClassStudents.Add(new ClassStudent {CenterId=CenterId,ClassId=id,StudentId=StudentId,Status=ClassStudentStatus.Active,JoinedAt=Now.AddDays(-10)});
         }
-        db.Curriculums.Add(new Curriculum {CenterId=CenterId,CurriculumId=curriculum,TeacherId=TeacherId,SubjectId=SubjectId,GradeLevel=10,Title="Applied",ReviewStatus=ReviewStatus.Published,CreatedAt=Now,UpdatedAt=Now});
+        db.Curriculums.Add(new Curriculum {CenterId=CenterId,CurriculumId=curriculum,TeacherId=TeacherId,SubjectId=SubjectId,GradeLevel=10,GraphVersionId=version,Title="Applied",ReviewStatus=ReviewStatus.Published,CreatedAt=Now,UpdatedAt=Now});
         db.KnowledgeNodes.Add(new KnowledgeNode {CenterId=CenterId,SubjectId=SubjectId,NodeId=1,NodeCode="One",NodeName="Topic one",NodeType=Contracts.KnowledgeGraph.NodeType.Topic,IsActive=true,CreatedAt=Now,UpdatedAt=Now});
         db.CurriculumNodes.Add(new CurriculumNode {CenterId=CenterId,CurriculumId=curriculum,NodeId=1,OrderIndex=1,CreatedAt=Now});
         if(apply) db.ClassCurriculumApplications.Add(new() {ApplicationId=Guid.NewGuid(),CenterId=CenterId,ClassId=current,CurriculumId=curriculum,SubjectId=SubjectId,AssignedBy=TeacherId,StartedAt=Now});
@@ -118,7 +119,8 @@ public class AcademicScopeTests
         await using var db=NewDb(); var ids=await Seed(db);
         var tenant = new Mock<BLL.IdentityAndTenancy.ITenantContext>(); tenant.Setup(t=>t.IsResolved).Returns(true);
         tenant.Setup(t=>t.CenterId).Returns(CenterId);tenant.Setup(t=>t.UserId).Returns(TeacherId);tenant.Setup(t=>t.Role).Returns("Teacher");
-        var replacement=Guid.NewGuid();db.Curriculums.Add(new Curriculum {CenterId=CenterId,CurriculumId=replacement,TeacherId=TeacherId,SubjectId=SubjectId,GradeLevel=10,Title="Replacement",ReviewStatus=ReviewStatus.Published,CreatedAt=Now,UpdatedAt=Now});await db.SaveChangesAsync();
+        var replacement=Guid.NewGuid();var version=await db.KnowledgeGraphVersions.SingleAsync(v=>v.CenterId==CenterId&&v.SubjectId==SubjectId&&v.GradeLevel==10);
+        db.Curriculums.Add(new Curriculum {CenterId=CenterId,CurriculumId=replacement,TeacherId=TeacherId,SubjectId=SubjectId,GradeLevel=10,GraphVersionId=version.GraphVersionId,Title="Replacement",ReviewStatus=ReviewStatus.Published,CreatedAt=Now,UpdatedAt=Now});await db.SaveChangesAsync();
         var usecase=new CurriculumApplicationUseCase(db,tenant.Object,TimeProvider.System);
         var blocked=await usecase.ApplyAsync(replacement,new(){ClassIds=[ids.Current],RowVersion="1"},default);Assert.False(blocked.IsSuccess);
         var applied=await usecase.ApplyAsync(replacement,new(){ClassIds=[ids.Current],RowVersion="1",ChangeReason="Chuyển giáo trình mới"},default);Assert.True(applied.IsSuccess,applied.Message);

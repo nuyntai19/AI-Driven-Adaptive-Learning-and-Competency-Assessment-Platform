@@ -83,7 +83,11 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
 
         if (dbSession is not null)
         {
-            if (dbSession.PolicyVersion == Planning.LearningPathV4Data.Policy)
+            var sessionScope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, center,
+                student, subjectId, classId ?? dbSession.ClassId, history, ct);
+            if (!sessionScope.Includes(dbSession.TopicNodeId) || classId.HasValue && dbSession.ClassId != classId)
+                return GetNextQuestionResult.FailNotFound("Buổi học không thuộc phạm vi giáo trình của lớp đang xem.");
+            if (Planning.LearningPathV4Data.IsV4Policy(dbSession.PolicyVersion))
                 return GetNextQuestionResult.FailNotFound("Nhiệm vụ này mở trong không gian lộ trình, không phải luyện tập tự do.");
             var activeRun = await _dbContext.LearningPathSessionRuns
                 .FirstOrDefaultAsync(r => r.CenterId == center && r.StudentId == student &&
@@ -106,7 +110,7 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
                     q.QuestionType != QuestionType.Essay &&
                     q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual, ct);
 
-                if (question is null)
+                if (question is null || !sessionScope.IncludesQuestion(question.PrimaryTopicNodeId, question.GradeLevel))
                 {
                     return GetNextQuestionResult.FailNotFound("Câu hỏi hiện tại không còn khả dụng hoặc đã bị lưu trữ.");
                 }
@@ -198,10 +202,11 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
         var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
         var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, subjectId, classId, history, cancellationToken);
         if (!scope.Allowed) return GetNextQuestionResult.FailForbidden(scope.Reason!);
-        var nextQuestion = await _recommendationEngine.GetNextQuestionAsync(
+        var nextQuestion = await _recommendationEngine.GetNextForClassAsync(
             centerId,
             studentId,
             subjectId,
+            classId,
             utcNow,
             cancellationToken);
 

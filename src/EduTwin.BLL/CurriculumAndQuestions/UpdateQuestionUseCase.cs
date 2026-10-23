@@ -164,6 +164,10 @@ public class UpdateQuestionUseCase : IUpdateQuestionUseCase
         if (topicNode == null)
             return UpdateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
 
+        if (!await QuestionGradeScopeGuard.IsValidAsync(_dbContext, centerId, question.SubjectId, request.GradeLevel,
+            topicNodeId, request.KnowledgeMappings, cancellationToken))
+            return UpdateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+
         // AnswerEvaluationMode validation & matrix enforcement
         QuestionAnswerEvaluationMode evalMode;
         if (string.IsNullOrWhiteSpace(request.AnswerEvaluationMode))

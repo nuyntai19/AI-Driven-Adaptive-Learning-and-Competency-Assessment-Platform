@@ -39,8 +39,21 @@ public static class AcademicDependencyGuards
         => "Đang được sử dụng bởi lớp hoạt động: " + string.Join(", ", usages.Take(10).Select(c => c.ClassName)) +
            ". Hãy thay/ngừng áp dụng giáo trình có lý do trước; thao tác này không tự ngắt lớp đang học.";
 
+    public static async Task<string?> FrozenGraphNodeMessageAsync(EduTwinDbContext db, Guid center, ulong node, CancellationToken ct)
+    {
+        var grades = await (from mapping in db.KnowledgeNodeGrades
+            join version in db.KnowledgeGraphVersions on new { mapping.CenterId, mapping.GraphVersionId } equals new { version.CenterId, version.GraphVersionId }
+            where mapping.CenterId == center && mapping.NodeId == node && version.Status != "Draft"
+            select version.GradeLevel).Distinct().OrderBy(g => g).ToListAsync(ct);
+        if (grades.Count > 0) return "Không thể thay đổi nội dung điểm tri thức thuộc khung đã xuất bản/lưu trữ của khối " +
+            string.Join(", ", grades) + ". Hãy tạo điểm tri thức mới; bản nháp khung giữ nguyên định danh và nội dung lịch sử của điểm đang dùng.";
+        return null;
+    }
+
     public static async Task<string?> FrozenNodeMessageAsync(EduTwinDbContext db, Guid center, ulong node, CancellationToken ct)
     {
+        var frozen = await FrozenGraphNodeMessageAsync(db, center, node, ct);
+        if (frozen != null) return frozen;
         var titles = await db.CurriculumNodes.Where(n => n.CenterId == center && n.NodeId == node && n.Curriculum != null &&
             (n.Curriculum.ReviewStatus == ReviewStatus.Published || n.Curriculum.ReviewStatus == ReviewStatus.Archived))
             .Select(n => n.Curriculum!.Title).Distinct().OrderBy(t => t).Take(10).ToListAsync(ct);
@@ -50,6 +63,8 @@ public static class AcademicDependencyGuards
 
     public static async Task<string?> DeactivationMessageAsync(EduTwinDbContext db, Guid center, ulong node, CancellationToken ct)
     {
+        var frozen = await FrozenGraphNodeMessageAsync(db, center, node, ct);
+        if (frozen != null) return frozen;
         var classes = await NodeUsageAsync(db, center, node, node, ct);
         if (classes.Count > 0) return ClassBlockMessage(classes);
         if (await db.KnowledgeNodes.AnyAsync(n => n.CenterId == center && n.ParentNodeId == node && n.IsActive && !n.IsDeleted, ct))

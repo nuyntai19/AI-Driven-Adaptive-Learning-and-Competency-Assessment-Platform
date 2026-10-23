@@ -167,6 +167,8 @@ public class CreateCurriculumUseCaseTests
         var teacherId = Guid.NewGuid();
         SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
         var seed = await SeedBasicEntitiesAsync(centerId, teacherId);
+        GraphScopeFixture.Approve(_dbContext, centerId, seed.Subject.SubjectId, 10, seed.Node1.NodeId, seed.Node2.NodeId);
+        await _dbContext.SaveChangesAsync();
 
         var n1Str = seed.Node1.NodeId.ToString(CultureInfo.InvariantCulture);
         var n2Str = seed.Node2.NodeId.ToString(CultureInfo.InvariantCulture);

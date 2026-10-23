@@ -151,6 +151,7 @@ public class EduTwinSeedFactory
             {
                 CenterId = _centerId, CurriculumId = curriculumId, SubjectId = math ? mathSubId : engSubId,
                 TeacherId = teacherId, Title = $"Khung mẫu {(math ? "Toán" : "Tiếng Anh")} {grade}", GradeLevel = grade,
+                GraphVersionId = DeterministicSeedIds.GradeGraphVersionId(_isCenterA, math, grade),
                 Description = "Dữ liệu minh họa một số chủ đề; chưa phải giáo trình đầy đủ cho cả năm học.",
                 ReviewStatus = EduTwin.Contracts.CurriculumAndQuestions.ReviewStatus.Published, SourceFile = null,
                 CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc
@@ -175,6 +176,35 @@ public class EduTwinSeedFactory
                     CenterId = _centerId, CurriculumId = curriculumId, NodeId = topics[i].NodeId,
                     OrderIndex = (uint)(i + 1), CreatedAt = DeterministicSeedIds.AuditTimeUtc
                 });
+        }
+
+        // Explicit grade assignments approved in KNOWLEDGE-GRADE-PROPOSALS-2026-10-22.
+        // Do not infer scope from topic names/codes or a draft curriculum's composition.
+        foreach (byte grade in new byte[] { 10, 11, 12 })
+        foreach (var math in new[] { true, false })
+        {
+            var graphId = DeterministicSeedIds.GradeGraphVersionId(_isCenterA, math, grade);
+            var actor = math ? teacherMathId : teacherEnglishId;
+            container.GraphVersions.Add(new KnowledgeGraphVersion
+            {
+                CenterId = _centerId, GraphVersionId = graphId, SubjectId = math ? mathSubId : engSubId,
+                GradeLevel = grade, Status = "Published", IsCurrent = true,
+                Title = $"Khung tri thức {(math ? "Toán" : "Tiếng Anh")} {grade}",
+                CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc,
+                CreatedBy = actor, UpdatedBy = actor
+            });
+            var gradeTopics = math ? new[] { mathTopics[grade - 10] } : engTopics;
+            foreach (var topic in gradeTopics)
+                container.NodeGrades.Add(new KnowledgeNodeGrade { CenterId = _centerId, GraphVersionId = graphId,
+                    NodeId = topic.NodeId, CreatedAt = DeterministicSeedIds.AuditTimeUtc, CreatedBy = actor });
+            var gradeEdges = math
+                ? (grade == 10 ? Array.Empty<KnowledgeEdge>() : new[] { container.Edges[grade - 11] })
+                : container.Edges.Where(e => e.SubjectId == engSubId).ToArray();
+            foreach (var edge in gradeEdges)
+                container.EdgeGrades.Add(new KnowledgeEdgeGrade { CenterId = _centerId, GraphVersionId = graphId,
+                    EdgeId = edge.EdgeId, RelationType = edge.RelationType, Weight = edge.Weight,
+                    SourceGraphVersionId = math ? DeterministicSeedIds.GradeGraphVersionId(_isCenterA, true, (byte)(grade - 1)) : null,
+                    CreatedAt = DeterministicSeedIds.AuditTimeUtc, CreatedBy = actor });
         }
 
         // 8. Questions
@@ -250,6 +280,17 @@ public class EduTwinSeedFactory
             var topic = c.Topics.First(n => n.NodeCode == t.TopicCode);
             var teacherId = t.TopicCode.StartsWith("MATH") ? teacherMathId : teacherEnglishId;
             var qId = _questionId++;
+            var approvedVersionIds = c.GraphVersions.Where(v => v.SubjectId == topic.SubjectId &&
+                v.GradeLevel == t.GradeLevel && v.Status == "Published" && !v.IsLegacy && v.IsCurrent)
+                .Select(v => v.GraphVersionId).ToHashSet();
+            if (!c.NodeGrades.Any(n => n.NodeId == topic.NodeId && approvedVersionIds.Contains(n.GraphVersionId)))
+            {
+                // Reserve deterministic IDs; do not silently regrade a question or broaden approved node scope.
+                c.SkippedQuestionTemplates.Add(t.LogicalCode);
+                if (t.QuestionType == EduTwin.Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice)
+                    _optionId += (ulong)t.Options.Count;
+                continue;
+            }
 
             var q = new Question
             {

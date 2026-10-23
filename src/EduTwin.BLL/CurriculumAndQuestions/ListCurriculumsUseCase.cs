@@ -49,6 +49,9 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
         {
             return ListCurriculumsResult.Failure(ErrorCodes.ValidationFailed);
         }
+        if (query.ClassId == Guid.Empty || (query.AcademicYear is not null &&
+            (string.IsNullOrWhiteSpace(query.AcademicYear) || query.AcademicYear.Length > 20 || query.AcademicYear != query.AcademicYear.Trim())))
+            return ListCurriculumsResult.Failure(ErrorCodes.ValidationFailed);
 
         ReviewStatus? filterStatus = null;
         if (query.Status != null)
@@ -71,6 +74,10 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
         // 3. Center and Actor Validation
         var centerId = _tenantContext.CenterId.Value;
         var actorId = _tenantContext.UserId.Value;
+
+        if (query.ClassId.HasValue && !await _dbContext.Classes.AsNoTracking().AnyAsync(c => c.CenterId == centerId &&
+            c.ClassId == query.ClassId.Value && c.TeacherId == actorId && !c.IsDeleted, cancellationToken))
+            return ListCurriculumsResult.Failure(ErrorCodes.ResourceNotFound);
 
         var center = await _dbContext.Centers
             .AsNoTracking()
@@ -100,7 +107,9 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
         var baseQuery = _dbContext.Curriculums
             .AsNoTracking()
             .Where(c => c.CenterId == centerId && !c.IsDeleted && (c.TeacherId == actorId ||
-                (c.Visibility == MaterialVisibility.Shared && c.ReviewStatus == ReviewStatus.Published)));
+                (c.Visibility == MaterialVisibility.Shared && (c.ReviewStatus == ReviewStatus.Published ||
+                    (query.History && c.ReviewStatus == ReviewStatus.Archived && _dbContext.ClassCurriculumApplications.Any(a =>
+                        a.CenterId == centerId && a.CurriculumId == c.CurriculumId && a.Class.TeacherId == actorId))))));
 
         if (query.SubjectId.HasValue)
         {
@@ -121,10 +130,16 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
             baseQuery = baseQuery.Where(c => c.ReviewStatus == filterStatus.Value);
         }
 
+        var allClasses = await CurriculumClassScopeQuery.ReadAsync(_dbContext, centerId, actorId, null, cancellationToken, query.History);
+        var matchingLinks = allClasses.Where(a => (!query.ClassId.HasValue || a.ClassId == query.ClassId.Value) &&
+            (query.AcademicYear is null || a.AcademicYear == query.AcademicYear)).ToList();
+        var matchingCurriculumIds = matchingLinks.Select(a => a.CurriculumId).ToHashSet();
         var curriculums = await baseQuery
             .OrderByDescending(c => c.UpdatedAt)
             .ThenBy(c => c.CurriculumId)
             .ToListAsync(cancellationToken);
+        if (query.History || query.ClassId.HasValue || query.AcademicYear is not null)
+            curriculums = curriculums.Where(c => matchingCurriculumIds.Contains(c.CurriculumId)).ToList();
 
         // 5. Projection & Joins
         var curriculumIds = curriculums.Select(c => c.CurriculumId).ToList();
@@ -138,8 +153,6 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
             // Load all classes and nodes for this center, then filter client-side.
             // This avoids MySQL EF provider type mapping issues with Contains(List<Guid>)
             // when columns are stored as varchar(36) via LowercaseGuidConverter.
-            var allClasses = await CurriculumClassScopeQuery.ReadAsync(_dbContext, centerId, actorId, null, cancellationToken);
-
             foreach (var cc in allClasses.Where(cc => curriculumIdSet.Contains(cc.CurriculumId)))
             {
                 if (!classesMap.TryGetValue(cc.CurriculumId, out var list))
@@ -178,6 +191,8 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
                 Visibility = c.Visibility.ToString(),
                 SubjectId = c.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
                 GradeLevel = c.GradeLevel,
+                GraphVersionId = c.GraphVersionId?.ToString("D"),
+                ApplicationClasses = allClasses.Where(a => a.CurriculumId == c.CurriculumId).Select(a => a.ToDto()).ToList(),
                 Title = c.Title,
                 Description = c.Description,
                 SourceFile = c.SourceFile,

@@ -35,10 +35,13 @@ public class KnowledgeGraphController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetKnowledgeGraph(
-        [FromQuery] Guid subjectId,
+        [FromQuery] KnowledgeGraphQuery query,
         CancellationToken cancellationToken)
     {
-        var result = await _getKnowledgeGraphUseCase.ExecuteAsync(subjectId, cancellationToken);
+        var result = (query.CurriculumId.HasValue || query.ClassId.HasValue || query.GradeLevel.HasValue || query.GraphVersionId.HasValue ||
+            query.AcademicYear is not null || query.History)
+            ? await _getKnowledgeGraphUseCase.ExecuteAsync(query, cancellationToken)
+            : await _getKnowledgeGraphUseCase.ExecuteAsync(query.SubjectId, cancellationToken);
 
         if (result.IsSuccess)
         {

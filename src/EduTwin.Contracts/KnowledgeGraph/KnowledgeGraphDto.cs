@@ -7,4 +7,6 @@ public class KnowledgeGraphDto
     public string SubjectId { get; set; } = string.Empty;
     public IReadOnlyList<KnowledgeGraphNodeDto> Nodes { get; set; } = [];
     public IReadOnlyList<KnowledgeGraphEdgeDto> Edges { get; set; } = [];
+    public KnowledgeGraphResolvedScope? ResolvedScope { get; set; }
+    public IReadOnlyList<KnowledgeGraphEdgeDto> ExternalPrerequisites { get; set; } = [];
 }

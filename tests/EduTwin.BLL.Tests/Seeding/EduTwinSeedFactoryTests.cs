@@ -74,12 +74,19 @@ public class EduTwinSeedFactoryTests
     }
 
     [Fact]
-    public void CreateData_ShouldHave30QuestionsPerCenter()
+    public void CreateData_ExcludesUnapprovedQuestionScopeWithoutRegrading()
     {
         var factory = new EduTwinSeedFactory(true);
         var data = factory.CreateData();
 
-        Assert.Equal(30, data.Questions.Count);
+        Assert.Equal(29, data.Questions.Count);
+        Assert.Equal(["MATH-FUNC-05"], data.SkippedQuestionTemplates);
+        Assert.DoesNotContain(data.Questions, q => q.QuestionId == DeterministicSeedIds.CenterAQuestionIdBase + 4);
+        foreach (var q in data.Questions)
+        {
+            var versions = data.GraphVersions.Where(v => v.GradeLevel == q.GradeLevel && v.SubjectId == q.SubjectId).Select(v => v.GraphVersionId).ToHashSet();
+            Assert.Contains(data.NodeGrades, n => n.NodeId == q.PrimaryTopicNodeId && versions.Contains(n.GraphVersionId));
+        }
     }
 
     [Fact]
@@ -88,24 +95,25 @@ public class EduTwinSeedFactoryTests
         var factory = new EduTwinSeedFactory(true);
         var data = factory.CreateData();
 
-        // 6 topics * 5 questions
+        // One legacy template needs academic review; its grade is not silently rewritten.
         var mcQuestions = data.Questions.Where(q => q.QuestionType == EduTwin.Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice).ToList();
         var saQuestions = data.Questions.Where(q => q.QuestionType == EduTwin.Contracts.CurriculumAndQuestions.QuestionType.ShortAnswer).ToList();
         var essayQuestions = data.Questions.Where(q => q.QuestionType == EduTwin.Contracts.CurriculumAndQuestions.QuestionType.Essay).ToList();
 
         Assert.Equal(12, mcQuestions.Count);
         Assert.Equal(12, saQuestions.Count);
-        Assert.Equal(6, essayQuestions.Count);
+        Assert.Equal(5, essayQuestions.Count);
 
         foreach (var topic in data.Topics)
         {
             var topicQuestions = data.Questions.Where(q => q.PrimaryTopicNodeId == topic.NodeId).OrderBy(q => q.Difficulty).ToList();
-            Assert.Equal(5, topicQuestions.Count);
+            Assert.Equal(topic.NodeCode == "MATH-FUNCTIONS" ? 4 : 5, topicQuestions.Count);
             Assert.Equal(EduTwin.Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice, topicQuestions[0].QuestionType); // Diff 1
             Assert.Equal(EduTwin.Contracts.CurriculumAndQuestions.QuestionType.ShortAnswer, topicQuestions[1].QuestionType);    // Diff 2
             Assert.Equal(EduTwin.Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice, topicQuestions[2].QuestionType); // Diff 3
             Assert.Equal(EduTwin.Contracts.CurriculumAndQuestions.QuestionType.ShortAnswer, topicQuestions[3].QuestionType);    // Diff 4
-            Assert.Equal(EduTwin.Contracts.CurriculumAndQuestions.QuestionType.Essay, topicQuestions[4].QuestionType);          // Diff 5
+            if (topic.NodeCode != "MATH-FUNCTIONS")
+                Assert.Equal(EduTwin.Contracts.CurriculumAndQuestions.QuestionType.Essay, topicQuestions[4].QuestionType); // Diff 5
         }
 
         foreach (var mc in mcQuestions)

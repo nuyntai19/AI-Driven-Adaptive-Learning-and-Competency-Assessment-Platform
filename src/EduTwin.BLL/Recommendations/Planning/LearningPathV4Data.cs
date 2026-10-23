@@ -15,7 +15,8 @@ namespace EduTwin.BLL.Recommendations.Planning;
 /// <summary>Subject/curriculum-scoped source data shared by planning and execution. No pilot fixtures.</summary>
 public static class LearningPathV4Data
 {
-    public const string Policy = "v4-evidence-1";
+    public const string Policy = "v4-evidence-grade-scope-2";
+    public static bool IsV4Policy(string policy) => policy.StartsWith("v4-evidence-", StringComparison.Ordinal);
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public static async Task<List<KnowledgeNode>> NodesAsync(EduTwinDbContext db, Guid center, Guid student,
@@ -28,18 +29,32 @@ public static class LearningPathV4Data
         var scope = await StudentLearningScope.ResolveAsync(db, center, student, subject, classId, false, ct);
         if (!scope.Allowed) throw new LearningScopeDeniedException(scope.Reason!);
         var all = await db.KnowledgeNodes.AsNoTracking().Where(n => n.CenterId == center &&
-            n.SubjectId == subject && n.IsActive && n.NodeType != NodeType.Subject && n.NodeType != NodeType.Chapter)
+            n.SubjectId == subject && n.IsActive && !n.IsDeleted && n.NodeType != NodeType.Subject && n.NodeType != NodeType.Chapter)
             .OrderBy(n => n.OrderIndex).ThenBy(n => n.NodeId).ToListAsync(ct);
+        all = all.Where(n => scope.Includes(n.NodeId)).ToList();
+        var topology = await ScopedKnowledgeTopology.ReadAsync(db, center, subject, scope, ct);
+        foreach (var node in all)
+            node.ParentNodeId = topology.Parents.GetValueOrDefault(node.NodeId);
         // Include leaf skills/concepts rather than repeatedly scheduling their parent (e.g. "Tenses").
-        var parents = all.Where(n => n.ParentNodeId.HasValue).Select(n => n.ParentNodeId!.Value).ToHashSet();
-        return all.Where(n => scope.Includes(n.NodeId) && !parents.Contains(n.NodeId)).ToList();
+        var included = all.Select(n => n.NodeId).ToHashSet();
+        var parents = topology.Hierarchies.Where(h => scope.GraphVersionIds.Contains(h.Key))
+            .SelectMany(h => h.Value.Where(n => included.Contains(n.Key) && n.Value.HasValue &&
+                scope.NodeIdsByGraphVersionId.TryGetValue(h.Key, out var selected) && selected.Contains(n.Key) && selected.Contains(n.Value.Value))
+                .Select(n => n.Value!.Value)).ToHashSet();
+        return all.Where(n => !parents.Contains(n.NodeId)).ToList();
     }
 
-    public static Task<List<Question>> QuestionsAsync(EduTwinDbContext db, Guid center, Guid subject,
-        IReadOnlyCollection<ulong> nodes, CancellationToken ct) => db.Questions.AsNoTracking()
+    public static async Task<List<Question>> QuestionsAsync(EduTwinDbContext db, Guid center, Guid student, Guid subject,
+        IReadOnlyCollection<ulong> nodes, Guid? classId, CancellationToken ct)
+    {
+        var scope = await StudentLearningScope.ResolveAsync(db, center, student, subject, classId, false, ct);
+        if (!scope.Allowed) return [];
+        var questions = await db.Questions.AsNoTracking()
         .Where(q => q.CenterId == center && q.SubjectId == subject && nodes.Contains(q.PrimaryTopicNodeId) &&
-            q.Status == QuestionStatus.Active && q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual &&
+            q.Status == QuestionStatus.Active && !q.IsDeleted && q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual &&
             q.QuestionType != QuestionType.Essay).OrderBy(q => q.Difficulty).ThenBy(q => q.QuestionId).ToListAsync(ct);
+        return questions.Where(q => scope.IncludesQuestion(q.PrimaryTopicNodeId, q.GradeLevel)).ToList();
+    }
 
     public static bool Matches(LearningContentVersion content, KnowledgeNode node) =>
         content.SkillId == node.NodeId.ToString() || content.SkillId == node.NodeCode;
@@ -49,7 +64,9 @@ public static class LearningPathV4Data
     {
         var nodes = await NodesAsync(db, center, student, subject, classId, ct);
         var ids = nodes.Select(n => n.NodeId).ToList();
-        var questions = await QuestionsAsync(db, center, subject, ids, ct);
+        var questions = await QuestionsAsync(db, center, student, subject, ids, classId, ct);
+        var scope = await StudentLearningScope.ResolveAsync(db, center, student, subject, classId, false, ct);
+        var topology = await ScopedKnowledgeTopology.ReadAsync(db, center, subject, scope, ct);
         var content = await db.LearningContentVersions.AsNoTracking().Where(c => c.CenterId == center &&
             c.SubjectId == subject && c.Status == "Published").ToListAsync(ct);
         var attempts = await db.Attempts.AsNoTracking().Include(a => a.Question).Where(a => a.CenterId == center &&
@@ -64,22 +81,13 @@ public static class LearningPathV4Data
             attemptIds.Contains(a.AttemptId)).ToListAsync(ct);
         var overrides = analyses.ToDictionary(a => a.AttemptId, a => a.OverrideIsCorrect);
         var twins = await db.KnowledgeTwins.AsNoTracking().Where(t => t.CenterId == center && t.StudentId == student &&
-            t.SubjectId == subject && ids.Contains(t.TopicNodeId)).ToDictionaryAsync(t => t.TopicNodeId, ct);
-        var edges = await db.KnowledgeEdges.AsNoTracking().Where(e => e.CenterId == center && e.SubjectId == subject &&
-            e.RelationType == RelationType.PrerequisiteOf).ToListAsync(ct);
-        var hierarchy = await db.KnowledgeNodes.AsNoTracking().Where(n => n.CenterId == center && n.SubjectId == subject && n.IsActive)
+            t.SubjectId == subject && !t.IsDeleted).ToDictionaryAsync(t => t.TopicNodeId, ct);
+        var edges = topology.Relations.Where(e => e.Edge.RelationType == RelationType.PrerequisiteOf).ToList();
+        var hierarchy = await db.KnowledgeNodes.AsNoTracking().Where(n => n.CenterId == center && n.SubjectId == subject && n.IsActive && !n.IsDeleted)
             .ToDictionaryAsync(n => n.NodeId, ct);
-        bool Under(ulong leaf, ulong ancestor)
-        {
-            var visited = new HashSet<ulong>();
-            while (visited.Add(leaf) && hierarchy.TryGetValue(leaf, out var current))
-            {
-                if (leaf == ancestor) return true;
-                if (!current.ParentNodeId.HasValue) break;
-                leaf = current.ParentNodeId.Value;
-            }
-            return false;
-        }
+        foreach (var node in hierarchy.Values) node.ParentNodeId = topology.Parents.GetValueOrDefault(node.NodeId);
+        var externalMastery = edges.Select(e => e.Edge.SourceNodeId).Where(id => !ids.Contains(id) && hierarchy.ContainsKey(id))
+            .Distinct().ToDictionary(id => id.ToString(), id => twins.TryGetValue(id, out var twin) && twin.EvidenceCount > 0 ? twin.MasteryPercentage : 0m);
         var statuses = new List<SkillCapabilityStatusDto>();
         foreach (var node in nodes)
         {
@@ -91,9 +99,9 @@ public static class LearningPathV4Data
                 topic = parent;
                 if (topic.NodeType == NodeType.Topic) break;
             }
-            var prerequisites = edges.Where(e => Under(node.NodeId, e.TargetNodeId)).SelectMany(e =>
-                nodes.Where(n => Under(n.NodeId, e.SourceNodeId)).Select(n => n.NodeId.ToString())
-                    .DefaultIfEmpty(e.SourceNodeId.ToString())).Where(id => id != node.NodeId.ToString()).Distinct().ToList();
+            var prerequisites = edges.Where(e => topology.Under(node.NodeId, e.Edge.TargetNodeId, e.GraphVersionId)).SelectMany(e =>
+                nodes.Where(n => topology.Under(n.NodeId, e.Edge.SourceNodeId, e.SourceGraphVersionId)).Select(n => n.NodeId.ToString())
+                    .DefaultIfEmpty(e.Edge.SourceNodeId.ToString())).Where(id => id != node.NodeId.ToString()).Distinct().ToList();
             var related = attempts.Where(a => a.Question.PrimaryTopicNodeId == node.NodeId).ToList();
             var usable = related.Where(a => !a.IsPostFeedback && a.SolutionExposedAt == null &&
                 a.CreatedAt >= now.AddDays(-30) && latest.TryGetValue(a.AttemptId, out var e) &&
@@ -121,14 +129,14 @@ public static class LearningPathV4Data
                     : "Chưa có bằng chứng cho kỹ năng này; không coi là năng lực thấp."
             });
         }
-        foreach (var skill in statuses.Where(s => s.Availability == "Available"))
-            if (skill.PrerequisiteSkillIds.Any(p => statuses.All(s => s.SkillId != p || s.State != "Confirmed")))
+        foreach (var skill in statuses.Where(s => s.Availability == "Available" && s.State != "Confirmed"))
+            if (skill.PrerequisiteSkillIds.Any(p => statuses.All(s => s.SkillId != p || s.State != "Confirmed") && externalMastery.GetValueOrDefault(p) < 60m))
                 skill.Availability = "PrerequisiteBlocked";
         return new CapabilityMapDto
         {
             SubjectId = subject, StudentId = student,
             SubjectName = await db.Subjects.Where(s => s.CenterId == center && s.SubjectId == subject).Select(s => s.SubjectName).SingleAsync(ct),
-            Skills = statuses, LastUpdatedAt = now,
+            Skills = statuses, LastUpdatedAt = now, ExternalPrerequisiteMastery = externalMastery,
             OverallProgressRate = statuses.Count == 0 ? 0 : Math.Round(100m * statuses.Count(s => s.State == "Confirmed") / statuses.Count, 1),
             ProvenCapabilities = statuses.Where(s => s.State == "Confirmed").Select(s => s.SkillName).ToList(),
             AreasNeedingSupport = statuses.Where(s => s.State == "Developing").Select(s => s.SkillName).ToList()

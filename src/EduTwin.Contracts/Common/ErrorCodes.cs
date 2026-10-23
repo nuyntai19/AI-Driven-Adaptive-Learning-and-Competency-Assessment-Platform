@@ -13,6 +13,7 @@ public static class ErrorCodes
     public const string LastTenantAdmin = "LAST_TENANT_ADMIN";
     public const string ResourceNotFound = "RESOURCE_NOT_FOUND";
     public const string ConcurrencyConflict = "CONCURRENCY_CONFLICT";
+    public const string AcademicScopeConflict = "ACADEMIC_SCOPE_CONFLICT";
     public const string ForbiddenResource = "FORBIDDEN_RESOURCE";
     public const string DuplicateResource = "DUPLICATE_RESOURCE";
     public const string DuplicateSubmission = "DUPLICATE_SUBMISSION";

@@ -160,14 +160,18 @@ public class PublishCurriculumUseCaseTests
         _tenantMock.Setup(t => t.UserId).Returns(userId);
 
         var curriculumId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
         using (var dbContext = new EduTwinDbContext(_dbOptions, _tenantAccessorMock.Object))
         {
+            var version = GraphScopeFixture.Approve(dbContext, centerId, subjectId, 10);
             dbContext.Curriculums.Add(new Curriculum
             {
                 CurriculumId = curriculumId,
                 CenterId = centerId,
                 TeacherId = userId,
-                SubjectId = Guid.NewGuid(),
+                SubjectId = subjectId,
+                GradeLevel = 10,
+                GraphVersionId = version,
                 Title = "Draft Curriculum",
                 ReviewStatus = ReviewStatus.Draft,
                 RowVersion = 1,

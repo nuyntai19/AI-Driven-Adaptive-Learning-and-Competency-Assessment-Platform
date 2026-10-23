@@ -122,7 +122,7 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
         {
             var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId,
                 question.SubjectId, request.ClassId, false, cancellationToken);
-            if (!scope.Includes(question.PrimaryTopicNodeId))
+            if (!scope.IncludesQuestion(question.PrimaryTopicNodeId, question.GradeLevel))
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
         }
 
@@ -145,7 +145,6 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             {
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             }
-
             var assignedQuestions = Recommendations.Services.LearningSessionExecutionService.ParseQuestionIds(sessionRun.QuestionsAssigned);
             if (sessionRun.CheckpointQuestionId.HasValue && !assignedQuestions.Contains(sessionRun.CheckpointQuestionId.Value))
             {
@@ -156,8 +155,18 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             {
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.ForbiddenResource);
             }
+            var scopedSession = await _dbContext.LearningPathSessions.AsNoTracking()
+                .SingleOrDefaultAsync(s => s.CenterId == centerId && s.SessionId == sessionRun.SessionId, cancellationToken);
+            if (scopedSession is null || request.ClassId.HasValue && scopedSession.ClassId != request.ClassId)
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
+            var sessionScope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId,
+                question.SubjectId, scopedSession.ClassId, false, cancellationToken);
+            if (!sessionScope.IncludesQuestion(question.PrimaryTopicNodeId, question.GradeLevel))
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             var isV4 = await _dbContext.LearningPathSessions.AnyAsync(s => s.CenterId == centerId &&
-                s.SessionId == sessionRun.SessionId && s.PolicyVersion == Recommendations.Planning.LearningPathV4Data.Policy, cancellationToken);
+                s.SessionId == sessionRun.SessionId && s.PolicyVersion.StartsWith("v4-evidence-"), cancellationToken);
+            if (isV4 && scopedSession.PolicyVersion != Recommendations.Planning.LearningPathV4Data.Policy)
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             if (isV4 && (sessionRun.CurrentQuestionId != questionId || !await _dbContext.IssuedItems.AnyAsync(i =>
                 i.CenterId == centerId && i.ActivityRun.SessionRunId == sessionRun.SessionRunId &&
                 i.QuestionId == questionId && i.AttemptId == null && i.SolutionExposedAt == null, cancellationToken)))

@@ -116,8 +116,7 @@ public sealed class LearningPathProposalCustomizationTests
     public async Task RequiredFoundationIsKeptWhenItsDependentSectionIsSelected()
     {
         using var f = new LearningPathV4Fixture();
-        f.Db.KnowledgeEdges.Add(new KnowledgeEdge { CenterId = f.Center, SubjectId = f.English, SourceNodeId = 101,
-            TargetNodeId = 103, RelationType = RelationType.PrerequisiteOf, Weight = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        f.AddPrerequisite(101, 103);
         await f.Db.SaveChangesAsync();
         var source = await f.Proposal("103");
         var adjusted = await f.Planner.CustomizePathProposalAsync(f.Center, f.Student, source.ProposalId, Options("103"));

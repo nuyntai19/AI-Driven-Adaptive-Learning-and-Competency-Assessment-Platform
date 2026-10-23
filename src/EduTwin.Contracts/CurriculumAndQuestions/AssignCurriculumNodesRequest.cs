@@ -8,6 +8,7 @@ public class AssignCurriculumNodesRequest
 {
     [Required]
     public List<string>? NodeIds { get; set; }
+    public Guid? GraphVersionId { get; set; }
     
     [Required]
     public string? RowVersion { get; set; }

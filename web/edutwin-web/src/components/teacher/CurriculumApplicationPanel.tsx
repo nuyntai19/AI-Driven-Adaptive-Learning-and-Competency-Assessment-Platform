@@ -7,8 +7,9 @@ import { permissions } from "../../auth/permissions";
 import { extractProblemDetails } from "../../utils/problemDetails";
 import { groupCurriculumClasses, needsNewGradeException, activeApplicationClassCount } from "../../utils/curriculumApplicationClasses";
 import type { ClassDto } from "../../types/organization";
+import { knowledgeKeys } from "../../utils/knowledgeScope";
 
-interface Application { applicationId: string; classId: string; className: string; pausedByClass?: boolean; applicationRole: string; startedAt: string; endedAt: string | null; changeReason: string | null; endReason: string | null; gradeMismatchReason: string | null }
+interface Application { applicationId: string; classId: string; className: string; academicYear: string; gradeLevel?: number | null; pausedByClass?: boolean; applicationRole: string; startedAt: string; endedAt: string | null; changeReason: string | null; endReason: string | null; gradeMismatchReason: string | null }
 interface Response { data: Application[]; rowVersion: string }
 interface Props { curriculumId: string; subjectId: string; gradeLevel?: number | null; readOnly?: boolean }
 
@@ -60,6 +61,7 @@ export const CurriculumApplicationPanel = ({ curriculumId, subjectId, gradeLevel
     client.setQueryData(key, data);
     client.invalidateQueries({queryKey:["teacherCurriculumDetail",curriculumId]});
     client.invalidateQueries({queryKey:["teacherCurriculums"]});
+    client.invalidateQueries({queryKey:knowledgeKeys.all});
     client.invalidateQueries({queryKey:["student-academic-context"]});
     client.invalidateQueries({queryKey:["studentDashboard"]});
     setDirty(false); setFeedback("Đã lưu áp dụng giáo trình và lịch sử thay đổi."); setReason(""); setGradeReason("");
@@ -70,7 +72,7 @@ export const CurriculumApplicationPanel = ({ curriculumId, subjectId, gradeLevel
       setDirty(true); setFeedback("");
       setSelected(prev => e.target.checked ? [...prev,c.classId] : prev.filter(id => id !== c.classId));
     }} />
-    {c.className} · {c.gradeLevel != null ? `Khối ${c.gradeLevel}` : "Chưa phân khối — áp dụng hiện có"}
+    {c.className} · {c.academicYear} · {c.gradeLevel != null ? `Khối ${c.gradeLevel}` : "Chưa phân khối — áp dụng hiện có"}
   </label>;
   return <section className="th-surface rounded-xl p-5 mb-5 space-y-4" aria-label="Áp dụng giáo trình cho lớp">
     <h2 className="text-lg font-bold">{readOnly ? "Áp dụng và lịch sử giáo trình" : "Áp dụng giáo trình cho lớp phụ trách"} ({applications.data ? `${activeApplicationClassCount(applications.data.data)} lớp đang áp dụng` : "đang tải"})</h2>
@@ -111,11 +113,11 @@ export const CurriculumApplicationPanel = ({ curriculumId, subjectId, gradeLevel
         {dirty && <button type="button" className="th-secondary-button" disabled={save.isPending} onClick={cancel}>Hủy lựa chọn chưa lưu</button>}
       </div>
     </> : <ul className="space-y-2 text-sm">{applications.data?.data.filter(a => !a.endedAt).map(a =>
-      <li key={a.applicationId}>{a.className} · {a.applicationRole === "Primary" ? "Chính" : "Bổ trợ"} · {a.pausedByClass ? "Tạm ngừng — lớp đã lưu trữ" : "Đang áp dụng"}</li>)}</ul>}
+      <li key={a.applicationId}>{a.className} · {a.academicYear} · {a.gradeLevel ? `Khối ${a.gradeLevel}` : "Chưa phân khối"} · {a.applicationRole === "Primary" ? "Chính" : "Bổ trợ"} · {a.pausedByClass ? "Tạm ngừng — lớp đã lưu trữ" : "Đang áp dụng"}</li>)}</ul>}
     {feedback && <p role="status">{feedback}</p>}
     <details><summary className="font-semibold cursor-pointer">Lịch sử áp dụng ({applications.data?.data.length ?? 0})</summary>
       <ul className="mt-3 space-y-2 text-sm">{applications.data?.data.map(a => <li key={a.applicationId}>
-        {a.className} · {a.applicationRole === "Primary" ? "Chính" : "Bổ trợ"} · {a.endedAt ? "Đã ngừng" : a.pausedByClass ? "Tạm ngừng — lớp đã lưu trữ" : "Đang áp dụng"} · {new Date(a.startedAt).toLocaleString("vi-VN")}
+        {a.className} · {a.academicYear} · {a.gradeLevel ? `Khối ${a.gradeLevel}` : "Chưa phân khối"} · {a.applicationRole === "Primary" ? "Chính" : "Bổ trợ"} · {a.endedAt ? "Đã ngừng" : a.pausedByClass ? "Tạm ngừng — lớp đã lưu trữ" : "Đang áp dụng"} · {new Date(a.startedAt).toLocaleString("vi-VN")}
         {a.endedAt && ` → ${new Date(a.endedAt).toLocaleString("vi-VN")}`}{a.changeReason && ` · Bắt đầu: ${a.changeReason}`}{a.endReason && ` · Ngừng: ${a.endReason}`}{a.gradeMismatchReason && ` · Ngoại lệ: ${a.gradeMismatchReason}`}
       </li>)}</ul>
     </details>

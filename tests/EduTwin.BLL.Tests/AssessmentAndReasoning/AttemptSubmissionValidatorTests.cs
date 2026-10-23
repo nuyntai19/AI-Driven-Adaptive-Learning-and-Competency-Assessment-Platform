@@ -737,6 +737,7 @@ public sealed class AttemptSubmissionValidatorTests : IDisposable
             CenterId = effectiveCenterId,
             SubjectId = Guid.Parse("55555555-5555-5555-5555-555555555555"),
             PrimaryTopicNodeId = 10,
+            GradeLevel = 12,
             CreatedByTeacherId = _teacherId,
             QuestionType = questionType,
             Difficulty = 3,
@@ -753,6 +754,10 @@ public sealed class AttemptSubmissionValidatorTests : IDisposable
             UpdatedAt = FixedUtcNow
         };
         _dbContext.Questions.Add(question);
+        _dbContext.KnowledgeNodes.Add(new EduTwin.DAL.KnowledgeGraph.KnowledgeNode { CenterId = effectiveCenterId,
+            SubjectId = question.SubjectId, NodeId = 10, NodeCode = "SUBMISSION", NodeName = "Submission topic",
+            NodeType = EduTwin.Contracts.KnowledgeGraph.NodeType.Topic, IsActive = true, CreatedAt = FixedUtcNow, UpdatedAt = FixedUtcNow });
+        GraphScopeFixture.Approve(_dbContext, effectiveCenterId, question.SubjectId, 12, 10);
 
         if (options is not null)
         {

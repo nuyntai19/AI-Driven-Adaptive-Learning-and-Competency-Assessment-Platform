@@ -66,6 +66,9 @@ public class EduTwinDbContext : DbContext
     // KnowledgeGraph
     public DbSet<KnowledgeNode> KnowledgeNodes => Set<KnowledgeNode>();
     public DbSet<KnowledgeEdge> KnowledgeEdges => Set<KnowledgeEdge>();
+    public DbSet<KnowledgeGraphVersion> KnowledgeGraphVersions => Set<KnowledgeGraphVersion>();
+    public DbSet<KnowledgeNodeGrade> KnowledgeNodeGrades => Set<KnowledgeNodeGrade>();
+    public DbSet<KnowledgeEdgeGrade> KnowledgeEdgeGrades => Set<KnowledgeEdgeGrade>();
 
     // CurriculumAndQuestions
     public DbSet<Curriculum> Curriculums => Set<Curriculum>();

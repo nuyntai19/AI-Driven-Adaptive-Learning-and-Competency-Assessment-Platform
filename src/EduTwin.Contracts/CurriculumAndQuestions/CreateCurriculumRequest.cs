@@ -20,6 +20,7 @@ public class CreateCurriculumRequest
     [Required]
     [Range(10, 12)]
     public byte? GradeLevel { get; set; }
+    public Guid? GraphVersionId { get; set; }
 
     [Required]
     public List<string>? NodeIds { get; set; }

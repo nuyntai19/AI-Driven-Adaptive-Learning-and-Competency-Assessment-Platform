@@ -13,6 +13,7 @@ using EduTwin.Contracts.Recommendations;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.DigitalTwin;
 using EduTwin.DAL.KnowledgeGraph;
+using EduTwin.DAL.Organization;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.DAL.Persistence;
 using EduTwin.DAL.Recommendations;
@@ -39,6 +40,16 @@ public sealed class RecommendationStateMachineTests : IDisposable
         _tenantContext = new TenantContext();
         _tenantContext.Initialize(_centerId, _studentId, "Student", 1);
         _dbContext = new EduTwinDbContext(options, _tenantContext);
+        _dbContext.Students.Add(new Student
+        {
+            CenterId = _centerId,
+            StudentId = _studentId,
+            FullName = "Test Student",
+            GradeLevel = 10,
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
+        });
+        _dbContext.SaveChanges();
     }
 
     public void Dispose()
@@ -248,6 +259,24 @@ public sealed class RecommendationStateMachineTests : IDisposable
     [Fact]
     public async Task NewerNoCandidate_DelayedOlderTrigger_IsIgnoredAfterTopicsAppear()
     {
+        _dbContext.KnowledgeNodes.Add(new KnowledgeNode
+        {
+            CenterId = _centerId,
+            SubjectId = _subjectId,
+            NodeId = 899,
+            NodeCode = "N899",
+            NodeName = "Chapter node",
+            NodeType = NodeType.Chapter,
+            OrderIndex = 1,
+            ExamImportance = 50m,
+            EstimatedLearningMinutes = 60,
+            IsActive = true,
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
+        });
+        GraphScopeFixture.Approve(_dbContext, _centerId, _subjectId, 10, 899);
+        await _dbContext.SaveChangesAsync();
+
         var engine = CreateEngine();
         var newer = await engine.GenerateAndPersistAsync(
             _centerId,
@@ -329,6 +358,8 @@ public sealed class RecommendationStateMachineTests : IDisposable
                 CreatedAt = _utcNow,
                 UpdatedAt = _utcNow
             });
+        var version = GraphScopeFixture.Approve(_dbContext, _centerId, _subjectId, 10, 31, 32);
+        GraphScopeFixture.MapEdges(_dbContext, _centerId, version, 310, 320);
         await _dbContext.SaveChangesAsync();
 
         var engine = CreateEngine();
@@ -431,6 +462,7 @@ public sealed class RecommendationStateMachineTests : IDisposable
             UpdatedAt = _utcNow
         });
 
+        GraphScopeFixture.Approve(_dbContext, _centerId, _subjectId, 10, 1, 2, 3, 4);
         await _dbContext.SaveChangesAsync();
 
         var engine = new RecommendationEngine(
@@ -462,8 +494,9 @@ public sealed class RecommendationStateMachineTests : IDisposable
         var node = new KnowledgeNode { CenterId = _centerId, SubjectId = _subjectId, NodeId = 10, NodeCode = "N10", NodeName = "Calculus", NodeType = NodeType.Topic, OrderIndex = 1, IsActive = true, CreatedAt = _utcNow, UpdatedAt = _utcNow };
         _dbContext.KnowledgeNodes.Add(node);
 
-        var q = new Question { CenterId = _centerId, SubjectId = _subjectId, PrimaryTopicNodeId = 10, QuestionId = 1010, QuestionText = "Integral of x", CorrectAnswer = "A", Solution = "S", LanguageCode = "vi", Status = QuestionStatus.Active, MaxScore = 10, CreatedAt = _utcNow, UpdatedAt = _utcNow };
+        var q = new Question { CenterId = _centerId, SubjectId = _subjectId, PrimaryTopicNodeId = 10, QuestionId = 1010, QuestionText = "Integral of x", CorrectAnswer = "A", Solution = "S", LanguageCode = "vi", GradeLevel = 10, Status = QuestionStatus.Active, MaxScore = 10, CreatedAt = _utcNow, UpdatedAt = _utcNow };
         _dbContext.Questions.Add(q);
+        GraphScopeFixture.Approve(_dbContext, _centerId, _subjectId, 10, 10);
         _dbContext.QuestionOptions.AddRange(
             new QuestionOption { CenterId = _centerId, QuestionId = 1010, OptionId = 1, OptionLabel = "A", OptionText = "x² / 2 + C", IsCorrect = true, OrderIndex = 1, CreatedAt = _utcNow, UpdatedAt = _utcNow },
             new QuestionOption { CenterId = _centerId, QuestionId = 1010, OptionId = 2, OptionLabel = "B", OptionText = "x + C", IsCorrect = false, OrderIndex = 2, CreatedAt = _utcNow, UpdatedAt = _utcNow });
@@ -565,6 +598,7 @@ public sealed class RecommendationStateMachineTests : IDisposable
             CreatedAt = _utcNow,
             UpdatedAt = _utcNow
         });
+        GraphScopeFixture.Approve(_dbContext, _centerId, _subjectId, 10, 899, 900);
         await _dbContext.SaveChangesAsync();
     }
 }

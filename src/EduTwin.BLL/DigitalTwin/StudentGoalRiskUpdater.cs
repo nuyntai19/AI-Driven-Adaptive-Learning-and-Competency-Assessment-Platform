@@ -38,10 +38,14 @@ public sealed class StudentGoalRiskUpdater : IStudentGoalRiskUpdater
             return null;
         }
 
+        var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(
+            _dbContext, centerId, studentId, subjectId, null, false, cancellationToken);
+        var scopedNodeIds = scope.TopicIds?.ToList() ?? [];
         var topics = await _dbContext.KnowledgeNodes
             .AsNoTracking()
             .Where(n => n.CenterId == centerId
                 && n.SubjectId == subjectId
+                && scopedNodeIds.Contains(n.NodeId)
                 && n.NodeType == NodeType.Topic
                 && n.IsActive
                 && !n.IsDeleted)

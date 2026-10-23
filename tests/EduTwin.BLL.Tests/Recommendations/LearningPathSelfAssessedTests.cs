@@ -72,8 +72,7 @@ public sealed class LearningPathSelfAssessedTests
     public async Task SelfAssessedPrerequisite_IsNotPulledIntoLearning_AndDoesNotBlockTheCheck()
     {
         using var f = new LearningPathV4Fixture();
-        f.Db.KnowledgeEdges.Add(new DAL.KnowledgeGraph.KnowledgeEdge { CenterId = f.Center, SubjectId = f.English, SourceNodeId = 101, TargetNodeId = 103,
-            RelationType = Contracts.KnowledgeGraph.RelationType.PrerequisiteOf, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        f.AddPrerequisite(101, 103);
         await f.Db.SaveChangesAsync();
         var proposal = await Proposal(f, ["103"], ["101"]);
         Assert.Single(proposal.Milestones, m => m.SkillIds.Contains("101"));
@@ -159,8 +158,7 @@ public sealed class LearningPathSelfAssessedTests
     public async Task Placement_ReusesConfirmedPrerequisite_ButTestsTheChosenPart()
     {
         using var f = new LearningPathV4Fixture();
-        f.Db.KnowledgeEdges.Add(new DAL.KnowledgeGraph.KnowledgeEdge { CenterId = f.Center, SubjectId = f.English, SourceNodeId = 101, TargetNodeId = 103,
-            RelationType = Contracts.KnowledgeGraph.RelationType.PrerequisiteOf, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        f.AddPrerequisite(101, 103);
         await f.Db.SaveChangesAsync();
         for (ulong i = 1; i <= 5; i++) await f.RecordEvidence(101, i);
         var goal = await f.Planner.CreateOrUpdateGoalAsync(f.Center, f.Student, new CreateLearningGoalRequest {
@@ -174,8 +172,7 @@ public sealed class LearningPathSelfAssessedTests
     public async Task ExtendCheck_AddsTestsToTheActiveRoute_WithoutReplacingIt()
     {
         using var f = new LearningPathV4Fixture();
-        f.Db.KnowledgeEdges.Add(new DAL.KnowledgeGraph.KnowledgeEdge { CenterId = f.Center, SubjectId = f.English, SourceNodeId = 101, TargetNodeId = 102,
-            RelationType = Contracts.KnowledgeGraph.RelationType.PrerequisiteOf, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        f.AddPrerequisite(101, 102);
         await f.Db.SaveChangesAsync();
         var proposal = await Proposal(f, ["103"], ["101"]);
         var accepted = await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId);

@@ -19,11 +19,15 @@ public class SeedDataContainer
     public List<ClassStudent> ClassStudents { get; set; } = new();
     public List<KnowledgeNode> Topics { get; set; } = new();
     public List<KnowledgeEdge> Edges { get; set; } = new();
+    public List<KnowledgeGraphVersion> GraphVersions { get; set; } = new();
+    public List<KnowledgeNodeGrade> NodeGrades { get; set; } = new();
+    public List<KnowledgeEdgeGrade> EdgeGrades { get; set; } = new();
     public List<Curriculum> Curriculums { get; set; } = new();
     public List<CurriculumClass> CurriculumClasses { get; set; } = new();
     public List<ClassCurriculumApplication> CurriculumApplications { get; set; } = new();
     public List<CurriculumNode> CurriculumNodes { get; set; } = new();
     public List<Question> Questions { get; set; } = new();
+    public List<string> SkippedQuestionTemplates { get; set; } = new();
     public List<QuestionKnowledgeNode> QuestionNodes { get; set; } = new();
     public List<QuestionOption> QuestionOptions { get; set; } = new();
     public List<StudentSubjectGoal> Goals { get; set; } = new();

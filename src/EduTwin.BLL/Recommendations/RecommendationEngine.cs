@@ -223,12 +223,12 @@ public sealed class RecommendationEngine : IRecommendationEngine
                 var node = maintenanceTopics[i];
                 var m = candidateResult.MasteryByTopicNodeId.GetValueOrDefault(node.NodeId, 0m);
                 var itemReason = RecommendationExplanationBuilder.BuildMaintenanceReviewExplanation(node.NodeName, m);
-                var itemQuestion = await _questionSelector.SelectQuestionAsync(
+                var itemQuestion = await _questionSelector.SelectForClassAsync(
                     centerId,
                     studentId,
                     node.NodeId,
                     m,
-                    cancellationToken);
+                    classId, cancellationToken);
 
                 if (i == 0)
                 {
@@ -321,12 +321,12 @@ public sealed class RecommendationEngine : IRecommendationEngine
                     candidate.ExamImportance,
                     candidate.PrerequisiteReadiness);
 
-                var itemQuestion = await _questionSelector.SelectQuestionAsync(
+                var itemQuestion = await _questionSelector.SelectForClassAsync(
                     centerId,
                     studentId,
                     candidate.TopicNodeId,
                     candidate.CurrentMastery,
-                    cancellationToken);
+                    classId, cancellationToken);
 
                 if (i == 0)
                 {
@@ -423,12 +423,12 @@ public sealed class RecommendationEngine : IRecommendationEngine
             {
                 var node = linearResult.SelectedTopics[i];
                 var m = candidateResult.MasteryByTopicNodeId.GetValueOrDefault(node.NodeId, 0m);
-                var itemQuestion = await _questionSelector.SelectQuestionAsync(
+                var itemQuestion = await _questionSelector.SelectForClassAsync(
                     centerId,
                     studentId,
                     node.NodeId,
                     m,
-                    cancellationToken);
+                    classId, cancellationToken);
 
                 if (i == 0)
                 {
@@ -911,7 +911,14 @@ public sealed class RecommendationEngine : IRecommendationEngine
         Guid subjectId,
         DateTime utcNow,
         CancellationToken cancellationToken)
+        => await GetNextForClassAsync(centerId, studentId, subjectId, null, utcNow, cancellationToken);
+
+    public async Task<NextQuestionDto?> GetNextForClassAsync(Guid centerId, Guid studentId, Guid subjectId,
+        Guid? classId, DateTime utcNow, CancellationToken cancellationToken)
     {
+        var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId,
+            studentId, subjectId, classId, false, cancellationToken);
+        if (!scope.Allowed) return null;
         // Strictly read-only query: no persistence, no entity mutation
         var activePath = await _dbContext.LearningPaths
             .AsNoTracking()
@@ -939,6 +946,7 @@ public sealed class RecommendationEngine : IRecommendationEngine
         {
             return null;
         }
+        if (!scope.Includes(currentItem.TopicNodeId)) return null;
 
         var topicTwin = await _dbContext.KnowledgeTwins
             .AsNoTracking()
@@ -963,10 +971,12 @@ public sealed class RecommendationEngine : IRecommendationEngine
 
         var selectedQuestion = currentItem.RecommendedQuestion;
         if (selectedQuestion is null || selectedQuestion.IsDeleted || selectedQuestion.Status != QuestionStatus.Active ||
-            selectedQuestion.CenterId != centerId || selectedQuestion.SubjectId != subjectId || selectedQuestion.PrimaryTopicNodeId != currentItem.TopicNodeId)
-            selectedQuestion = await _questionSelector.SelectQuestionAsync(centerId, studentId, currentItem.TopicNodeId, topicMastery, cancellationToken);
+            selectedQuestion.CenterId != centerId || selectedQuestion.SubjectId != subjectId || selectedQuestion.PrimaryTopicNodeId != currentItem.TopicNodeId ||
+            !scope.IncludesQuestion(selectedQuestion.PrimaryTopicNodeId, selectedQuestion.GradeLevel))
+            selectedQuestion = await _questionSelector.SelectForClassAsync(centerId, studentId, currentItem.TopicNodeId, topicMastery, classId, cancellationToken);
         if (selectedQuestion is not null && (selectedQuestion.IsDeleted || selectedQuestion.Status != QuestionStatus.Active ||
-            selectedQuestion.CenterId != centerId || selectedQuestion.SubjectId != subjectId || selectedQuestion.PrimaryTopicNodeId != currentItem.TopicNodeId))
+            selectedQuestion.CenterId != centerId || selectedQuestion.SubjectId != subjectId || selectedQuestion.PrimaryTopicNodeId != currentItem.TopicNodeId ||
+            !scope.IncludesQuestion(selectedQuestion.PrimaryTopicNodeId, selectedQuestion.GradeLevel)))
             selectedQuestion = null;
 
         var questionOptions = selectedQuestion is null

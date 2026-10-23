@@ -49,6 +49,7 @@ import { QuestionImage } from "../../components/QuestionImage";
 import { IMAGE_ONLY_QUESTION_TEXT } from "../../utils/questionImage";
 import { KnowledgeTopicPicker } from "../../components/teacher/KnowledgeTopicPicker";
 import type { MaterialVisibility } from "../../types/questions";
+import { knowledgeKeys } from "../../utils/knowledgeScope";
 
 interface QuestionEditorOption {
   optionId?: string;
@@ -66,6 +67,7 @@ export function TeacherQuestionEditorView() {
   const [searchParams] = useSearchParams();
   const copyFrom = !isEditing ? searchParams.get("copyFrom") : null;
   const actorId = useAuthStore(state => state.user?.userId);
+  const centerId = useAuthStore(state => state.user?.centerId);
   const [visibility, setVisibility] = useState<MaterialVisibility>("Private");
 
   const hasPermission = useAuthStore((state) => state.hasPermission);
@@ -106,16 +108,16 @@ export function TeacherQuestionEditorView() {
 
   // Active subjects query
   const { data: subjectsData, isLoading: subjectsLoading } = useQuery({
-    queryKey: ["subjects", "for-teacher-question-editor"],
+    queryKey: ["subjects", "for-teacher-question-editor", centerId, actorId],
     queryFn: () => organizationApi.listSubjects(true),
     enabled: canReadSubjects,
   });
 
   // Topics for selected subject
-  const { data: topicsData, isLoading: topicsLoading } = useQuery({
-    queryKey: ["topics", "for-subject", subjectId],
-    queryFn: () => (subjectId ? knowledgeGraphApi.getGraph(subjectId) : null),
-    enabled: Boolean(subjectId),
+  const { data: topicsData, isLoading: topicsLoading, isFetching: topicsFetching, isError: isTopicsError } = useQuery({
+    queryKey: knowledgeKeys.graph(centerId, actorId, subjectId, { gradeLevel: gradeLevel || undefined }),
+    queryFn: () => (subjectId ? knowledgeGraphApi.getGraph(subjectId, { gradeLevel: gradeLevel || undefined }) : null),
+    enabled: Boolean(subjectId && gradeLevel),
   });
 
   // Load existing question for editing
@@ -205,6 +207,10 @@ export function TeacherQuestionEditorView() {
     }
     if (!primaryTopicNodeId.trim()) {
       setFormError({ message: "Vui lòng chọn chủ đề Cây Tri thức (Topic Node) cho câu hỏi." });
+      return;
+    }
+    if (topicsFetching || isTopicsError || !topicsData?.nodes.some(n => n.nodeId === primaryTopicNodeId && n.isActive)) {
+      setFormError({ message: "Chủ đề đã chọn không thuộc khung tri thức được duyệt của khối này. Vui lòng chọn lại chủ đề phù hợp." });
       return;
     }
     if (imageBusy) return;
@@ -535,10 +541,12 @@ export function TeacherQuestionEditorView() {
             <KnowledgeTopicPicker
               nodes={topicsData?.nodes || []}
               value={primaryTopicNodeId}
-              disabled={!subjectId || topicsLoading}
+              disabled={!subjectId || !gradeLevel || topicsLoading}
               onChange={setPrimaryTopicNodeId}
               placeholder={topicsLoading ? "Đang tải chủ đề…" : "Chọn chủ đề kiến thức"}
             />
+            {!gradeLevel && <p className="text-sm mt-2">Chọn khối trước để xem chủ đề phù hợp.</p>}
+            {gradeLevel && primaryTopicNodeId && !topicsLoading && !topicsData?.nodes.some(n => n.nodeId === primaryTopicNodeId) && <p role="alert" className="text-sm text-amber-500 mt-2">Chủ đề đã chọn không còn phù hợp khối; chọn lại trước khi lưu.</p>}
           </div>
 
           <div>

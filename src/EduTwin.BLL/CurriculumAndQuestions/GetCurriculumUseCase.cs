@@ -58,8 +58,8 @@ public class GetCurriculumUseCase : IGetCurriculumUseCase
             .Select(cn => cn.NodeId)
             .ToListAsync(cancellationToken);
 
-        var classes = (await CurriculumClassScopeQuery.ReadAsync(_dbContext, centerId, actorId, request.CurriculumId, cancellationToken))
-            .Select(cc => cc.ClassId).ToList();
+        var classLinks = await CurriculumClassScopeQuery.ReadAsync(_dbContext, centerId, actorId, request.CurriculumId, cancellationToken);
+        var classes = classLinks.Select(cc => cc.ClassId).ToList();
 
         var dto = new CurriculumDto
         {
@@ -67,7 +67,9 @@ public class GetCurriculumUseCase : IGetCurriculumUseCase
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             Visibility = curriculum.Visibility.ToString(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            GraphVersionId = curriculum.GraphVersionId?.ToString("D"),
             GradeLevel = curriculum.GradeLevel,
+            ApplicationClasses = classLinks.Select(a => a.ToDto()).ToList(),
             Title = curriculum.Title,
             Description = curriculum.Description,
             SourceFile = curriculum.SourceFile,

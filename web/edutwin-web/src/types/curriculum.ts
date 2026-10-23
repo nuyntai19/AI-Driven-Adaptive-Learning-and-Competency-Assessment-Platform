@@ -9,12 +9,15 @@ export interface Curriculum {
   description: string | null;
   reviewStatus: ReviewStatus;
   gradeLevel?: number | null;
+  graphVersionId?: string | null;
+  applicationClasses?: CurriculumClassSummary[];
   classIds: string[];
   nodeIds: string[];
   rowVersion: string;
 }
 
 export interface CreateCurriculumRequest {
+  graphVersionId?: string | null;
   visibility?: import("./questions").MaterialVisibility;
   teacherId?: string | null;
   subjectId: string;
@@ -25,6 +28,9 @@ export interface CreateCurriculumRequest {
 }
 
 export interface UpdateCurriculumRequest {
+  graphVersionId?: string | null;
+  nodeIds?: string[];
+  classIds?: string[];
   visibility?: import("./questions").MaterialVisibility;
   title: string;
   description?: string;
@@ -42,6 +48,7 @@ export interface UpdateCurriculumClassesRequest {
 }
 
 export interface UpdateCurriculumNodesRequest {
+  graphVersionId?: string | null;
   nodeIds: string[];
   rowVersion: string;
 }
@@ -53,5 +60,15 @@ export interface ArchiveCurriculumRequest {
 
 export interface CloneCurriculumRequest {
   title?: string;
+}
+
+export interface CurriculumClassSummary {
+  classId: string;
+  className: string;
+  gradeLevel?: number | null;
+  academicYear: string;
+  applicationRole?: string | null;
+  isCurrent: boolean;
+  isPlanned?: boolean;
 }
 

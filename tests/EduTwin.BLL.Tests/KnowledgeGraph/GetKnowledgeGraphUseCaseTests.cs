@@ -116,20 +116,26 @@ public class GetKnowledgeGraphUseCaseTests
         var expectedNodeProps = new[]
         {
             "NodeId", "ParentNodeId", "NodeType", "NodeCode", "NodeName", "Description",
-            "OrderIndex", "ExamImportance", "EstimatedLearningMinutes", "IsActive", "RowVersion"
+            "OrderIndex", "ExamImportance", "EstimatedLearningMinutes", "IsActive", "RowVersion",
+            "GradeLevels", "Provenance"
         }
             .OrderBy(x => x).ToList();
         Assert.Equal(expectedNodeProps, nodeProps);
 
         var edgeProps = typeof(KnowledgeGraphEdgeDto).GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Select(p => p.Name).OrderBy(x => x).ToList();
-        var expectedEdgeProps = new[] { "EdgeId", "SourceNodeId", "TargetNodeId", "RelationType", "Weight", "RowVersion" }
+        var expectedEdgeProps = new[]
+        {
+            "EdgeId", "SourceNodeId", "TargetNodeId", "RelationType", "Weight", "RowVersion",
+            "OccurrenceId", "GraphVersionId", "GradeLevel", "CurriculumId", "SourceOccurrenceId",
+            "TargetOccurrenceId", "SourceGraphVersionId", "SourceNodeName", "SourceGradeLevel", "External"
+        }
             .OrderBy(x => x).ToList();
         Assert.Equal(expectedEdgeProps, edgeProps);
 
         var graphProps = typeof(KnowledgeGraphDto).GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Select(p => p.Name).OrderBy(x => x).ToList();
-        var expectedGraphProps = new[] { "SubjectId", "Nodes", "Edges" }
+        var expectedGraphProps = new[] { "SubjectId", "Nodes", "Edges", "ResolvedScope", "ExternalPrerequisites" }
             .OrderBy(x => x).ToList();
         Assert.Equal(expectedGraphProps, graphProps);
     }

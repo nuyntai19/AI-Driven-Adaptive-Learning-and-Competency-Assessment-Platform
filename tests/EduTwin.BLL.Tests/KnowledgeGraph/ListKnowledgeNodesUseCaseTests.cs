@@ -70,7 +70,9 @@ public class ListKnowledgeNodesUseCaseTests
         _tenantMock.SetupGet(x => x.IsResolved).Returns(true);
         _tenantMock.SetupGet(x => x.CenterId).Returns(centerId);
         _tenantMock.SetupGet(x => x.UserId).Returns(Guid.NewGuid());
-        _tenantMock.SetupGet(x => x.Role).Returns(nameof(UserRole.Student));
+        // These generic catalog/filter tests exercise the teacher's explicit subject overview.
+        // Student grade/class scope is covered by KnowledgeGradeScopeTests.
+        _tenantMock.SetupGet(x => x.Role).Returns(nameof(UserRole.Teacher));
     }
 
     [Theory]

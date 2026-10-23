@@ -27,6 +27,9 @@ public class GetKnowledgeGraphUseCase : IGetKnowledgeGraphUseCase
     public async Task<GetKnowledgeGraphResult> ExecuteAsync(
         Guid subjectId,
         CancellationToken cancellationToken = default)
+        => await ExecuteAsync(new KnowledgeGraphQuery { SubjectId = subjectId }, cancellationToken);
+
+    public async Task<GetKnowledgeGraphResult> ExecuteAsync(KnowledgeGraphQuery query, CancellationToken cancellationToken = default)
     {
         if (!_tenantContext.IsResolved ||
             !_tenantContext.CenterId.HasValue || _tenantContext.CenterId.Value == Guid.Empty ||
@@ -39,7 +42,7 @@ public class GetKnowledgeGraphUseCase : IGetKnowledgeGraphUseCase
             return GetKnowledgeGraphResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        if (subjectId == Guid.Empty)
+        if (query.SubjectId == Guid.Empty && !query.CurriculumId.HasValue && !query.ClassId.HasValue && !query.GraphVersionId.HasValue)
         {
             return GetKnowledgeGraphResult.Failure(ErrorCodes.ValidationFailed);
         }
@@ -53,67 +56,11 @@ public class GetKnowledgeGraphUseCase : IGetKnowledgeGraphUseCase
             return GetKnowledgeGraphResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        var subject = await _dbContext.Subjects
-            .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.SubjectId == subjectId && s.CenterId == _tenantContext.CenterId.Value && !s.IsDeleted, cancellationToken);
-
-        if (subject == null)
+        try
         {
-            return GetKnowledgeGraphResult.Failure(ErrorCodes.ResourceNotFound);
+            return GetKnowledgeGraphResult.Success(await KnowledgeGraphScopeReader.ReadAsync(_dbContext, _tenantContext, query, cancellationToken));
         }
+        catch (GraphScopeException ex) { return GetKnowledgeGraphResult.Failure(ex.Code); }
 
-        var nodes = await _dbContext.KnowledgeNodes
-            .AsNoTracking()
-            .Where(n => n.CenterId == _tenantContext.CenterId.Value &&
-                        n.SubjectId == subjectId &&
-                        !n.IsDeleted)
-            .OrderBy(n => n.OrderIndex)
-            .ThenBy(n => n.NodeId)
-            .Select(n => new KnowledgeGraphNodeDto
-            {
-                NodeId = n.NodeId.ToString(CultureInfo.InvariantCulture),
-                ParentNodeId = n.ParentNodeId.HasValue
-                    ? n.ParentNodeId.Value.ToString(CultureInfo.InvariantCulture)
-                    : null,
-                NodeType = n.NodeType.ToString(),
-                NodeCode = n.NodeCode,
-                NodeName = n.NodeName,
-                Description = n.Description,
-                OrderIndex = n.OrderIndex,
-                ExamImportance = n.ExamImportance,
-                EstimatedLearningMinutes = n.EstimatedLearningMinutes,
-                IsActive = n.IsActive,
-                RowVersion = n.RowVersion.ToString(CultureInfo.InvariantCulture)
-            })
-            .ToListAsync(cancellationToken);
-
-        var edges = await _dbContext.KnowledgeEdges
-            .AsNoTracking()
-            .Where(e => e.CenterId == _tenantContext.CenterId.Value &&
-                        e.SubjectId == subjectId &&
-                        !e.IsDeleted)
-            .OrderBy(e => e.SourceNodeId)
-            .ThenBy(e => e.TargetNodeId)
-            .ThenBy(e => e.RelationType)
-            .ThenBy(e => e.EdgeId)
-            .Select(e => new KnowledgeGraphEdgeDto
-            {
-                EdgeId = e.EdgeId.ToString(CultureInfo.InvariantCulture),
-                SourceNodeId = e.SourceNodeId.ToString(CultureInfo.InvariantCulture),
-                TargetNodeId = e.TargetNodeId.ToString(CultureInfo.InvariantCulture),
-                RelationType = e.RelationType.ToString(),
-                Weight = e.Weight,
-                RowVersion = e.RowVersion.ToString(CultureInfo.InvariantCulture)
-            })
-            .ToListAsync(cancellationToken);
-
-        var resultDto = new KnowledgeGraphDto
-        {
-            SubjectId = subjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
-            Nodes = nodes,
-            Edges = edges
-        };
-
-        return GetKnowledgeGraphResult.Success(resultDto);
     }
 }

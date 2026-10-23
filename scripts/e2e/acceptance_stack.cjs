@@ -42,7 +42,7 @@ async function start() {
       '-p', '127.0.0.1:5001:8080', ...Object.keys(apiEnv).flatMap(k => ['-e', k]), 'edutwin-api:latest'],
       { env: { ...process.env, ...apiEnv } });
     docker(['run', '-d', '--name', state.web, '--network', 'edutwin_default', '--label', `edutwin.e2e.owner=${runId}`,
-      '-p', '127.0.0.1:3002:80', '-v', `${path.join(root, 'scripts/e2e/acceptance.nginx.conf')}:/etc/nginx/conf.d/default.conf:ro`, 'edutwin-web:latest']);
+      '-p', '127.0.0.1:3002:80', '-v', `${path.join(root, 'scripts/e2e/acceptance.nginx.conf')}:/etc/nginx/conf.d/nginx.conf:ro`, 'edutwin-web:latest']);
     // A fresh MySQL schema runs all migrations before seeding. Allow cold startup.
     for (let n = 0; n < 600; n++) {
       try {

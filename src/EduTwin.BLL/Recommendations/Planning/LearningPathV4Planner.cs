@@ -112,7 +112,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             if (ready == null) throw new InvalidOperationException("Đồ thị kiến thức có vòng lặp; cần giáo viên kiểm tra trước khi lập tuyến.");
             ordered.Add(ready); selected.Remove(ready);
         }
-        var questions = await LearningPathV4Data.QuestionsAsync(db, center, goal.SubjectId, nodes.Select(n => n.NodeId).ToList(), ct);
+        var questions = await LearningPathV4Data.QuestionsAsync(db, center, student, goal.SubjectId, nodes.Select(n => n.NodeId).ToList(), goal.ClassId, ct);
         var content = await db.LearningContentVersions.AsNoTracking().Where(c => c.CenterId == center &&
             c.SubjectId == goal.SubjectId && c.Status == "Published").OrderByDescending(c => c.Version).ToListAsync(ct);
         var usedQuestionIds = await db.Attempts.AsNoTracking().Where(a => a.CenterId == center && a.StudentId == student &&
@@ -221,6 +221,28 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 probe.SelectionReason = "Mục tiêu ôn kiểm tra/nâng cao: kiểm tra phần đã biết trước để tránh luyện lặp. Nếu chưa đạt, quay lại hoạt động học đúng kỹ năng.";
                 missions.Insert(0, probe);
             }
+            }
+            var vouchedPrerequisites = LearningGoalScope.Vouched(scope.SelfReportedPrerequisiteSkillIds, scope.SelfAssessedSkillIds);
+            if (goal.GoalType != "Placement" && LearningGoalScope.NeedsExternalAssessment(skill, map, vouchedPrerequisites))
+            {
+                foreach (var guided in missions.Where(m => m.Purpose is "Practice" or "Review"))
+                {
+                    guided.CanStart = false;
+                    guided.SelectionReason = "Cần bằng chứng độc lập cho kỹ năng đích hoặc giáo trình bổ trợ cho nền tảng ngoài phạm vi trước khi luyện tiếp.";
+                }
+                var directCheck = missions.FirstOrDefault(m => m.Purpose == "IndependentCheck");
+                if (directCheck != null)
+                {
+                    directCheck.IsExternalPrerequisiteAssessment = true;
+                    directCheck.IsProbe = true;
+                    directCheck.Title = $"Kiểm tra trực tiếp: {node.NodeName}";
+                    var fresh = questions.Count(q => q.PrimaryTopicNodeId == node.NodeId &&
+                        !usedQuestionIds.Contains(q.QuestionId) && !exposedQuestionIds.Contains(q.QuestionId));
+                    directCheck.CanStart = fresh >= 5 && LearningGoalScope.CanAssessTargetDirectly(skill, map, vouchedPrerequisites);
+                    directCheck.SelectionReason = LearningGoalScope.ExternalAssessmentReason +
+                        (fresh < 5 ? $" Còn {fresh}/5 câu mới; cần giáo viên bổ sung." : "");
+                    missions.Remove(directCheck); missions.Insert(0, directCheck);
+                }
             }
             milestones.Add(new ProposedMilestoneDto
             {
@@ -396,7 +418,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             runIds.Contains(i.ActivityRun.SessionRunId) && i.QuestionId != null && i.SolutionExposedAt == null)
             .Select(i => new { i.ActivityRun.SessionRunId, Answered = i.AttemptId != null, Correct = i.Attempt != null && i.Attempt.IsCorrect == true })
             .ToListAsync(cancellationToken);
-        var subjectQuestions = await LearningPathV4Data.QuestionsAsync(db, centerId, subjectId, map.Skills.Select(s => ulong.Parse(s.SkillId)).ToList(), cancellationToken);
+        var subjectQuestions = await LearningPathV4Data.QuestionsAsync(db, centerId, studentId, subjectId, map.Skills.Select(s => ulong.Parse(s.SkillId)).ToList(), classId, cancellationToken);
         var usedIds = await db.Attempts.AsNoTracking().Where(a => a.CenterId == centerId && a.StudentId == studentId &&
             a.Question.SubjectId == subjectId).Select(a => a.QuestionId).Distinct().ToListAsync(cancellationToken);
         var exposedIds = await db.IssuedItems.AsNoTracking().Where(i => i.CenterId == centerId && i.ActivityRun.SessionRun.StudentId == studentId &&
@@ -449,10 +471,14 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             }
             if (m.Purpose == "IndependentCheck" && active == null)
             {
-                item.CanStart = fresh >= 5 && (plan.IsPlacement || m.IsProbe || LearningGoalScope.PrerequisitesSatisfied(skill, map, vouched)) && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped &&
+                var prerequisitesReady = m.IsExternalPrerequisiteAssessment
+                    ? LearningGoalScope.PrerequisitesSatisfied(skill, map, vouched) || LearningGoalScope.CanAssessTargetDirectly(skill, map, vouched)
+                    : plan.IsPlacement || m.IsProbe || LearningGoalScope.PrerequisitesSatisfied(skill, map, vouched);
+                item.CanStart = fresh >= 5 && prerequisitesReady && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped &&
                     !(plan.IsPlacement && latest?.Status == SessionRunStatus.Completed);
                 if (fresh < 5) { item.CanStart = false; item.RecommendationReason = $"Còn {fresh}/5 câu mới đủ điều kiện kiểm tra; cần giáo viên bổ sung câu, không dùng lại câu đã lộ đáp án."; }
-                else item.RecommendationReason = $"Có {fresh} câu mới đủ điều kiện; sẽ chọn 5 câu để tự kiểm tra. Lời giải và nhận xét chỉ mở sau khi nộp cả bộ.";
+                else item.RecommendationReason = m.IsExternalPrerequisiteAssessment ? LearningGoalScope.ExternalAssessmentReason
+                    : $"Có {fresh} câu mới đủ điều kiện; sẽ chọn 5 câu để tự kiểm tra. Lời giải và nhận xét chỉ mở sau khi nộp cả bộ.";
             }
             if (m.Purpose is "Practice" or "Review")
             {
@@ -467,6 +493,13 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 item.EstimatedDurationMinutes = Math.Max(1u, item.QuestionCount) * LearningPathPacing.MinutesPerQuestion;
             }
             ApplyRetryRule(item, m, session, latest, active, runs, path, fresh, poolSizes.GetValueOrDefault(m.MissionId));
+            if (m.Purpose is "Practice" or "Review" && LearningGoalScope.NeedsExternalAssessment(skill, map, vouched))
+            {
+                item.CanStart = item.CanRetry = false;
+                item.RecommendationReason = "Cần kiểm tra trực tiếp kỹ năng đích hoặc áp dụng giáo trình bổ trợ cho nền tảng ngoài phạm vi trước khi luyện tiếp.";
+            }
+            if (m.IsExternalPrerequisiteAssessment && !LearningGoalScope.PrerequisitesSatisfied(skill, map, vouched) &&
+                !LearningGoalScope.CanAssessTargetDirectly(skill, map, vouched)) item.CanStart = item.CanRetry = false;
             if (plan.IsPlacement)
             {
                 item.WeaknessLevel = null;
@@ -646,7 +679,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             var practiceSessions = path.Sessions.Where(s => s.TopicNodeId == session.TopicNodeId && s.Objective is "Practice" or "Review")
                 .Select(s => s.SessionId).ToHashSet();
             var repaired = runs.Any(r => practiceSessions.Contains(r.SessionId) && r.Status == SessionRunStatus.Completed && r.CompletedAt > latest.CompletedAt);
-            if (!repaired) { item.RetryBlockedReason = "Hoàn thành một bộ rèn lại của kỹ năng này trước, rồi mới kiểm tra lại bằng câu mới."; return; }
+            if (!repaired && !m.IsExternalPrerequisiteAssessment) { item.RetryBlockedReason = "Hoàn thành một bộ rèn lại của kỹ năng này trước, rồi mới kiểm tra lại bằng câu mới."; return; }
             if (fresh < 5) { item.RetryBlockedReason = $"Còn {fresh}/5 câu chưa gặp; cần giáo viên bổ sung câu để kiểm tra lại công bằng."; return; }
             item.CanRetry = true;
             return;

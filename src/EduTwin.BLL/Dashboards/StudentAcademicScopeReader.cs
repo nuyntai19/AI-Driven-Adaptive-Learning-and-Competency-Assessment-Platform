@@ -33,24 +33,48 @@ public sealed class StudentAcademicScopeReader(EduTwinDbContext db)
         var topicIds = new HashSet<ulong>();
         foreach (var membership in eligible)
         {
+            var learningScope = history ? null : await StudentLearningScope.ResolveAsync(db, center, student,
+                membership.SubjectId, membership.ClassId, false, ct);
+            if (learningScope != null)
+            {
+                topicIds.UnionWith(learningScope.TopicIds ?? []);
+                if (!learningScope.Allowed) context.Message ??= learningScope.Reason;
+            }
             var applications = await db.ClassCurriculumApplications.AsNoTracking()
-                .Where(a => a.CenterId == center && a.ClassId == membership.ClassId && !a.Curriculum.IsDeleted &&
+                .Where(a => a.CenterId == center && a.ClassId == membership.ClassId && a.SubjectId == membership.SubjectId &&
+                    a.Curriculum.SubjectId == membership.SubjectId && !a.Curriculum.IsDeleted &&
+                    (a.ApplicationRole == "Primary" || a.ApplicationRole == "Supplemental") &&
                     (history ? a.Curriculum.ReviewStatus != ReviewStatus.Draft &&
                         (!membership.RemovedAt.HasValue || a.StartedAt <= membership.RemovedAt) &&
                         (!a.EndedAt.HasValue || a.EndedAt >= membership.JoinedAt)
                     : a.EndedAt == null && a.Curriculum.ReviewStatus == ReviewStatus.Published))
-                .Select(a => new { a.CurriculumId, a.ClassId, a.Curriculum.Title, a.ApplicationRole }).Distinct().ToListAsync(ct);
+                .Select(a => new { a.CurriculumId, a.ClassId, a.Curriculum.Title, a.ApplicationRole, a.Curriculum.GraphVersionId }).Distinct().ToListAsync(ct);
             foreach (var application in applications)
             {
+                if (!application.GraphVersionId.HasValue) continue;
+                var versionId = application.GraphVersionId.Value;
+                if (learningScope != null && !learningScope.GraphVersionIds.Contains(versionId)) continue;
+                if (!await db.KnowledgeGraphVersions.AsNoTracking().AnyAsync(v => v.CenterId == center &&
+                    v.GraphVersionId == versionId && v.SubjectId == membership.SubjectId &&
+                    (v.Status == "Published" || history && v.Status == "Archived"), ct)) continue;
                 context.Curriculums.Add(new() { CurriculumId = application.CurriculumId, ClassId = application.ClassId,
                     Title = application.Title, ApplicationRole = application.ApplicationRole });
+                if (!history) continue;
+                var mappedNodes = db.KnowledgeNodeGrades.AsNoTracking().Where(m => m.CenterId == center && m.GraphVersionId == versionId)
+                    .Select(m => m.NodeId);
                 var ids = await db.CurriculumNodes.AsNoTracking().Where(n => n.CenterId == center && n.CurriculumId == application.CurriculumId &&
-                    n.Node != null && n.Node.SubjectId == membership.SubjectId && n.Node.IsActive && !n.Node.IsDeleted)
+                    mappedNodes.Contains(n.NodeId) && n.Node != null && n.Node.SubjectId == membership.SubjectId && n.Node.IsActive && !n.Node.IsDeleted)
                     .Select(n => n.NodeId).ToListAsync(ct);
                 topicIds.UnionWith(ids);
             }
         }
-        if (eligible.Count == 0) context.Message = history ? "Chưa có lịch sử lớp học trong phạm vi này. Chỉ lớp đã kết thúc hoặc lớp bạn đã rời khỏi mới xuất hiện ở đây." : "Chưa có lớp đang học trong phạm vi này. Bạn có thể chuyển sang Xem lịch sử.";
+        if (!history && memberships.Count == 0 && subject.HasValue && subject != Guid.Empty)
+        {
+            var independent = await StudentLearningScope.ResolveAsync(db, center, student, subject.Value, null, false, ct);
+            topicIds.UnionWith(independent.TopicIds ?? []);
+            context.Message = independent.Reason;
+        }
+        else if (eligible.Count == 0) context.Message = history ? "Chưa có lịch sử lớp học trong phạm vi này. Chỉ lớp đã kết thúc hoặc lớp bạn đã rời khỏi mới xuất hiện ở đây." : "Chưa có lớp đang học trong phạm vi này. Bạn có thể chuyển sang Xem lịch sử.";
         else if (context.Curriculums.Count == 0) context.Message = "Lớp chưa có giáo trình đã xuất bản được áp dụng. Giáo viên phụ trách cần gán giáo trình; hệ thống không lấy toàn bộ đồ thị môn thay thế.";
         return new(context, topicIds);
     }

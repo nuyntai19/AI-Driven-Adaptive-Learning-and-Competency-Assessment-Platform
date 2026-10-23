@@ -5,6 +5,7 @@ namespace EduTwin.Contracts.Recommendations;
 
 public class CapabilityMapDto
 {
+    public Dictionary<string, decimal> ExternalPrerequisiteMastery { get; set; } = [];
     public Guid SubjectId { get; set; }
     public Guid StudentId { get; set; }
     public string SubjectName { get; set; } = string.Empty;

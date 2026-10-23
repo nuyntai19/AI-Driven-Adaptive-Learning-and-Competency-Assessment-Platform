@@ -171,8 +171,8 @@ public sealed class BehaviorTwinUpdaterTests : IDisposable
         Assert.Equal(50m, result2.ChangeAnswerRate);
         // AvgConfidence: (100 + 60) / 2 = 80%
         Assert.Equal(80m, result2.AvgConfidence);
-        // Calibration: (100 + 40) / 2 = 70%
-        Assert.Equal(70m, result2.ConfidenceCalibration);
+        // Calibration: attempt 2 is skipped so excluded from calibration, remains 100%
+        Assert.Equal(100m, result2.ConfidenceCalibration);
     }
 
     [Fact]

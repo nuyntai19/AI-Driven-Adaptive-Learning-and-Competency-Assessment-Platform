@@ -96,6 +96,7 @@ public class CreateQuestionUseCaseTests : IDisposable
                 UpdatedAt = now
             };
             _dbContext.KnowledgeNodes.Add(node);
+            GraphScopeFixture.Approve(_dbContext, _centerId, _subjectId, 10, 1);
         }
 
         await _dbContext.SaveChangesAsync();
@@ -524,6 +525,41 @@ public class CreateQuestionUseCaseTests : IDisposable
         var json = System.Text.Json.JsonSerializer.Serialize(reread.Data.GradingCriteria);
         var roundTrip = System.Text.Json.JsonSerializer.Deserialize<GradingCriteria>(json)!;
         Assert.Equal("Nhầm phép tính mới.", roundTrip.OptionMisconceptions["B"]);
+    }
+
+    [Theory]
+    [InlineData("Primary", false)]
+    [InlineData("Secondary", false)]
+    [InlineData("Prerequisite", true)]
+    public async Task CrossGradeMapping_RequiresExplicitPrerequisiteRole(string role, bool allowed)
+    {
+        await SeedDataAsync();
+        _dbContext.KnowledgeNodes.Add(new KnowledgeNode { CenterId = _centerId, SubjectId = _subjectId, NodeId = 2,
+            NodeCode = "LOWER", NodeName = "Lower grade prerequisite", IsActive = true,
+            CreatedAt = _fixedTime.UtcDateTime, UpdatedAt = _fixedTime.UtcDateTime });
+        GraphScopeFixture.Approve(_dbContext, _centerId, _subjectId, 11, 2);
+        await _dbContext.SaveChangesAsync();
+        var request = ValidShortAnswerRequest();
+        request.KnowledgeMappings = [new() { NodeId = "2", MappingRole = role }];
+        var result = await _sut.ExecuteAsync(request);
+        Assert.Equal(allowed, result.IsSuccess);
+        Assert.Equal(allowed ? 1 : 0, await _dbContext.Questions.CountAsync());
+    }
+
+    [Fact]
+    public async Task ChangingQuestionGrade_RevalidatesPrimaryAndDoesNotPartiallySave()
+    {
+        await SeedDataAsync();
+        var request = ValidShortAnswerRequest();
+        var created = await _sut.ExecuteAsync(request); Assert.True(created.IsSuccess);
+        var update = new UpdateQuestionRequest { PrimaryTopicNodeId = "1", GradeLevel = 11,
+            QuestionType = request.QuestionType, Difficulty = request.Difficulty, QuestionText = request.QuestionText,
+            CorrectAnswer = request.CorrectAnswer, Solution = request.Solution, MaxScore = request.MaxScore,
+            EstimatedTimeSeconds = request.EstimatedTimeSeconds, LanguageCode = request.LanguageCode, RowVersion = created.Data!.RowVersion };
+        var result = await new UpdateQuestionUseCase(_dbContext, _tenantContextMock.Object, _timeProviderMock.Object)
+            .ExecuteAsync(created.Data.QuestionId, update);
+        Assert.False(result.IsSuccess); Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        _dbContext.ChangeTracker.Clear(); Assert.Equal((byte)10, (await _dbContext.Questions.SingleAsync()).GradeLevel);
     }
 
     public void Dispose()

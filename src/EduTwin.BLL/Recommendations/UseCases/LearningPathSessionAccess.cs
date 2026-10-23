@@ -51,8 +51,8 @@ internal static class LearningPathSessionAccess
             q.Status == EduTwin.Contracts.CurriculumAndQuestions.QuestionStatus.Active && !q.IsDeleted &&
             q.QuestionType != EduTwin.Contracts.CurriculumAndQuestions.QuestionType.Essay &&
             q.AnswerEvaluationMode != EduTwin.Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.Manual)
-            .Select(q => q.QuestionId).ToListAsync(ct);
-        var eligible = eligibleIds.ToHashSet();
+            .Select(q => new { q.QuestionId, q.PrimaryTopicNodeId, q.GradeLevel }).ToListAsync(ct);
+        var eligible = eligibleIds.Where(q => scope.IncludesQuestion(q.PrimaryTopicNodeId, q.GradeLevel)).Select(q => q.QuestionId).ToHashSet();
         session.RecommendedQuestionIds = scheduledIds.Where(eligible.Contains)
             .Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
         session.RowVersion = path.RowVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);

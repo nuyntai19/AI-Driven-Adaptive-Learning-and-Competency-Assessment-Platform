@@ -40,6 +40,7 @@ import { questionsApi } from "../../api/questionsApi";
 import { RichMathText } from "../../components/math/RichMathText";
 import { questionTypeLabel } from "../../utils/academicDisplay";
 import { parseKnowledgeTopicContext, sameSubject, topicClassDisposition, validateKnowledgeTopicContext, withoutTopicContext } from "../../utils/knowledgeTopicContext";
+import { knowledgeKeys, readKnowledgeScope } from "../../utils/knowledgeScope";
 
 const toLocalDateTime = (value: string | null) => {
   if (!value) return "";
@@ -160,7 +161,7 @@ export function TeacherAssignmentEditorView() {
   const [questionDifficulty, setQuestionDifficulty] = useState<number | "">("");
   const [manualQuestionTopicId, setQuestionTopicId] = useState<string>("");
   const [topicContextNotice, setTopicContextNotice] = useState("");
-  const [questionGradeFilter, setQuestionGradeFilter] = useState<number | "">("");
+  const [questionGradeFilter, setQuestionGradeFilter] = useState<number | "">(!isEditing ? readKnowledgeScope(searchParams).gradeLevel ?? "" : "");
   const [allowGradeMismatch, setAllowGradeMismatch] = useState(false);
   const [gradeMismatchReason, setGradeMismatchReason] = useState("");
 
@@ -207,6 +208,9 @@ export function TeacherAssignmentEditorView() {
   const questionTopicId = topicContext.kind === "topic" ? topicContext.topicId : manualQuestionTopicId;
   const contextSubjectId = topicContext.kind === "topic" ? topicContext.subjectId : undefined;
   const nodeSubjectId = contextSubjectId ?? selectedSubjectId;
+  const nodeGrade = questionGradeFilter || selectedClass?.gradeLevel || readKnowledgeScope(searchParams).gradeLevel || undefined;
+  const nodeScope = { gradeLevel: nodeGrade, graphVersionId: topicContext.kind === "topic" ? searchParams.get("graphVersionId") || undefined : undefined };
+  const hasNodeScope = Boolean(nodeScope.gradeLevel || nodeScope.graphVersionId);
 
   const contextSubjectQuery = useQuery({
     queryKey: ["knowledge-topic-context-subject", user?.centerId, user?.userId, contextSubjectId],
@@ -217,14 +221,16 @@ export function TeacherAssignmentEditorView() {
 
   // Knowledge Nodes Query for the subject of the selected class
   const knowledgeNodesQuery = useQuery({
-    queryKey: ["knowledge-nodes-for-teacher-assignment-editor", user?.centerId, user?.userId, nodeSubjectId],
-    queryFn: () => knowledgeGraphApi.listNodes(nodeSubjectId!),
-    enabled: hasScope && canReadNodes && Boolean(nodeSubjectId)
+    queryKey: knowledgeKeys.nodes(user?.centerId, user?.userId, nodeSubjectId || "", nodeScope),
+    queryFn: () => knowledgeGraphApi.listNodes(nodeSubjectId!, nodeScope),
+    enabled: hasScope && canReadNodes && Boolean(nodeSubjectId) && hasNodeScope
       && (!contextSubjectId || Boolean(contextSubjectQuery.data?.isActive && sameSubject(contextSubjectQuery.data.subjectId, contextSubjectId))),
     staleTime: 60_000,
   });
 
-  const topicValidation = validateKnowledgeTopicContext(topicContext, {
+  const topicValidation = topicContext.kind === "topic" && !hasNodeScope
+    ? { status: "invalid" as const, message: "Chọn khối hoặc lớp có khối xác định để xác minh chủ đề từ đồ thị." }
+    : validateKnowledgeTopicContext(topicContext, {
     canRead: canReadQuestions && canReadNodes && canReadSubjects,
     isError: contextSubjectQuery.isError || knowledgeNodesQuery.isError,
     subjects: contextSubjectQuery.data ? [contextSubjectQuery.data] : undefined,
@@ -1008,12 +1014,14 @@ export function TeacherAssignmentEditorView() {
                       setQuestionTopicId(e.target.value);
                       setQuestionPage(1);
                     }}
-                    disabled={!canReadNodes || !selectedSubjectId || knowledgeNodesQuery.isLoading || knowledgeNodesQuery.isError || topicValidation.status === "pending" || subjectMismatch}
+                    disabled={!canReadNodes || !selectedSubjectId || !hasNodeScope || knowledgeNodesQuery.isLoading || knowledgeNodesQuery.isError || topicValidation.status === "pending" || subjectMismatch}
                     className="th-select text-xs py-1 max-w-[220px]"
                   >
                     <option value="">
                       {!selectedSubjectId
                         ? "-- Chọn lớp trước --"
+                        : !hasNodeScope
+                        ? "-- Chọn khối trước --"
                         : knowledgeNodesQuery.isLoading
                         ? "Đang tải nút..."
                         : "Tất cả nút tri thức"}
@@ -1038,6 +1046,8 @@ export function TeacherAssignmentEditorView() {
                     id="teacher-q-grade-filter"
                     value={questionGradeFilter}
                     onChange={(e) => {
+                      if (topicContext.kind !== "none") setSearchParams(withoutTopicContext(searchParams), { replace: true });
+                      setQuestionTopicId("");
                       setQuestionGradeFilter(e.target.value ? Number(e.target.value) : "");
                       setQuestionPage(1);
                     }}

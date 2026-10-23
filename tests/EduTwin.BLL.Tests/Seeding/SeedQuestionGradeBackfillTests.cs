@@ -39,7 +39,11 @@ public sealed class SeedQuestionGradeBackfillTests
     {
         var data = new EduTwinSeedFactory(centerA).CreateData();
         Assert.All(data.Questions, q => Assert.InRange(q.GradeLevel!.Value, (byte)10, (byte)12));
-        Assert.Equal((byte)12, data.Questions.Single(q => q.QuestionText.Contains("nghịch biến trên khoảng")).GradeLevel);
+        // This legacy Grade12 question points at the Grade10 Functions node. Keep its reserved ID,
+        // but exclude it from new seed until an author approves a matching Grade12 competency.
+        Assert.Contains("MATH-FUNC-05", data.SkippedQuestionTemplates);
+        Assert.DoesNotContain(data.Questions, q => q.QuestionText.Contains("nghịch biến trên khoảng"));
+        Assert.Contains(data.Questions, q => q.GradeLevel == 12);
         foreach (var cls in data.Classes.Where(c => c.GradeLevel == 10))
             Assert.Contains(data.Questions, q => q.SubjectId == cls.SubjectId && q.GradeLevel == cls.GradeLevel);
     }

@@ -72,6 +72,16 @@ public class PublishCurriculumUseCase : IPublishCurriculumUseCase
             return PublishCurriculumResult.Failure(ErrorCodes.InvalidStateTransition);
         }
 
+        if (curriculum.GradeLevel is not (>= 10 and <= 12))
+            return PublishCurriculumResult.Failure(ErrorCodes.AcademicScopeConflict,
+                new CurriculumScopeConflictDto { Message = "Hãy chọn khối trước khi xuất bản giáo trình." });
+        var selectedNodes = await _dbContext.CurriculumNodes.Where(n => n.CenterId == centerId && n.CurriculumId == curriculumId)
+            .Select(n => n.NodeId).ToListAsync(cancellationToken);
+        var graphScope = await CurriculumGraphScopeGuard.ResolveAsync(_dbContext, centerId, curriculum.SubjectId,
+            curriculum.GradeLevel.Value, null, curriculum.GraphVersionId, selectedNodes, false, cancellationToken);
+        if (graphScope.Conflict is not null)
+            return PublishCurriculumResult.Failure(ErrorCodes.AcademicScopeConflict, graphScope.Conflict);
+
         var assignedIds = await _dbContext.CurriculumClasses.Where(cc => cc.CenterId == centerId && cc.CurriculumId == curriculumId)
             .Select(cc => cc.ClassId).ToListAsync(cancellationToken);
         var publishCandidates = await _dbContext.Classes.Where(c => c.CenterId == centerId).ToListAsync(cancellationToken);
@@ -83,6 +93,7 @@ public class PublishCurriculumUseCase : IPublishCurriculumUseCase
             if (await _dbContext.ClassCurriculumApplications.AnyAsync(a => a.CenterId == centerId && a.ClassId == cls.ClassId && a.EndedAt == null && a.ApplicationRole == "Primary", cancellationToken))
                 return PublishCurriculumResult.Failure(ErrorCodes.InvalidStateTransition);
 
+        curriculum.GraphVersionId = graphScope.GraphVersionId;
         curriculum.ReviewStatus = ReviewStatus.Published;
         curriculum.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
         curriculum.UpdatedBy = actorId;
@@ -125,6 +136,7 @@ public class PublishCurriculumUseCase : IPublishCurriculumUseCase
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             Visibility = curriculum.Visibility.ToString(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            GraphVersionId = curriculum.GraphVersionId?.ToString("D"),
             GradeLevel = curriculum.GradeLevel,
             Title = curriculum.Title,
             Description = curriculum.Description,
@@ -134,6 +146,9 @@ public class PublishCurriculumUseCase : IPublishCurriculumUseCase
             NodeIds = nodes.Select(id => id.ToString(CultureInfo.InvariantCulture)).ToList(),
             RowVersion = curriculum.RowVersion.ToString(CultureInfo.InvariantCulture)
         };
+
+        dto.ApplicationClasses = (await CurriculumClassScopeQuery.ReadAsync(_dbContext, centerId, actorId, curriculumId, cancellationToken))
+            .Select(a => a.ToDto()).ToList();
 
         return PublishCurriculumResult.Success(dto);
     }

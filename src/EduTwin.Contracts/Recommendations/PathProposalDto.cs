@@ -64,6 +64,8 @@ public class ProposedMissionDto
     public bool IsRepair { get; set; }
     /// <summary>A probe (quick try or starting-point check) may run before practice.</summary>
     public bool IsProbe { get; set; }
+    /// <summary>A fresh independent target check when every unmet prerequisite is outside this curriculum. Never asserts mastery of those prerequisites.</summary>
+    public bool IsExternalPrerequisiteAssessment { get; set; }
     /// <summary>Short review confirming a part the student self-assessed as mastered.</summary>
     public bool IsSelfAssessedCheck { get; set; }
     public uint QuestionCount { get; set; }

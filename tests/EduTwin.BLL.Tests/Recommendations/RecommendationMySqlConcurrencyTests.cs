@@ -280,39 +280,83 @@ public sealed class RecommendationMySqlConcurrencyTests
         var tenant = new TenantContext();
         using var scope = tenant.BeginScope(centerId);
         await using var context = CreateContext(database.ConnectionString, tenant);
-        // The lifecycle guard correctly prevents deactivating a topic still used
-        // by an Active question. Prepare a valid no-candidate fixture first.
-        await context.Database.ExecuteSqlRawAsync("UPDATE questions SET status='Archived' WHERE question_id=101");
-        var node = await context.KnowledgeNodes.SingleAsync(n => n.NodeId == 1);
-        node.IsActive = false;
+
+        var noTopicSubjectId = Guid.NewGuid();
+        context.Subjects.Add(new Subject
+        {
+            SubjectId = noTopicSubjectId,
+            CenterId = centerId,
+            SubjectCode = $"SUB-{noTopicSubjectId:N}"[..10],
+            SubjectName = "No Topic Subject",
+            IsActive = true,
+            CreatedAt = UtcNow,
+            UpdatedAt = UtcNow
+        });
+        var emptyVersion = new KnowledgeGraphVersion
+        {
+            GraphVersionId = Guid.NewGuid(),
+            CenterId = centerId,
+            SubjectId = noTopicSubjectId,
+            GradeLevel = 10,
+            Title = "v1-chapter-only",
+            Status = "Draft",
+            IsCurrent = false,
+            IsLegacy = false,
+            CreatedAt = UtcNow,
+            UpdatedAt = UtcNow
+        };
+        context.KnowledgeGraphVersions.Add(emptyVersion);
+        context.KnowledgeNodes.Add(new KnowledgeNode
+        {
+            CenterId = centerId,
+            SubjectId = noTopicSubjectId,
+            NodeId = 899,
+            NodeCode = "CH-899",
+            NodeName = "Chapter Node",
+            NodeType = NodeType.Chapter,
+            OrderIndex = 1,
+            ExamImportance = 50m,
+            EstimatedLearningMinutes = 60,
+            IsActive = true,
+            CreatedAt = UtcNow,
+            UpdatedAt = UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        context.KnowledgeNodeGrades.Add(new KnowledgeNodeGrade
+        {
+            CenterId = centerId,
+            GraphVersionId = emptyVersion.GraphVersionId,
+            NodeId = 899,
+            CreatedAt = UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        emptyVersion.Status = "Published";
+        emptyVersion.IsCurrent = true;
         await context.SaveChangesAsync();
 
         var engine = CreateEngine(context);
         var newer = await engine.GenerateAndPersistAsync(
             centerId,
             studentId,
-            subjectId,
+            noTopicSubjectId,
             sourceAttemptId: 2,
             UtcNow,
             CancellationToken.None);
         Assert.Equal(RecommendationGenerationStatus.NoCandidate, newer.Status);
 
-        node = await context.KnowledgeNodes.SingleAsync(n => n.NodeId == 1);
-        node.IsActive = true;
-        await context.SaveChangesAsync();
-        await context.Database.ExecuteSqlRawAsync("UPDATE questions SET status='Active' WHERE question_id=101");
-
         var stale = await engine.GenerateAndPersistAsync(
             centerId,
             studentId,
-            subjectId,
+            noTopicSubjectId,
             sourceAttemptId: 1,
             UtcNow.AddMinutes(-5),
             CancellationToken.None);
 
         Assert.Equal(RecommendationGenerationStatus.StaleIgnored, stale.Status);
-        Assert.Empty(await context.Recommendations.ToListAsync());
-        var watermark = await context.RecommendationGenerationStates.SingleAsync();
+        Assert.Empty(await context.Recommendations.Where(r => r.SubjectId == noTopicSubjectId).ToListAsync());
+        var watermark = await context.RecommendationGenerationStates.SingleAsync(s => s.SubjectId == noTopicSubjectId);
         Assert.Equal(nameof(RecommendationGenerationStatus.NoCandidate), watermark.LastOutcome);
         Assert.Equal(2ul, watermark.LastSourceAttemptId);
     }
@@ -627,6 +671,21 @@ public sealed class RecommendationMySqlConcurrencyTests
                 UpdatedAt = UtcNow
             });
 
+            var graphVersion = new KnowledgeGraphVersion
+            {
+                GraphVersionId = Guid.NewGuid(),
+                CenterId = centerId,
+                SubjectId = subjectId,
+                GradeLevel = 10,
+                Title = "v1-rec",
+                Status = "Draft",
+                IsCurrent = false,
+                IsLegacy = false,
+                CreatedAt = UtcNow,
+                UpdatedAt = UtcNow
+            };
+            context.KnowledgeGraphVersions.Add(graphVersion);
+
             context.KnowledgeNodes.Add(new KnowledgeNode
             {
                 CenterId = centerId,
@@ -642,6 +701,22 @@ public sealed class RecommendationMySqlConcurrencyTests
                 CreatedAt = UtcNow,
                 UpdatedAt = UtcNow
             });
+
+            await context.SaveChangesAsync();
+
+            context.KnowledgeNodeGrades.Add(new KnowledgeNodeGrade
+            {
+                CenterId = centerId,
+                GraphVersionId = graphVersion.GraphVersionId,
+                NodeId = 1,
+                CreatedAt = UtcNow
+            });
+
+            await context.SaveChangesAsync();
+
+            graphVersion.Status = "Published";
+            graphVersion.IsCurrent = true;
+            await context.SaveChangesAsync();
 
             context.KnowledgeTwins.Add(new KnowledgeTwin
             {
@@ -659,6 +734,7 @@ public sealed class RecommendationMySqlConcurrencyTests
                 CenterId = centerId,
                 SubjectId = subjectId,
                 PrimaryTopicNodeId = 1,
+                GradeLevel = 10,
                 QuestionId = 101,
                 CreatedByTeacherId = fixtureTeacherId,
                 QuestionText = "Sample Question",

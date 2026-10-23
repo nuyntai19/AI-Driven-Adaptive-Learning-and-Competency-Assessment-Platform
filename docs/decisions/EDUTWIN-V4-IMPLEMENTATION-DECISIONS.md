@@ -13,7 +13,8 @@ Triển khai theo yêu cầu người dùng xác nhận sau rà soát: khung đ�
 
 - Planner dùng graph/evidence/nội dung theo đúng môn và lớp; không còn danh mục Toán pilot làm nguồn cho mọi môn. Mỗi chặng là một kỹ năng thật, không phải lịch tuần lặp chủ đề.
 - Start nhiệm vụ lưu Run/Activity/IssuedItem thật. Submit câu hỏi qua pipeline hiện hữu; đọc/ví dụ chỉ hoàn thành hoạt động, không sinh điểm hay Attempt giả.
-- Policy hiện tại `v4-evidence-1`: kiểm tra độc lập cần ít nhất 5 câu khác nhau, chưa làm/chưa lộ lời giải, tối thiểu 80% và evidence không còn chờ review. Không dùng điểm của hoạt động có hướng dẫn để tự xác nhận kỹ năng.
+- Policy hiện tại `v4-evidence-grade-scope-2` (23/10/2026): kiểm tra độc lập cần ít nhất 5 câu khác nhau, chưa làm/chưa lộ lời giải, đúng phạm vi khối/giáo trình, tối thiểu 80% và evidence không còn chờ review. Không dùng điểm của hoạt động có hướng dẫn để tự xác nhận kỹ năng. Phiên V4 policy cũ cần tạo lại đề xuất; không được đi vòng qua endpoint luyện legacy.
+- Khi tất cả prerequisite chưa đạt đều nằm ngoài phạm vi chương trình, có thể đề xuất kiểm tra độc lập trực tiếp năng lực đích bằng 5 câu mới đúng phạm vi. Đề xuất phải nêu lý do; không tự ghi mastery cho prerequisite ngoài phạm vi, không bỏ qua prerequisite nội bộ, và không mở luyện thông thường trước khi đạt kiểm tra độc lập hợp lệ.
 - Preview chỉ lưu draft. Accept idempotent và có khóa học sinh. Chặn thay tuyến khi còn run V4 hoặc chờ chấm/review; phiên legacy đang làm được đánh dấu Abandoned, bảo toàn submissions, có thông báo trong preview và reason code trong quyết định.
 - Worker legacy không được supersede tuyến V4. Reevaluation đọc kết quả canonical, không sửa Attempt trực tiếp, không tự ghi Twin.
 - Báo cáo kiểm chứng và khoảng trống sản phẩm: [EDUTWIN-V4-CODEX-REVIEW-2026-10-16.md](../verification/EDUTWIN-V4-CODEX-REVIEW-2026-10-16.md). Lịch ôn, nội dung tương tác sâu, authoring và pilot chưa thể coi là hoàn tất.

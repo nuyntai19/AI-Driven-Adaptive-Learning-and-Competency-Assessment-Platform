@@ -35,7 +35,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantOwnedEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(58, entityTypes.Count); // prior 52 + 6 learning path v4 entities
+        Assert.Equal(61, entityTypes.Count); // prior 58 + 3 knowledge grade scope entities
 
         foreach (var entityType in entityTypes)
         {
@@ -85,7 +85,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantJoinEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(15, entityTypes.Count); // prior 13 + notification dispatch/delivery
+        Assert.Equal(18, entityTypes.Count); // prior 15 + KnowledgeGraphVersion, KnowledgeNodeGrade, KnowledgeEdgeGrade
 
         foreach (var entityType in entityTypes)
         {
@@ -269,6 +269,7 @@ public class GlobalQueryFilterTests
             "src/EduTwin.BLL/Seeding/DefaultSystemRolePermissionBackfill.cs",
             "src/EduTwin.BLL/Seeding/ManifestEvaluator.cs",
             "src/EduTwin.BLL/Seeding/PlatformAdminProvisioner.cs",
+            "src/EduTwin.BLL/Seeding/SeedQuestionGradeBackfill.cs",
             "src/EduTwin.DAL/IdentityAndTenancy/RefreshTokenStore.cs"
         }.OrderBy(f => f).ToList();
 

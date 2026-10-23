@@ -1545,6 +1545,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("tinyint unsigned")
                         .HasColumnName("grade_level");
 
+                    b.Property<string>("GraphVersionId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("graph_version_id");
+
                     b.Property<bool>("IsDeleted")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("tinyint(1)")
@@ -1602,6 +1606,8 @@ namespace EduTwin.DAL.Persistence.Migrations
 
                     b.HasAlternateKey("CenterId", "CurriculumId")
                         .HasName("ux_curriculums_center_id_curriculum_id");
+
+                    b.HasIndex("CenterId", "GraphVersionId");
 
                     b.HasIndex("CenterId", "SubjectId", "GradeLevel")
                         .HasDatabaseName("ix_curriculums_center_id_subject_id_grade_level");
@@ -5291,6 +5297,146 @@ namespace EduTwin.DAL.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("EduTwin.DAL.KnowledgeGraph.KnowledgeEdgeGrade", b =>
+                {
+                    b.Property<string>("CenterId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<string>("GraphVersionId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("graph_version_id");
+
+                    b.Property<ulong>("EdgeId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("edge_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("RelationType")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("relation_type");
+
+                    b.Property<string>("SourceGraphVersionId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("source_graph_version_id");
+
+                    b.Property<decimal>("Weight")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("weight");
+
+                    b.HasKey("CenterId", "GraphVersionId", "EdgeId");
+
+                    b.HasIndex("CenterId", "EdgeId");
+
+                    b.HasIndex("CenterId", "SourceGraphVersionId");
+
+                    b.ToTable("knowledge_edge_grades", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_edge_grades_relation", "relation_type IN ('PrerequisiteOf','RelatedTo','PartOf','CausesErrorIn')");
+
+                            t.HasCheckConstraint("ck_edge_grades_weight", "weight BETWEEN 0 AND 1");
+                        });
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.KnowledgeGraph.KnowledgeGraphVersion", b =>
+                {
+                    b.Property<string>("GraphVersionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("graph_version_id");
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<byte?>("CurrentGrade")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("current_grade")
+                        .HasComputedColumnSql("CASE WHEN is_current=1 THEN grade_level ELSE NULL END", true);
+
+                    b.Property<byte>("GradeLevel")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("grade_level");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("is_current");
+
+                    b.Property<bool>("IsLegacy")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("is_legacy");
+
+                    b.Property<ulong>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint unsigned")
+                        .HasDefaultValue(1ul)
+                        .HasColumnName("row_version");
+
+                    b.Property<string>("SourceGraphVersionId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("source_graph_version_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("varchar(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("SubjectId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("subject_id");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("varchar(250)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("GraphVersionId");
+
+                    b.HasIndex("CenterId", "SourceGraphVersionId");
+
+                    b.HasIndex("CenterId", "SubjectId", "CurrentGrade")
+                        .IsUnique()
+                        .HasDatabaseName("ux_graph_versions_current_grade");
+
+                    b.HasIndex("CenterId", "SubjectId", "GradeLevel", "Status");
+
+                    b.ToTable("knowledge_graph_versions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_graph_versions_current", "is_current=0 OR (status='Published' AND is_legacy=0)");
+
+                            t.HasCheckConstraint("ck_graph_versions_grade", "grade_level BETWEEN 10 AND 12");
+
+                            t.HasCheckConstraint("ck_graph_versions_status", "status IN ('Draft','Published','Archived')");
+                        });
+                });
+
             modelBuilder.Entity("EduTwin.DAL.KnowledgeGraph.KnowledgeNode", b =>
                 {
                     b.Property<ulong>("NodeId")
@@ -5411,6 +5557,44 @@ namespace EduTwin.DAL.Persistence.Migrations
                             t.HasCheckConstraint("ck_knowledge_nodes_exam_importance", "exam_importance BETWEEN 0 AND 100");
 
                             t.HasCheckConstraint("ck_knowledge_nodes_node_type", "node_type IN ('Subject', 'Chapter', 'Topic', 'Skill', 'Concept')");
+                        });
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.KnowledgeGraph.KnowledgeNodeGrade", b =>
+                {
+                    b.Property<string>("CenterId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<string>("GraphVersionId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("graph_version_id");
+
+                    b.Property<ulong>("NodeId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("node_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<ulong?>("ParentNodeId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("parent_node_id");
+
+                    b.HasKey("CenterId", "GraphVersionId", "NodeId");
+
+                    b.HasIndex("CenterId", "GraphVersionId", "ParentNodeId");
+
+                    b.HasIndex("CenterId", "NodeId", "GraphVersionId");
+
+                    b.ToTable("knowledge_node_grades", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_node_grades_parent", "parent_node_id IS NULL OR parent_node_id<>node_id");
                         });
                 });
 
@@ -8364,6 +8548,13 @@ namespace EduTwin.DAL.Persistence.Migrations
 
             modelBuilder.Entity("EduTwin.DAL.CurriculumAndQuestions.Curriculum", b =>
                 {
+                    b.HasOne("EduTwin.DAL.KnowledgeGraph.KnowledgeGraphVersion", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "GraphVersionId")
+                        .HasPrincipalKey("CenterId", "GraphVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_curriculums_graph_versions");
+
                     b.HasOne("EduTwin.DAL.Organization.Subject", "Subject")
                         .WithMany()
                         .HasForeignKey("CenterId", "SubjectId")
@@ -8859,6 +9050,45 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.Navigation("TargetNode");
                 });
 
+            modelBuilder.Entity("EduTwin.DAL.KnowledgeGraph.KnowledgeEdgeGrade", b =>
+                {
+                    b.HasOne("EduTwin.DAL.KnowledgeGraph.KnowledgeEdge", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "EdgeId")
+                        .HasPrincipalKey("CenterId", "EdgeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.KnowledgeGraph.KnowledgeGraphVersion", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "GraphVersionId")
+                        .HasPrincipalKey("CenterId", "GraphVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.KnowledgeGraph.KnowledgeGraphVersion", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "SourceGraphVersionId")
+                        .HasPrincipalKey("CenterId", "GraphVersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.KnowledgeGraph.KnowledgeGraphVersion", b =>
+                {
+                    b.HasOne("EduTwin.DAL.KnowledgeGraph.KnowledgeGraphVersion", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "SourceGraphVersionId")
+                        .HasPrincipalKey("CenterId", "GraphVersionId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("EduTwin.DAL.Organization.Subject", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "SubjectId")
+                        .HasPrincipalKey("CenterId", "SubjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("EduTwin.DAL.KnowledgeGraph.KnowledgeNode", b =>
                 {
                     b.HasOne("EduTwin.DAL.KnowledgeGraph.KnowledgeNode", "ParentNode")
@@ -8879,6 +9109,28 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.Navigation("ParentNode");
 
                     b.Navigation("Subject");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.KnowledgeGraph.KnowledgeNodeGrade", b =>
+                {
+                    b.HasOne("EduTwin.DAL.KnowledgeGraph.KnowledgeGraphVersion", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "GraphVersionId")
+                        .HasPrincipalKey("CenterId", "GraphVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.KnowledgeGraph.KnowledgeNode", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "NodeId")
+                        .HasPrincipalKey("CenterId", "NodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.KnowledgeGraph.KnowledgeNodeGrade", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "GraphVersionId", "ParentNodeId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("EduTwin.DAL.Notifications.NotificationDelivery", b =>

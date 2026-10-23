@@ -110,6 +110,7 @@ public class QuestionEvaluationModeCrudTests : IDisposable
             UpdatedAt = _fixedTime.UtcDateTime
         };
         _dbContext.KnowledgeNodes.Add(node);
+        GraphScopeFixture.Approve(_dbContext, _centerId, _subjectId, 10, _nodeId);
 
         _dbContext.SaveChanges();
     }

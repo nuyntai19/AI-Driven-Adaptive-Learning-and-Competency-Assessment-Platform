@@ -44,6 +44,23 @@ public class KnowledgeGraphControllerTests
         };
     }
 
+    private Task<IActionResult> GetKnowledgeGraph(Guid subjectId, CancellationToken cancellationToken)
+        => _sut.GetKnowledgeGraph(new KnowledgeGraphQuery { SubjectId = subjectId }, cancellationToken);
+
+    [Theory]
+    [InlineData(true, null)]
+    [InlineData(false, "2026-2027")]
+    public async Task ScopeWithoutClass_IsValidatedInsteadOfDiscarded(bool history, string? year)
+    {
+        var query = new KnowledgeGraphQuery { SubjectId = Guid.NewGuid(), History = history, AcademicYear = year };
+        _useCaseMock.Setup(x => x.ExecuteAsync(query, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(GetKnowledgeGraphResult.Failure(ErrorCodes.ValidationFailed));
+        var response = await _sut.GetKnowledgeGraph(query, CancellationToken.None);
+        Assert.IsType<BadRequestObjectResult>(response);
+        _useCaseMock.Verify(x => x.ExecuteAsync(query, It.IsAny<CancellationToken>()), Times.Once);
+        _useCaseMock.Verify(x => x.ExecuteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
     [Fact]
     public void Controller_HasApiControllerAttribute()
     {
@@ -136,7 +153,7 @@ public class KnowledgeGraphControllerTests
         _useCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(GetKnowledgeGraphResult.Success(graphDto));
 
-        var result = await _sut.GetKnowledgeGraph(subjectId, CancellationToken.None);
+        var result = await GetKnowledgeGraph(subjectId, CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         Assert.Equal(StatusCodes.Status200OK, okResult.StatusCode);
@@ -151,7 +168,7 @@ public class KnowledgeGraphControllerTests
         _useCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(GetKnowledgeGraphResult.Success(graphDto));
 
-        var result = await _sut.GetKnowledgeGraph(subjectId, CancellationToken.None);
+        var result = await GetKnowledgeGraph(subjectId, CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         Assert.IsType<KnowledgeGraphResponse>(okResult.Value);
@@ -171,7 +188,7 @@ public class KnowledgeGraphControllerTests
         _useCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(GetKnowledgeGraphResult.Success(graphDto));
 
-        var result = await _sut.GetKnowledgeGraph(subjectId, CancellationToken.None);
+        var result = await GetKnowledgeGraph(subjectId, CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         var response = Assert.IsType<KnowledgeGraphResponse>(okResult.Value);
@@ -190,7 +207,7 @@ public class KnowledgeGraphControllerTests
 
         using var activity = new Activity("TestActivity").Start();
 
-        var result = await _sut.GetKnowledgeGraph(subjectId, CancellationToken.None);
+        var result = await GetKnowledgeGraph(subjectId, CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         var response = Assert.IsType<KnowledgeGraphResponse>(okResult.Value);
@@ -210,7 +227,7 @@ public class KnowledgeGraphControllerTests
 
         Activity.Current = null;
 
-        var result = await _sut.GetKnowledgeGraph(subjectId, CancellationToken.None);
+        var result = await GetKnowledgeGraph(subjectId, CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         var response = Assert.IsType<KnowledgeGraphResponse>(okResult.Value);
@@ -228,7 +245,7 @@ public class KnowledgeGraphControllerTests
         _useCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(GetKnowledgeGraphResult.Success(graphDto));
 
-        var result = await _sut.GetKnowledgeGraph(subjectId, CancellationToken.None);
+        var result = await GetKnowledgeGraph(subjectId, CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
         var response = Assert.IsType<KnowledgeGraphResponse>(okResult.Value);
@@ -246,7 +263,7 @@ public class KnowledgeGraphControllerTests
         _useCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(GetKnowledgeGraphResult.Success(graphDto));
 
-        await _sut.GetKnowledgeGraph(subjectId, CancellationToken.None);
+        await GetKnowledgeGraph(subjectId, CancellationToken.None);
 
         _useCaseMock.Verify(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -261,7 +278,7 @@ public class KnowledgeGraphControllerTests
         _useCaseMock.Setup(x => x.ExecuteAsync(subjectId, token))
             .ReturnsAsync(GetKnowledgeGraphResult.Success(new KnowledgeGraphDto()));
 
-        await _sut.GetKnowledgeGraph(subjectId, token);
+        await GetKnowledgeGraph(subjectId, token);
 
         _useCaseMock.Verify(x => x.ExecuteAsync(subjectId, token), Times.Once);
     }
@@ -274,7 +291,7 @@ public class KnowledgeGraphControllerTests
         _useCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(GetKnowledgeGraphResult.Failure(ErrorCodes.ValidationFailed));
 
-        var result = await _sut.GetKnowledgeGraph(subjectId, CancellationToken.None);
+        var result = await GetKnowledgeGraph(subjectId, CancellationToken.None);
 
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, badRequestResult.StatusCode);
@@ -288,7 +305,7 @@ public class KnowledgeGraphControllerTests
         _useCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(GetKnowledgeGraphResult.Failure(ErrorCodes.ValidationFailed));
 
-        var result = await _sut.GetKnowledgeGraph(subjectId, CancellationToken.None);
+        var result = await GetKnowledgeGraph(subjectId, CancellationToken.None);
 
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
         var problemDetails = Assert.IsType<ProblemDetails>(badRequestResult.Value);
@@ -308,7 +325,7 @@ public class KnowledgeGraphControllerTests
         _useCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(GetKnowledgeGraphResult.Failure(ErrorCodes.ValidationFailed));
 
-        var result = await _sut.GetKnowledgeGraph(subjectId, CancellationToken.None);
+        var result = await GetKnowledgeGraph(subjectId, CancellationToken.None);
 
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
         var problemDetails = Assert.IsType<ProblemDetails>(badRequestResult.Value);
@@ -325,7 +342,7 @@ public class KnowledgeGraphControllerTests
         _useCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(GetKnowledgeGraphResult.Failure(ErrorCodes.ResourceNotFound));
 
-        var result = await _sut.GetKnowledgeGraph(subjectId, CancellationToken.None);
+        var result = await GetKnowledgeGraph(subjectId, CancellationToken.None);
 
         var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
         Assert.Equal(StatusCodes.Status404NotFound, notFoundResult.StatusCode);
@@ -339,7 +356,7 @@ public class KnowledgeGraphControllerTests
         _useCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(GetKnowledgeGraphResult.Failure(ErrorCodes.ResourceNotFound));
 
-        var result = await _sut.GetKnowledgeGraph(subjectId, CancellationToken.None);
+        var result = await GetKnowledgeGraph(subjectId, CancellationToken.None);
 
         var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
         var problemDetails = Assert.IsType<ProblemDetails>(notFoundResult.Value);
@@ -359,7 +376,7 @@ public class KnowledgeGraphControllerTests
         _useCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(GetKnowledgeGraphResult.Failure(ErrorCodes.ResourceNotFound));
 
-        var result = await _sut.GetKnowledgeGraph(subjectId, CancellationToken.None);
+        var result = await GetKnowledgeGraph(subjectId, CancellationToken.None);
 
         var notFoundResult = Assert.IsType<NotFoundObjectResult>(result);
         var problemDetails = Assert.IsType<ProblemDetails>(notFoundResult.Value);
@@ -376,7 +393,7 @@ public class KnowledgeGraphControllerTests
         _useCaseMock.Setup(x => x.ExecuteAsync(subjectId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(GetKnowledgeGraphResult.Failure("UNKNOWN_ERROR_CODE"));
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.GetKnowledgeGraph(subjectId, CancellationToken.None));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => GetKnowledgeGraph(subjectId, CancellationToken.None));
         Assert.Contains("UNKNOWN_ERROR_CODE", ex.Message);
     }
 
@@ -422,5 +439,25 @@ public class KnowledgeGraphControllerTests
         var expectedProperties = new[] { "Data", "Meta" }.OrderBy(x => x).ToList();
 
         Assert.Equal(expectedProperties, properties);
+    }
+
+    [Fact]
+    public async Task GetKnowledgeGraph_ScopedQuery_InvokesScopedUseCase()
+    {
+        var query = new KnowledgeGraphQuery
+        {
+            SubjectId = Guid.NewGuid(),
+            GradeLevel = 10,
+            GraphVersionId = Guid.NewGuid()
+        };
+        var graphDto = new KnowledgeGraphDto { SubjectId = query.SubjectId.ToString("D") };
+
+        _useCaseMock.Setup(x => x.ExecuteAsync(query, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(GetKnowledgeGraphResult.Success(graphDto));
+
+        var result = await _sut.GetKnowledgeGraph(query, CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        _useCaseMock.Verify(x => x.ExecuteAsync(query, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

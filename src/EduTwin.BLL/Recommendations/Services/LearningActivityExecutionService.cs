@@ -67,6 +67,11 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
             ?? throw new InvalidOperationException("Nhiệm vụ không có trong bản kế hoạch đã xác nhận.");
         if (!definition.CanStart && definition.Purpose is not ("Practice" or "Review" or "IndependentCheck")) throw new InvalidOperationException(definition.SelectionReason);
         if (definition.AvailableFrom > Now) throw new InvalidOperationException("Chưa tới ngày ôn của nhiệm vụ này. Bạn có thể tiếp tục các phần khác trong tuyến.");
+        var capabilityMap = await LearningPathV4Data.MapAsync(db, centerId, studentId, session.LearningPath.SubjectId, session.ClassId, Now, cancellationToken);
+        var capability = capabilityMap.Skills.Single(s => s.SkillId == node.NodeId.ToString());
+        var vouched = LearningGoalScope.Vouched(plan!.SelfReportedPrerequisiteSkillIds, plan.SelfAssessedSkillIds);
+        if (definition.Purpose is "Practice" or "Review" && LearningGoalScope.NeedsExternalAssessment(capability, capabilityMap, vouched))
+            throw new InvalidOperationException("Cần kiểm tra trực tiếp kỹ năng đích hoặc áp dụng giáo trình bổ trợ cho nền tảng ngoài phạm vi trước khi luyện tiếp.");
         if (lastFinished != null && definition.Purpose == "IndependentCheck")
         {
             if (plan!.IsPlacement) throw new InvalidOperationException("Phần kiểm tra đầu vào đã hoàn thành. Hãy lập tuyến luyện từ kết quả; bài đã làm được giữ nguyên.");
@@ -77,15 +82,16 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
                 r.Session.LearningPathId == session.LearningPathId && r.Session.TopicNodeId == session.TopicNodeId &&
                 (r.Session.Objective == "Practice" || r.Session.Objective == "Review") &&
                 r.Status == SessionRunStatus.Completed && r.CompletedAt > lastFinished.CompletedAt, cancellationToken);
-            if (!repaired) throw new InvalidOperationException("Hãy hoàn thành một bộ rèn lại của kỹ năng này trước khi kiểm tra lại bằng câu mới.");
+            if (!repaired && !definition.IsExternalPrerequisiteAssessment) throw new InvalidOperationException("Hãy hoàn thành một bộ rèn lại của kỹ năng này trước khi kiểm tra lại bằng câu mới.");
         }
-        var pool = await LearningPathV4Data.QuestionsAsync(db, centerId, session.LearningPath.SubjectId, new[] { node.NodeId }, cancellationToken);
+        var pool = await LearningPathV4Data.QuestionsAsync(db, centerId, studentId, session.LearningPath.SubjectId, new[] { node.NodeId }, session.ClassId, cancellationToken);
         var independent = definition.Purpose == "IndependentCheck";
         if (independent)
         {
-            var map = await LearningPathV4Data.MapAsync(db, centerId, studentId, session.LearningPath.SubjectId, session.ClassId, Now, cancellationToken);
-            if (!plan!.IsPlacement && !definition.IsProbe && !LearningGoalScope.PrerequisitesSatisfied(map.Skills.Single(s => s.SkillId == node.NodeId.ToString()), map,
-                LearningGoalScope.Vouched(plan.SelfReportedPrerequisiteSkillIds, plan.SelfAssessedSkillIds)))
+            var prerequisitesReady = definition.IsExternalPrerequisiteAssessment
+                ? LearningGoalScope.PrerequisitesSatisfied(capability, capabilityMap, vouched) || LearningGoalScope.CanAssessTargetDirectly(capability, capabilityMap, vouched)
+                : plan.IsPlacement || definition.IsProbe || LearningGoalScope.PrerequisitesSatisfied(capability, capabilityMap, vouched);
+            if (!prerequisitesReady)
                 throw new InvalidOperationException("Cần kiểm tra các kỹ năng nền tảng trước khi xác nhận kỹ năng này.");
             // Any question already answered or shown as a worked example is unsuitable for a new independent check.
             var answered = await db.Attempts.Where(a => a.CenterId == centerId && a.StudentId == studentId).Select(a => a.QuestionId).Distinct().ToListAsync(cancellationToken);

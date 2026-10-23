@@ -31,7 +31,7 @@ public sealed partial class LearningPathV4Planner
         var nodes = await LearningPathV4Data.NodesAsync(db, centerId, studentId, request.SubjectId, classId, cancellationToken);
         if (wanted.Any(id => map.Skills.All(s => s.SkillId != id)))
             throw new ArgumentException("Phần đã chọn không thuộc môn và giáo trình đang học.");
-        var questions = await LearningPathV4Data.QuestionsAsync(db, centerId, request.SubjectId, nodes.Select(n => n.NodeId).ToList(), cancellationToken);
+        var questions = await LearningPathV4Data.QuestionsAsync(db, centerId, studentId, request.SubjectId, nodes.Select(n => n.NodeId).ToList(), classId, cancellationToken);
         var used = await db.Attempts.AsNoTracking().Where(a => a.CenterId == centerId && a.StudentId == studentId &&
             a.Question.SubjectId == request.SubjectId).Select(a => a.QuestionId).Distinct().ToListAsync(cancellationToken);
         var exposed = await db.IssuedItems.AsNoTracking().Where(i => i.CenterId == centerId && i.ActivityRun.SessionRun.StudentId == studentId &&
