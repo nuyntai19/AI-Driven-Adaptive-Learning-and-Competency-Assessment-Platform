@@ -13,7 +13,7 @@ public class EduTwinSeedFactoryTests
     {
         var data = new EduTwinSeedFactory(centerA).CreateData();
         Assert.Equal(6, data.Classes.Count);
-        Assert.Equal(6, data.Curriculums.Count);
+        Assert.Equal(12, data.Curriculums.Count);
         foreach (var subject in data.Subjects)
             Assert.Equal(new byte?[] { 10, 11, 12 }, data.Classes.Where(c => c.SubjectId == subject.SubjectId)
                 .OrderBy(c => c.GradeLevel).Select(c => c.GradeLevel));
@@ -79,7 +79,7 @@ public class EduTwinSeedFactoryTests
         var factory = new EduTwinSeedFactory(true);
         var data = factory.CreateData();
 
-        Assert.Equal(29, data.Questions.Count);
+        Assert.Equal(41, data.Questions.Count);
         Assert.Equal(["MATH-FUNC-05"], data.SkippedQuestionTemplates);
         Assert.DoesNotContain(data.Questions, q => q.QuestionId == DeterministicSeedIds.CenterAQuestionIdBase + 4);
         foreach (var q in data.Questions)
@@ -101,12 +101,17 @@ public class EduTwinSeedFactoryTests
         var essayQuestions = data.Questions.Where(q => q.QuestionType == EduTwin.Contracts.CurriculumAndQuestions.QuestionType.Essay).ToList();
 
         Assert.Equal(12, mcQuestions.Count);
-        Assert.Equal(12, saQuestions.Count);
-        Assert.Equal(5, essayQuestions.Count);
+        Assert.Equal(23, saQuestions.Count);
+        Assert.Equal(6, essayQuestions.Count);
 
         foreach (var topic in data.Topics)
         {
             var topicQuestions = data.Questions.Where(q => q.PrimaryTopicNodeId == topic.NodeId).OrderBy(q => q.Difficulty).ToList();
+            if (topic.NodeId >= DeterministicSeedIds.CenterANodeIdBase + 5000)
+            {
+                Assert.Single(topicQuestions);
+                continue;
+            }
             Assert.Equal(topic.NodeCode == "MATH-FUNCTIONS" ? 4 : 5, topicQuestions.Count);
             Assert.Equal(EduTwin.Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice, topicQuestions[0].QuestionType); // Diff 1
             Assert.Equal(EduTwin.Contracts.CurriculumAndQuestions.QuestionType.ShortAnswer, topicQuestions[1].QuestionType);    // Diff 2
@@ -128,6 +133,37 @@ public class EduTwinSeedFactoryTests
             var options = data.QuestionOptions.Where(o => o.QuestionId == other.QuestionId).ToList();
             Assert.Empty(options);
         }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ExpandedSamples_MapEveryCurriculumAndQuestionToItsCurrentGradeGraph(bool centerA)
+    {
+        var data = new EduTwinSeedFactory(centerA).CreateData();
+        foreach (var curriculum in data.Curriculums.Where(c => c.GraphVersionId.HasValue))
+        {
+            var version = data.GraphVersions.Single(v => v.GraphVersionId == curriculum.GraphVersionId);
+            Assert.Equal(curriculum.SubjectId, version.SubjectId);
+            Assert.Equal(curriculum.GradeLevel, version.GradeLevel);
+            var mapped = data.NodeGrades.Where(m => m.GraphVersionId == version.GraphVersionId).Select(m => m.NodeId).ToHashSet();
+            Assert.All(data.CurriculumNodes.Where(n => n.CurriculumId == curriculum.CurriculumId), n => Assert.Contains(n.NodeId, mapped));
+        }
+        foreach (var version in data.GraphVersions.Where(v => v.IsCurrent))
+        {
+            var mapped = data.NodeGrades.Where(m => m.GraphVersionId == version.GraphVersionId).Select(m => m.NodeId).ToHashSet();
+            Assert.All(data.EdgeGrades.Where(e => e.GraphVersionId == version.GraphVersionId), m =>
+            {
+                var edge = data.Edges.Single(e => e.EdgeId == m.EdgeId);
+                Assert.Contains(edge.SourceNodeId, mapped);
+                Assert.Contains(edge.TargetNodeId, mapped);
+                Assert.Null(m.SourceGraphVersionId);
+            });
+        }
+        Assert.Equal(6, data.GraphVersions.Count(v => v.IsCurrent));
+        Assert.All(data.Questions.Where(q => q.QuestionId >= (centerA ? 15000UL : 25000UL)), q =>
+            Assert.Contains(data.GraphVersions.Where(v => v.IsCurrent && v.SubjectId == q.SubjectId && v.GradeLevel == q.GradeLevel),
+                v => data.NodeGrades.Any(m => m.GraphVersionId == v.GraphVersionId && m.NodeId == q.PrimaryTopicNodeId)));
     }
 
     [Fact]

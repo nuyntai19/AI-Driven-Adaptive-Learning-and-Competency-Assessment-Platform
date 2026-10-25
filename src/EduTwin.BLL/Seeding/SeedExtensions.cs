@@ -31,6 +31,7 @@ public static class SeedExtensions
         services.AddScoped<IManifestEvaluator, ManifestEvaluator>();
         services.AddScoped<EduTwinRuntimeSeeder>();
         services.AddScoped<SeedQuestionGradeBackfill>();
+        services.AddScoped<ExpandedDemoSeedBackfill>();
         services.AddScoped<AuthorizationBootstrapper>();
         services.AddScoped<DefaultSystemRolePermissionBackfill>();
         services.AddScoped<PlatformAdminProvisioner>();
@@ -67,6 +68,7 @@ public static class SeedExtensions
         await scope.ServiceProvider.GetRequiredService<SeedQuestionGradeBackfill>().EnsureAsync();
         var seeder = scope.ServiceProvider.GetRequiredService<EduTwinRuntimeSeeder>();
         await seeder.SeedAsync();
+        await scope.ServiceProvider.GetRequiredService<ExpandedDemoSeedBackfill>().EnsureAsync();
 
         var authorizationBootstrapper =
             scope.ServiceProvider.GetRequiredService<AuthorizationBootstrapper>();

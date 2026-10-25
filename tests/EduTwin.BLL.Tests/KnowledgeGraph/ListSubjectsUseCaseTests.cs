@@ -90,6 +90,29 @@ public class ListSubjectsUseCaseTests : IDisposable
     }
 
     [Fact]
+    public async Task Teacher_SeesOnlySubjectsOfAssignedClasses()
+    {
+        var centerId = Guid.NewGuid();
+        var teacherId = Guid.NewGuid();
+        SetupTenantContext(centerId, teacherId, "Teacher");
+        var math = CreateSubject(centerId, "MATH", "Toán", true);
+        var english = CreateSubject(centerId, "ENGLISH", "Tiếng Anh", true);
+        _dbContext.Centers.Add(CreateCenter(centerId, "A", "Center A", EduTwin.Contracts.Organization.CenterStatus.Active));
+        _dbContext.Subjects.AddRange(math, english);
+        _dbContext.Classes.Add(new Class { CenterId = centerId, ClassId = Guid.NewGuid(), TeacherId = teacherId,
+            SubjectId = math.SubjectId, ClassName = "Toán 12", GradeLevel = 12, AcademicYear = "2026-2027",
+            Status = EduTwin.Contracts.Organization.ClassStatus.Active,
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        await _dbContext.SaveChangesAsync();
+
+        var result = await _useCase.ExecuteAsync(new SubjectListQuery(), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Data!);
+        Assert.Equal(math.SubjectId.ToString("D"), result.Data![0].SubjectId);
+    }
+
+    [Fact]
     public async Task UnresolvedTenant_ReturnsResourceNotFound()
     {
         SetupTenantContext(Guid.NewGuid(), Guid.NewGuid(), "Teacher", false);

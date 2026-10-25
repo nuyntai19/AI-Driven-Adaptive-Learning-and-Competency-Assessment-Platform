@@ -299,13 +299,13 @@ public class ManifestEvaluator : IManifestEvaluator
     {
         var expectedSet = expected.CurriculumApplications.Select(a =>
             (a.ClassId, a.CurriculumId, a.SubjectId, a.ApplicationRole, a.AssignedBy,
-             a.ClassGradeAtStart, a.CurriculumGradeAtStart, a.IsGradeException)).ToHashSet();
+             a.ClassGradeAtStart, a.CurriculumGradeAtStart, a.IsGradeException, Ended: a.EndedAt.HasValue)).ToHashSet();
         var actual = await GetUnfiltered<ClassCurriculumApplication>().Where(a => a.CenterId == centerId)
             .Select(a => new { a.ClassId, a.CurriculumId, a.SubjectId, a.ApplicationRole, a.AssignedBy,
                 a.ClassGradeAtStart, a.CurriculumGradeAtStart, a.IsGradeException, a.EndedAt }).ToListAsync();
-        return actual.All(a => a.EndedAt == null) && actual.Count == expectedSet.Count && expectedSet.SetEquals(actual.Select(a =>
+        return actual.Count == expectedSet.Count && expectedSet.SetEquals(actual.Select(a =>
             (a.ClassId, a.CurriculumId, a.SubjectId, a.ApplicationRole, a.AssignedBy,
-             a.ClassGradeAtStart, a.CurriculumGradeAtStart, a.IsGradeException)));
+             a.ClassGradeAtStart, a.CurriculumGradeAtStart, a.IsGradeException, Ended: a.EndedAt.HasValue)));
     }
 
     private async Task<bool> IsMatchQuestionsAsync(SeedDataContainer expected, Guid centerId)

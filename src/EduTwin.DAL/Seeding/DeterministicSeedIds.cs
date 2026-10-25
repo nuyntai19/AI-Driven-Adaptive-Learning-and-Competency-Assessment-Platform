@@ -61,6 +61,22 @@ public static class DeterministicSeedIds
         return new Guid($"{prefix}-0000-0000-0000-{grade:000000000000}");
     }
 
+    // Additive sample edition: the first Published curricula and graph versions
+    // remain available for historical class applications and submitted work.
+    public static Guid ExpandedGradeGraphVersionId(bool centerA, bool math, byte grade)
+    {
+        if (grade is < 10 or > 12) throw new ArgumentOutOfRangeException(nameof(grade));
+        var prefix = centerA ? (math ? "f1000000" : "f2000000") : (math ? "f3000000" : "f4000000");
+        return new Guid($"{prefix}-0000-0000-0000-{grade:000000000000}");
+    }
+
+    public static Guid ExpandedGradeCurriculumId(bool centerA, bool math, byte grade)
+    {
+        if (grade is < 10 or > 12) throw new ArgumentOutOfRangeException(nameof(grade));
+        var prefix = centerA ? (math ? "d1000000" : "d2000000") : (math ? "d3000000" : "d4000000");
+        return new Guid($"{prefix}-0000-0000-0000-{grade:000000000000}");
+    }
+
     // Curriculums
     public static readonly Guid CenterAMathCurriculumId = new("90000000-0000-0000-0000-000000000009");
     public static readonly Guid CenterAEnglishCurriculumId = new("a0000000-0000-0000-0000-00000000000a");

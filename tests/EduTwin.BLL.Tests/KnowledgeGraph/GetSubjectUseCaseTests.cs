@@ -66,6 +66,7 @@ public class GetSubjectUseCaseTests
     {
         var centerId = Guid.NewGuid();
         var subjectId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
         await SetupActiveCenter(centerId);
 
         _dbContext.Subjects.Add(new Subject
@@ -82,12 +83,18 @@ public class GetSubjectUseCaseTests
             CreatedBy = Guid.NewGuid(),
             UpdatedBy = Guid.NewGuid()
         });
+        if (role == nameof(UserRole.Teacher))
+            _dbContext.Classes.Add(new Class { CenterId = centerId, ClassId = Guid.NewGuid(),
+                TeacherId = actorId, SubjectId = subjectId, ClassName = "Subject scope",
+                GradeLevel = 10, AcademicYear = "2026-2027",
+                Status = EduTwin.Contracts.Organization.ClassStatus.Active,
+                CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         await _dbContext.SaveChangesAsync();
         _dbContext.ChangeTracker.Clear();
 
         _tenantMock.SetupGet(x => x.IsResolved).Returns(true);
         _tenantMock.SetupGet(x => x.CenterId).Returns(centerId);
-        _tenantMock.SetupGet(x => x.UserId).Returns(Guid.NewGuid());
+        _tenantMock.SetupGet(x => x.UserId).Returns(actorId);
         _tenantMock.SetupGet(x => x.Role).Returns(role);
 
         var result = await _sut.ExecuteAsync(subjectId, CancellationToken.None);
@@ -98,6 +105,27 @@ public class GetSubjectUseCaseTests
         Assert.Equal(subjectId.ToString("D").ToLowerInvariant(), result.Data.SubjectId);
 
         Assert.Empty(_dbContext.ChangeTracker.Entries());
+    }
+
+    [Fact]
+    public async Task Teacher_CannotReadSubjectWithoutAnAssignedClass()
+    {
+        var centerId = Guid.NewGuid();
+        var subjectId = Guid.NewGuid();
+        await SetupActiveCenter(centerId);
+        _dbContext.Subjects.Add(new Subject { CenterId = centerId, SubjectId = subjectId,
+            SubjectCode = "ENGLISH", SubjectName = "English", IsActive = true,
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        await _dbContext.SaveChangesAsync();
+        _tenantMock.SetupGet(x => x.IsResolved).Returns(true);
+        _tenantMock.SetupGet(x => x.CenterId).Returns(centerId);
+        _tenantMock.SetupGet(x => x.UserId).Returns(Guid.NewGuid());
+        _tenantMock.SetupGet(x => x.Role).Returns(nameof(UserRole.Teacher));
+
+        var result = await _sut.ExecuteAsync(subjectId, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.ResourceNotFound, result.ErrorCode);
     }
 
     [Fact]

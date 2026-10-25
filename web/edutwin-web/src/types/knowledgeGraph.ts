@@ -186,6 +186,7 @@ export interface ResolvedGraphScope extends GraphScopeQuery {
 
 export interface KnowledgeGraphVersion {
   graphVersionId: string;
+  createdBy?: string | null;
   subjectId: string;
   gradeLevel: number;
   title: string;

@@ -108,7 +108,8 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   const urlSubjectId = searchParams.get("subjectId") || "";
   const scope = useMemo(() => readKnowledgeScope(searchParams), [searchParams]);
   const scopeKey = knowledgeScopeSearch(urlSubjectId, scope);
-  const canonicalAuthoring = scope.gradeLevel === undefined && !scope.graphVersionId && !scope.curriculumId && !scope.classId && !scope.academicYear && !scope.history;
+  // The unscoped catalogue remains an internal source for Draft composition only.
+  const canonicalAuthoring = false;
 
   const user = useAuthStore((state) => state.user);
   const hasPermission = useAuthStore((state) => state.hasPermission);
@@ -120,17 +121,15 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
 
   const canReadSubjects = hasPermission(permissions.subjectsRead);
   const canReadNodes = hasPermission(permissions.nodesRead);
-  const canCreateNodes = hasPermission(permissions.nodesCreate) && (canonicalAuthoring || draftAuthoring);
-  const canUpdateNodes = hasPermission(permissions.nodesUpdate) && canonicalAuthoring;
-  const canDeleteNodes = hasPermission(permissions.nodesDelete) && canonicalAuthoring;
+  const canCreateNodes = hasPermission(permissions.nodesCreate) && draftAuthoring;
+  const canUpdateNodes = false;
+  const canDeleteNodes = false;
   const canReadEdges = hasPermission(permissions.edgesRead);
-  const canCreateEdges = hasPermission(permissions.edgesCreate) && (canonicalAuthoring || draftAuthoring);
-  const canUpdateEdges = hasPermission(permissions.edgesUpdate) && canonicalAuthoring;
-  const canDeleteEdges = hasPermission(permissions.edgesDelete) && canonicalAuthoring;
+  const canCreateEdges = hasPermission(permissions.edgesCreate) && draftAuthoring;
+  const canUpdateEdges = false;
+  const canDeleteEdges = false;
   const canReadQuestions = hasPermission(permissions.questionsRead);
   const canCreateAssignments = hasPermission(permissions.assignmentsCreate);
-  const authoringCatalog = useQuery({ queryKey: knowledgeKeys.graph(user?.centerId, user?.userId, urlSubjectId, {}),
-    queryFn: () => knowledgeGraphApi.getGraph(urlSubjectId), enabled: !!urlSubjectId && draftAuthoring && canReadNodes && canReadEdges });
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>(urlSubjectId);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -140,8 +139,9 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   const [hideInactiveNodes, setHideInactiveNodes] = useState<boolean>(false);
   const [versionDirty, setVersionDirty] = useState(false);
   const [classYearFilter, setClassYearFilter] = useState(scope.academicYear || "");
+  const [selectedClassContextId, setSelectedClassContextId] = useState(searchParams.get("classContextId") || scope.classId || "");
   const [showClassHistory, setShowClassHistory] = useState(scope.history ?? false);
-  useEffect(() => { setClassYearFilter(scope.academicYear || ""); }, [scope.academicYear]);
+  useEffect(() => { if (scope.academicYear) setClassYearFilter(scope.academicYear); }, [scope.academicYear]);
   useEffect(() => { if (scope.classId) setShowClassHistory(scope.history ?? false); }, [scope.classId, scope.history]);
 
   // Modals state
@@ -196,9 +196,21 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       for (let page = 2; page <= first.meta.totalPages; page++) result.push(...(await organizationApi.listClasses({ ...filter, page })).data);
       return result;
     } });
-  const curriculaQuery = useQuery({ queryKey: ["teacherCurriculums", "graph-scope", user?.centerId, user?.userId, selectedSubjectId],
-    queryFn: () => curriculumApi.getAll({ subjectId: selectedSubjectId }), enabled: !!selectedSubjectId && hasPermission(permissions.curriculumsRead) });
-  const updateScope = (next: typeof scope, subject = selectedSubjectId) => setSearchParams(knowledgeScopeSearch(subject, next));
+  useEffect(() => {
+    if (!selectedClassContextId) return;
+    const selectedClass = classesQuery.data?.find(c => c.classId === selectedClassContextId);
+    if (selectedClass && !classYearFilter) setClassYearFilter(selectedClass.academicYear);
+  }, [selectedClassContextId, classesQuery.data, classYearFilter]);
+  const curriculaQuery = useQuery({ queryKey: ["teacherCurriculums", "graph-scope", user?.centerId, user?.userId, selectedSubjectId, showClassHistory],
+    queryFn: () => curriculumApi.getAll({ subjectId: selectedSubjectId, history: showClassHistory }),
+    enabled: !!selectedSubjectId && hasPermission(permissions.curriculumsRead) });
+  const updateScope = (next: typeof scope, subject = selectedSubjectId, classContextId = selectedClassContextId) => {
+    const params = new URLSearchParams(knowledgeScopeSearch(subject, next));
+    if (classContextId) params.set("classContextId", classContextId);
+    const returnCurriculumId = searchParams.get("returnCurriculumId");
+    if (returnCurriculumId) params.set("returnCurriculumId", returnCurriculumId);
+    setSearchParams(params);
+  };
   useEffect(() => { setSelectedNodeId(null); setSelectedEdgeId(null); setHideInactiveNodes(false);
     setIsAddNodeOpen(false); setIsAddEdgeOpen(false); setFeedbackMsg(null);
   }, [scopeKey]);
@@ -219,6 +231,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
     if (newSubjectId) {
+      setClassYearFilter(""); setSelectedClassContextId("");
       setSearchParams({ subjectId: newSubjectId });
     } else {
       setSearchParams({});
@@ -236,7 +249,8 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   } = useQuery({
     queryKey: knowledgeKeys.graph(user?.centerId, user?.userId, selectedSubjectId, scope),
     queryFn: () => knowledgeGraphApi.getGraph(selectedSubjectId, scope),
-    enabled: Boolean(user?.centerId && (selectedSubjectId.trim() || scope.classId || scope.curriculumId || scope.graphVersionId) && canReadNodes && canReadEdges),
+    enabled: Boolean(user?.centerId && scope.gradeLevel && selectedSubjectId.trim() &&
+      (scope.classId || scope.curriculumId || scope.graphVersionId) && canReadNodes && canReadEdges),
   });
   useEffect(() => {
     if (!urlSubjectId && graphData?.subjectId) {
@@ -254,8 +268,8 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   const nodes = projection.nodes;
   const edges = projection.edges;
   const canonicalNodes = useMemo(() => [...new Map(nodes.map(node => [node.canonicalNodeId || node.nodeId, node])).values()], [nodes]);
-  const edgeAuthoringSources = draftAuthoring ? authoringCatalog.data?.nodes ?? [] : nodes;
   const edgeAuthoringTargets = canonicalNodes.map(node => ({ ...node, nodeId: node.canonicalNodeId || node.nodeId }));
+  const edgeAuthoringSources = edgeAuthoringTargets;
 
   const inactiveNodesCount = useMemo(() => nodes.filter((n) => !n.isActive).length, [nodes]);
 
@@ -344,7 +358,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       await invalidateGraph();
       setIsAddNodeOpen(false);
       resetNodeForm();
-      setFeedbackMsg({ type: "success", text: draftAuthoring ? "Đã tạo điểm tri thức trong thư viện. Chọn điểm vừa tạo tại phần Chủ đề và cây cấu trúc bên dưới, đặt nút cha rồi lưu bản nháp." : "Tạo điểm tri thức mới thành công! Chọn khối và phiên bản để đưa điểm này vào khung được áp dụng." });
+      setFeedbackMsg({ type: "success", text: "Đã tạo chủ đề. Chọn chủ đề vừa tạo trong phiên bản Draft bên dưới rồi lưu cấu trúc nháp." });
     },
     onError: (err: any) => {
       const details = extractProblemDetails(err);
@@ -411,13 +425,15 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     onSuccess: async () => {
       await invalidateGraph();
       setIsAddEdgeOpen(false);
-      setFeedbackMsg({ type: "success", text: draftAuthoring ? "Đã tạo quan hệ trong thư viện. Chọn quan hệ vừa tạo tại phần Quan hệ áp dụng, đặt trọng số và lưu cấu trúc nháp." : "Thiết lập liên kết tiên quyết thành công!" });
+      setFeedbackMsg({ type: "success", text: "Đã tạo liên kết. Chọn liên kết vừa tạo trong phiên bản Draft bên dưới rồi lưu cấu trúc nháp." });
     },
     onError: (err: any) => {
       const details = extractProblemDetails(err);
       setFeedbackMsg({
         type: "error",
-        text: academicLifecycleError(err, "Không thể tạo liên kết vì sẽ gây chu trình lặp (DAG Cycle) hoặc liên kết trùng lặp."),
+        text: details.errorCode === "DUPLICATE_RESOURCE"
+          ? "Liên kết cùng chiều và cùng loại đã có trong thư viện môn. Tích chọn nó ở “Quan hệ áp dụng” hoặc dùng “Đảo chiều trong bản nháp”; không cần tạo lại."
+          : academicLifecycleError(err, "Không thể tạo liên kết vì sẽ gây chu trình lặp (DAG Cycle) hoặc liên kết trùng lặp."),
         traceId: details.traceId,
       });
     },
@@ -626,10 +642,13 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
         ]}
         actions={
           <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-            {canCreateEdges && selectedSubjectId && edgeAuthoringSources.length >= 2 && edgeAuthoringTargets.length >= 1 && (
+            {canCreateEdges && selectedSubjectId && (
               <button
                 type="button"
                 className="th-secondary-button"
+                disabled={edgeAuthoringSources.length < 2 || edgeAuthoringTargets.length < 1}
+                title={edgeAuthoringTargets.length < 1 ? "Thêm chủ đề vào bản Draft trước khi tạo liên kết." :
+                  edgeAuthoringSources.length < 2 ? "Cần ít nhất hai chủ đề để tạo liên kết." : undefined}
                 onClick={() => {
                   const target = edgeAuthoringTargets[0]?.nodeId || "";
                   setEdgeTargetId(target);
@@ -689,6 +708,10 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
           </button>
         </div>
       )}
+
+      {searchParams.get("returnCurriculumId") && <Link className="th-secondary-button inline-flex my-3" to={`/giao-vien/giao-trinh/${searchParams.get("returnCurriculumId")}`}>
+        Quay lại giáo trình để chọn phiên bản khung tri thức đã xuất bản
+      </Link>}
 
       {/* Stats and DAG Status */}
       <div className="th-stats-grid">
@@ -850,30 +873,31 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
 
       <div className="th-surface rounded-xl p-4 my-4 space-y-3" aria-label="Phạm vi đồ thị tri thức">
         <div className="flex flex-wrap gap-3 items-end">
-          <label className="text-sm">Khối thư viện<select disabled={versionDirty} className="th-select block mt-1" value={scope.gradeLevel ?? ""} onChange={e => updateScope({ gradeLevel: e.target.value ? Number(e.target.value) : undefined })}>
-            <option value="">Thư viện gốc · chưa lọc khối</option>{[10,11,12].map(g => <option key={g} value={g}>Khối {g}</option>)}
+          <label className="text-sm">Khối<select disabled={versionDirty} className="th-select block mt-1" value={scope.gradeLevel ?? ""} onChange={e => { setClassYearFilter(""); setSelectedClassContextId(""); updateScope({ gradeLevel: e.target.value ? Number(e.target.value) : undefined }, selectedSubjectId, ""); }}>
+            <option value="">Chọn khối</option>{[10,11,12].map(g => <option key={g} value={g}>Khối {g}</option>)}
           </select></label>
-          <label className="text-sm">Giáo trình<select disabled={versionDirty} className="th-select block mt-1" value={scope.curriculumId ?? ""} onChange={e => { const c = curriculaQuery.data?.data.find(c => c.curriculumId === e.target.value); updateScope(c ? { curriculumId: c.curriculumId } : {}); }}>
-            <option value="">Chọn giáo trình</option>{curriculaQuery.data?.data.map(c => <option key={c.curriculumId} value={c.curriculumId}>{c.title} · Khối {c.gradeLevel ?? "?"} · {c.reviewStatus}</option>)}
+          <label className="text-sm">Năm học<select disabled={versionDirty || !scope.gradeLevel} className="th-select block mt-1" value={classYearFilter} onChange={e => { setClassYearFilter(e.target.value); setSelectedClassContextId(""); updateScope({ gradeLevel: scope.gradeLevel }, selectedSubjectId, ""); }}>
+            <option value="">Chọn năm học</option>{[...new Set((classesQuery.data ?? []).filter(c => c.subject.subjectId === selectedSubjectId && c.gradeLevel === scope.gradeLevel).map(c => c.academicYear))].sort().reverse().map(y => <option key={y} value={y}>{y}</option>)}
           </select></label>
-          <label className="text-sm">Lọc lớp theo năm học<select disabled={versionDirty} className="th-select block mt-1" value={classYearFilter} onChange={e => setClassYearFilter(e.target.value)}>
-            <option value="">Tất cả năm học</option>{[...new Set((classesQuery.data ?? []).map(c => c.academicYear))].sort().reverse().map(y => <option key={y} value={y}>{y}</option>)}
+          <label className="text-sm">Lớp phụ trách<select disabled={versionDirty || !classYearFilter} className="th-select block mt-1" value={selectedClassContextId} onChange={e => { const c = classesQuery.data?.find(c => c.classId === e.target.value);
+            setSelectedClassContextId(c?.classId || "");
+            if (c) updateScope({ gradeLevel: c.gradeLevel ?? undefined, classId: c.classId, academicYear: c.academicYear, history: showClassHistory }, c.subject.subjectId, c.classId);
+            else updateScope({ gradeLevel: scope.gradeLevel }, selectedSubjectId, ""); }}>
+            <option value="">Chọn lớp</option>{classesQuery.data?.filter(c => c.subject.subjectId === selectedSubjectId && c.gradeLevel === scope.gradeLevel && c.academicYear === classYearFilter && (showClassHistory || (c.status === "Active" && c.learningScope !== "History"))).map(c => <option key={c.classId} value={c.classId}>{c.className} · {c.academicYear} · Khối {c.gradeLevel ?? "?"}</option>)}
           </select></label>
-          <label className="text-sm">Lớp phụ trách<select disabled={versionDirty} className="th-select block mt-1" value={scope.classId ?? ""} onChange={e => { const c = classesQuery.data?.find(c => c.classId === e.target.value);
-            if (c) { setSelectedSubjectId(c.subject.subjectId); updateScope({ classId: c.classId, academicYear: c.academicYear, history: showClassHistory || scope.history }, c.subject.subjectId); }
-            else updateScope({}); }}>
-            <option value="">Chọn lớp</option>{classesQuery.data?.filter(c => c.classId === scope.classId || (c.subject.subjectId === selectedSubjectId && (!classYearFilter || c.academicYear === classYearFilter) && (showClassHistory || scope.history || (c.status === "Active" && c.learningScope !== "History")))).map(c => <option key={c.classId} value={c.classId}>{c.className} · {c.academicYear} · Khối {c.gradeLevel ?? "?"}</option>)}
+          <label className="text-sm">Giáo trình<select disabled={versionDirty || !selectedClassContextId} className="th-select block mt-1" value={scope.curriculumId ?? ""} onChange={e => { const c = curriculaQuery.data?.data.find(c => c.curriculumId === e.target.value); updateScope(c ? { gradeLevel: scope.gradeLevel, curriculumId: c.curriculumId } : { gradeLevel: scope.gradeLevel, classId: selectedClassContextId, academicYear: classYearFilter, history: showClassHistory }); }}>
+            <option value="">Chọn giáo trình</option>{curriculaQuery.data?.data.filter(c => c.gradeLevel === scope.gradeLevel && (c.classIds.includes(selectedClassContextId) || c.applicationClasses?.some(a => a.classId === selectedClassContextId))).map(c => <option key={c.curriculumId} value={c.curriculumId}>{c.title} · {c.reviewStatus}</option>)}
           </select></label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={versionDirty} checked={scope.classId ? scope.history ?? false : showClassHistory} onChange={e => { setShowClassHistory(e.target.checked); if (scope.classId || scope.history) updateScope({ ...scope, history: e.target.checked }); }} />Lớp và lịch sử áp dụng trước đây</label>
         </div>
         {classesQuery.isError && <p role="alert">Không tải được lớp phụ trách. <button onClick={() => classesQuery.refetch()}>Tải lại</button></p>}
         {curriculaQuery.isError && <p role="alert">Không tải được danh sách giáo trình. <button onClick={() => curriculaQuery.refetch()}>Tải lại</button></p>}
-        <p className="text-sm text-[var(--th-text-secondary)]">{graphData?.resolvedScope?.className || classesQuery.data?.find(c => c.classId === scope.classId)?.className || graphData?.resolvedScope?.curriculumTitle || curriculaQuery.data?.data.find(c => c.curriculumId === scope.curriculumId)?.title || (scope.gradeLevel ? `Thư viện Khối ${scope.gradeLevel}` : "Thư viện gốc của môn; các điểm chưa phân khối chưa được dùng cho soạn mới")}{scope.academicYear ? ` · Năm học ${scope.academicYear}` : ""}{scope.history ? " · Lịch sử" : ""}</p>
+        <p className="text-sm text-[var(--th-text-secondary)]">{graphData?.resolvedScope?.curriculumTitle || curriculaQuery.data?.data.find(c => c.curriculumId === scope.curriculumId)?.title || graphData?.resolvedScope?.className || classesQuery.data?.find(c => c.classId === selectedClassContextId)?.className || (scope.gradeLevel ? `Khung tri thức Khối ${scope.gradeLevel}` : "Chọn khối để xem khung tri thức")}{classYearFilter ? ` · Năm học ${classYearFilter}` : ""}{scope.history ? " · Lịch sử" : ""}</p>
         {graphData?.resolvedScope?.isLegacy && <p className="text-sm text-amber-500">Dữ liệu chuyển tiếp giữ nguyên cấu trúc trước khi phân khối. Chọn thư viện theo khối và rà soát bản nháp để soạn mới.</p>}
         {versionDirty && <p role="status" className="text-sm">Lưu hoặc hủy cấu trúc nháp trước khi đổi phạm vi.</p>}
-        {!canonicalAuthoring && <p className="text-sm">Cấu trúc đang xem được xác định bởi khung tri thức và giáo trình. Quản lý bản nháp theo khối bên dưới; <button disabled={versionDirty} className="underline" onClick={() => updateScope({})}>mở thư viện gốc để tạo điểm tri thức hoặc quan hệ mới</button>.</p>}
+        {scope.gradeLevel && <p className="text-sm">Muốn thêm chủ đề hoặc liên kết, mở giáo trình Draft rồi chọn “Chỉnh sửa khung tri thức Khối {scope.gradeLevel}”.</p>}
       </div>
-      {!scope.classId && !scope.curriculumId && <KnowledgeVersionPanel key={`${selectedSubjectId}:${scope.gradeLevel ?? ""}:${scope.graphVersionId ?? ""}`} subjectId={selectedSubjectId} gradeLevel={scope.gradeLevel}
+      {scope.graphVersionId && scope.gradeLevel && !scope.classId && !scope.curriculumId && <KnowledgeVersionPanel key={`${selectedSubjectId}:${scope.gradeLevel ?? ""}:${scope.graphVersionId ?? ""}`} subjectId={selectedSubjectId} gradeLevel={scope.gradeLevel}
         versionId={scope.graphVersionId} canEdit={hasPermission(permissions.nodesUpdate) && hasPermission(permissions.edgesUpdate)}
         onDirtyChange={setVersionDirty}
         onSelect={(id, grade) => updateScope({ gradeLevel: grade, graphVersionId: id || undefined })} />}
@@ -881,10 +905,10 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       {!!graphData?.externalPrerequisites?.length && <details className="th-surface rounded-xl p-4 my-4"><summary>Tiên quyết ngoài phạm vi ({graphData.externalPrerequisites.length})</summary><ul className="text-sm mt-2 space-y-1">{graphData.externalPrerequisites.map((e, index) => <li key={`${e.edgeId}-${index}`}>{e.sourceNodeName || `Điểm tri thức #${e.sourceNodeId}`}{e.sourceGradeLevel ? ` (Khối ${e.sourceGradeLevel})` : ""} → {graphData.nodes.find(n => n.nodeId === e.targetNodeId)?.nodeName || `#${e.targetNodeId}`}{e.gradeLevel ? ` · Khối đích ${e.gradeLevel}` : ""} · Chỉ là ngữ cảnh tiên quyết, không tính vào chủ đề của giáo trình.</li>)}</ul></details>}
 
       {/* Main Graph Canvas & Inspector Area */}
-      {!selectedSubjectId && !scope.classId && !scope.curriculumId && !scope.graphVersionId ? (
+      {!scope.gradeLevel || (!scope.classId && !scope.curriculumId && !scope.graphVersionId) ? (
         <div className="th-surface" style={{ padding: "48px 24px", textAlign: "center" }}>
           <p style={{ fontSize: "1rem", color: "var(--th-text-muted)", margin: 0 }}>
-            Vui lòng chọn một môn học ở danh sách phía trên để nạp đồ thị tri thức.
+            Vui lòng chọn khối, năm học, lớp phụ trách rồi giáo trình để xem đúng phạm vi đồ thị tri thức.
           </p>
         </div>
       ) : isLoadingGraph ? (

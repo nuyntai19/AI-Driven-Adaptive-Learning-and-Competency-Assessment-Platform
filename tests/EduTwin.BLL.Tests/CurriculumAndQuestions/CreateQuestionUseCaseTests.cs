@@ -81,6 +81,10 @@ public class CreateQuestionUseCaseTests : IDisposable
         _dbContext.Users.Add(user);
         _dbContext.Teachers.Add(teacher);
         _dbContext.Subjects.Add(subject);
+        _dbContext.Classes.Add(new Class { CenterId = _centerId, ClassId = Guid.NewGuid(),
+            TeacherId = _teacherId, SubjectId = _subjectId, ClassName = "Subject scope",
+            GradeLevel = 10, AcademicYear = "2026-2027", Status = EduTwin.Contracts.Organization.ClassStatus.Active,
+            CreatedAt = now, UpdatedAt = now });
 
         if (includeValidTopic)
         {

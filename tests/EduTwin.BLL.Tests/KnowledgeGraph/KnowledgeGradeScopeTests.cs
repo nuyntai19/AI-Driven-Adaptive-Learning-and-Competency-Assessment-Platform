@@ -155,7 +155,7 @@ public sealed class KnowledgeGradeScopeTests
         await f.Db.SaveChangesAsync();
         var other = f.Tenant(Guid.NewGuid(), UserRole.Teacher);
         Assert.Equal(ErrorCodes.ResourceNotFound, (await f.UseCase(other).ExecuteAsync(new KnowledgeGraphQuery { GraphVersionId = draft.GraphVersionId })).ErrorCode);
-        Assert.Empty((await f.Service(other).ListAsync(f.Subject, 10, default))!);
+        Assert.Null(await f.Service(other).ListAsync(f.Subject, 10, default));
         Assert.Equal(ErrorCodes.ResourceNotFound, (await f.Service(other).CreateAsync(new() { SubjectId = f.Subject, GradeLevel = 10,
             SourceGraphVersionId = draft.GraphVersionId }, default)).ErrorCode);
         Assert.Equal("1", Assert.Single((await f.Read(new() { GraphVersionId = draft.GraphVersionId })).Nodes).NodeId);
@@ -172,6 +172,10 @@ public sealed class KnowledgeGradeScopeTests
         var ownerClass = f.Klass(10); f.Apply(ownerClass, curriculum);
         await f.Db.SaveChangesAsync();
         var other = f.Tenant(Guid.NewGuid(), UserRole.Teacher);
+        f.Db.Classes.Add(new() { CenterId = f.Center, ClassId = Guid.NewGuid(), SubjectId = f.Subject,
+            TeacherId = other.UserId!.Value, GradeLevel = 10, ClassName = "Other teacher subject scope",
+            AcademicYear = "2026-2027", Status = ClassStatus.Active });
+        await f.Db.SaveChangesAsync();
         var shared = await f.Read(new() { CurriculumId = curriculum.CurriculumId }, other);
         Assert.True(shared.ResolvedScope!.ReadOnly);
         Assert.All(Assert.Single(shared.Nodes).Provenance, p => { Assert.Null(p.ApplicationId); Assert.Null(p.ApplicationRole); });
@@ -299,6 +303,9 @@ public sealed class KnowledgeGradeScopeTests
             };
             f.Db.Centers.Add(new() { CenterId = f.Center, CenterCode = "TEST", CenterName = "Test", Timezone = "UTC", Status = CenterStatus.Active });
             f.Db.Subjects.Add(new() { CenterId = f.Center, SubjectId = f.Subject, SubjectCode = "MATH", SubjectName = "Math", IsActive = true });
+            f.Db.Classes.Add(new() { CenterId = f.Center, ClassId = Guid.NewGuid(), SubjectId = f.Subject,
+                TeacherId = f.Teacher, GradeLevel = 10, ClassName = "Teacher subject scope",
+                AcademicYear = "2026-2027", Status = ClassStatus.Active });
             foreach (ulong id in new ulong[] { 1, 2, 3, 4 }) f.Db.KnowledgeNodes.Add(new() { CenterId = f.Center, SubjectId = f.Subject,
                 NodeId = id, NodeCode = $"N{id}", NodeName = $"Topic {id}", NodeType = NodeType.Topic, IsActive = true, EstimatedLearningMinutes = 30 });
             f.Db.KnowledgeEdges.AddRange(new KnowledgeEdge { CenterId = f.Center, SubjectId = f.Subject, EdgeId = 1,

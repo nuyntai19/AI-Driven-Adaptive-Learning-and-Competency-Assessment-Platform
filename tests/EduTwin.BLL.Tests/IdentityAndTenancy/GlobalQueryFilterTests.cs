@@ -267,6 +267,7 @@ public class GlobalQueryFilterTests
             "src/EduTwin.BLL/Seeding/AuthorizationBootstrapper.cs",
             // Startup-only additive role repair, not callable as a business endpoint.
             "src/EduTwin.BLL/Seeding/DefaultSystemRolePermissionBackfill.cs",
+            "src/EduTwin.BLL/Seeding/ExpandedDemoSeedBackfill.cs",
             "src/EduTwin.BLL/Seeding/ManifestEvaluator.cs",
             "src/EduTwin.BLL/Seeding/PlatformAdminProvisioner.cs",
             "src/EduTwin.BLL/Seeding/SeedQuestionGradeBackfill.cs",

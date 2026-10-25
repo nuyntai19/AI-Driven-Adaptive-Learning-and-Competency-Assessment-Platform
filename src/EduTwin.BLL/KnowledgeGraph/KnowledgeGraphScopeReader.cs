@@ -155,6 +155,9 @@ internal static class KnowledgeGraphScopeReader
         if (subjectId == Guid.Empty) throw new GraphScopeException(ErrorCodes.ValidationFailed);
         if (!await db.Subjects.AnyAsync(s => s.CenterId == center && s.SubjectId == subjectId && !s.IsDeleted, ct))
             throw new GraphScopeException(ErrorCodes.ResourceNotFound);
+        if (teacher && !await db.Classes.AnyAsync(c => c.CenterId == center && c.TeacherId == actor &&
+            c.SubjectId == subjectId && !c.IsDeleted, ct))
+            throw new GraphScopeException(ErrorCodes.ResourceNotFound);
         HashSet<ulong>? allowedStudentIds = null;
         if (student && !query.History)
         {

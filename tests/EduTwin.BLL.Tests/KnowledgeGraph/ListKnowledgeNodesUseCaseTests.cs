@@ -22,6 +22,7 @@ public class ListKnowledgeNodesUseCaseTests
     private readonly EduTwinDbContext _dbContext;
     private readonly Mock<ITenantContext> _tenantMock;
     private readonly ListKnowledgeNodesUseCase _sut;
+    private readonly Guid _teacherId = Guid.NewGuid();
 
     public ListKnowledgeNodesUseCaseTests()
     {
@@ -61,6 +62,11 @@ public class ListKnowledgeNodesUseCaseTests
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         });
+        _dbContext.Classes.Add(new Class { CenterId = centerId, ClassId = Guid.NewGuid(),
+            TeacherId = _teacherId, SubjectId = subjectId, ClassName = "Subject scope",
+            GradeLevel = 10, AcademicYear = "2026-2027",
+            Status = EduTwin.Contracts.Organization.ClassStatus.Active,
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         await _dbContext.SaveChangesAsync();
         _dbContext.ChangeTracker.Clear();
     }
@@ -69,7 +75,7 @@ public class ListKnowledgeNodesUseCaseTests
     {
         _tenantMock.SetupGet(x => x.IsResolved).Returns(true);
         _tenantMock.SetupGet(x => x.CenterId).Returns(centerId);
-        _tenantMock.SetupGet(x => x.UserId).Returns(Guid.NewGuid());
+        _tenantMock.SetupGet(x => x.UserId).Returns(_teacherId);
         // These generic catalog/filter tests exercise the teacher's explicit subject overview.
         // Student grade/class scope is covered by KnowledgeGradeScopeTests.
         _tenantMock.SetupGet(x => x.Role).Returns(nameof(UserRole.Teacher));
@@ -87,7 +93,7 @@ public class ListKnowledgeNodesUseCaseTests
 
         _tenantMock.SetupGet(x => x.IsResolved).Returns(true);
         _tenantMock.SetupGet(x => x.CenterId).Returns(centerId);
-        _tenantMock.SetupGet(x => x.UserId).Returns(Guid.NewGuid());
+        _tenantMock.SetupGet(x => x.UserId).Returns(_teacherId);
         _tenantMock.SetupGet(x => x.Role).Returns(role);
 
         var result = await _sut.ExecuteAsync(new KnowledgeNodeListQuery { SubjectId = subjectId }, CancellationToken.None);

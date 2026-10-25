@@ -10,7 +10,7 @@ using EduTwin.DAL.DigitalTwin;
 
 namespace EduTwin.DAL.Seeding;
 
-public class EduTwinSeedFactory
+public partial class EduTwinSeedFactory
 {
     private readonly bool _isCenterA;
     private readonly Guid _centerId;
@@ -209,6 +209,8 @@ public class EduTwinSeedFactory
 
         // 8. Questions
         GenerateQuestionsFromTemplates(container, QuestionSeedTemplates.GetTemplates(), teacherMathId, teacherEnglishId);
+        foreach (var version in container.GraphVersions) version.IsCurrent = false;
+        AddExpandedGradeSamples(container, mathSubId, engSubId, teacherMathId, teacherEnglishId);
 
         // 9. Student Goals
         foreach (var sId in studentIds)

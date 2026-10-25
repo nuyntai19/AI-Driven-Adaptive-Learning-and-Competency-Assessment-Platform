@@ -106,10 +106,13 @@ public class ListCurriculumsUseCase : IListCurriculumsUseCase
         // 4. Base Query & Filters (Scoped to Teacher's own curriculums)
         var baseQuery = _dbContext.Curriculums
             .AsNoTracking()
-            .Where(c => c.CenterId == centerId && !c.IsDeleted && (c.TeacherId == actorId ||
-                (c.Visibility == MaterialVisibility.Shared && (c.ReviewStatus == ReviewStatus.Published ||
-                    (query.History && c.ReviewStatus == ReviewStatus.Archived && _dbContext.ClassCurriculumApplications.Any(a =>
-                        a.CenterId == centerId && a.CurriculumId == c.CurriculumId && a.Class.TeacherId == actorId))))));
+            .Where(c => c.CenterId == centerId && !c.IsDeleted)
+            .Where(c => c.TeacherId == actorId || c.Visibility == MaterialVisibility.Shared &&
+                (c.ReviewStatus == ReviewStatus.Published || query.History && c.ReviewStatus == ReviewStatus.Archived &&
+                    _dbContext.ClassCurriculumApplications.Any(a => a.CenterId == centerId &&
+                        a.CurriculumId == c.CurriculumId && a.Class.TeacherId == actorId)));
+        baseQuery = baseQuery.Where(c => _dbContext.Classes.Any(k => k.CenterId == centerId &&
+            k.TeacherId == actorId && k.SubjectId == c.SubjectId && !k.IsDeleted));
 
         if (query.SubjectId.HasValue)
         {

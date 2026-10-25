@@ -127,6 +127,7 @@ public class EduTwinRuntimeSeeder
         _dbContext.KnowledgeNodes.AddRange(data.Topics);
         _dbContext.KnowledgeEdges.AddRange(data.Edges);
 
+        var currentVersionIds = data.GraphVersions.Where(v => v.IsCurrent).Select(v => v.GraphVersionId).ToHashSet();
         foreach (var version in data.GraphVersions) { version.Status = "Draft"; version.IsCurrent = false; }
         _dbContext.KnowledgeGraphVersions.AddRange(data.GraphVersions);
         await _dbContext.SaveChangesAsync();
@@ -139,7 +140,7 @@ public class EduTwinRuntimeSeeder
             await _dbContext.SaveChangesAsync();
             _dbContext.KnowledgeEdgeGrades.AddRange(data.EdgeGrades.Where(m => m.GraphVersionId == version.GraphVersionId));
             await _dbContext.SaveChangesAsync();
-            version.Status = "Published"; version.IsCurrent = true;
+            version.Status = "Published"; version.IsCurrent = currentVersionIds.Contains(version.GraphVersionId);
             await _dbContext.SaveChangesAsync();
         }
 

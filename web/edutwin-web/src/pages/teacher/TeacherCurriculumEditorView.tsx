@@ -115,6 +115,27 @@ export const TeacherCurriculumEditorView: React.FC = () => {
   });
   const approvedVersions = (versionsQuery.data ?? []).filter(v => v.status === "Published" && !v.isLegacy);
   const selectedVersion = (versionsQuery.data ?? []).find(v => v.graphVersionId === graphVersionId);
+  const editGraphMutation = useMutation({
+    mutationFn: async () => {
+      if (!subjectId || !gradeLevel) throw new Error("Chọn môn học và khối trước khi chỉnh sửa khung tri thức.");
+      const existingDraft = versionsQuery.data?.find(v => v.status === "Draft" && v.createdBy === actorId && !v.isLegacy);
+      if (existingDraft) return existingDraft;
+      const source = selectedVersion?.status === "Published" ? selectedVersion :
+        approvedVersions.find(v => v.isCurrent) || approvedVersions[0];
+      return knowledgeGraphApi.createVersion({ subjectId, gradeLevel: Number(gradeLevel),
+        title: `Khung tri thức ${gradeLevel} - bản nháp`, sourceGraphVersionId: source?.graphVersionId });
+    },
+    onSuccess: async version => {
+      await queryClient.invalidateQueries({ queryKey: knowledgeKeys.versions(centerId, actorId, subjectId, Number(gradeLevel)) });
+      const params = new URLSearchParams(knowledgeScopeSearch(subjectId,
+        { gradeLevel: Number(gradeLevel), graphVersionId: version.graphVersionId }));
+      const classContextId = selectedClassIds[0] || curriculumData?.data?.classIds[0];
+      if (classContextId) params.set("classContextId", classContextId);
+      if (id) params.set("returnCurriculumId", id);
+      navigate(`/giao-vien/do-thi-tri-thuc?${params}`);
+    },
+    onError: err => setFeedbackMsg({ type: "error", text: extractProblemDetails(err).detail || "Không tạo được bản nháp khung tri thức." }),
+  });
   useEffect(() => {
     if (!graphVersionId && gradeLevel && versionsQuery.data) {
       const current = versionsQuery.data.find(v => v.isCurrent && v.status === "Published" && !v.isLegacy);
@@ -342,6 +363,14 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                 disabled={publishMutation.isPending || saveMutation.isPending}
               >
                 Xuất Bản
+              </button>
+            )}
+
+            {!isCreateMode && isDraft && gradeLevel && subjectId && (
+              <button type="button" className="th-button-secondary"
+                disabled={editGraphMutation.isPending || versionsQuery.isFetching || versionsQuery.isError}
+                onClick={() => editGraphMutation.mutate()}>
+                {editGraphMutation.isPending ? "Đang mở khung tri thức..." : `Chỉnh sửa khung tri thức Khối ${gradeLevel}`}
               </button>
             )}
 
@@ -637,11 +666,11 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                 to={`/giao-vien/do-thi-tri-thuc?${knowledgeScopeSearch(subjectId, graphLinkScope)}`}
                 style={{ fontSize: "0.8rem", color: "var(--th-primary)", fontWeight: 600, textDecoration: "none" }}
               >
-                Mở Đồ Thị Tri Thức ↗
+                Xem đồ thị của giáo trình ↗
               </Link>
             </div>
 
-            {hasUnsavedComposition && <p className="text-sm mb-3">Liên kết mở thư viện theo khối đang chọn. Lưu bản nháp để xem đúng cấu trúc giáo trình trên đồ thị.</p>}
+            {hasUnsavedComposition && <p className="text-sm mb-3">Liên kết xem khung tri thức đã chọn; lưu giáo trình để thấy đúng các chủ đề đang soạn. Dùng nút “Chỉnh sửa khung tri thức” ở đầu trang để thêm chủ đề hoặc liên kết trong bản Draft.</p>}
 
             {isDraft && (invalidSelection || incompatibleClasses.length > 0 || unresolvedClassIds.length > 0) && !pendingScope && <div role="alert" className="rounded-lg border border-amber-500 p-3 mb-4 text-sm space-y-2">
               <p className="font-semibold">Lựa chọn cần xử lý trước khi lưu</p>

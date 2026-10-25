@@ -83,6 +83,10 @@ public class GetKnowledgeGraphUseCaseTests
 
         dbContext.Centers.Add(center);
         dbContext.Subjects.Add(subject);
+        dbContext.Classes.Add(new Class { CenterId = _centerId, ClassId = Guid.NewGuid(),
+            TeacherId = _userId, SubjectId = _subjectId, ClassName = "Subject scope",
+            GradeLevel = 10, AcademicYear = "2026-2027", Status = ClassStatus.Active,
+            CreatedAt = _utcNow.AddDays(-1), UpdatedAt = _utcNow.AddDays(-1) });
         await dbContext.SaveChangesAsync();
     }
 

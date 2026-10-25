@@ -33,6 +33,7 @@ public sealed class KnowledgeGraphVersionService(EduTwinDbContext db, ITenantCon
     public async Task<IReadOnlyList<KnowledgeGraphVersionDto>?> ListAsync(Guid subjectId, byte? gradeLevel, CancellationToken ct)
     {
         if (!Actor() || !await Active(ct) || subjectId == Guid.Empty || gradeLevel.HasValue && gradeLevel is < 10 or > 12) return null;
+        if (tenant.Role == nameof(UserRole.Teacher) && !await TeachesSubject(subjectId, ct)) return null;
         var versions = await db.KnowledgeGraphVersions.AsNoTracking().Where(v => v.CenterId == tenant.CenterId && v.SubjectId == subjectId &&
             (!gradeLevel.HasValue || v.GradeLevel == gradeLevel)).OrderByDescending(v => v.CreatedAt).ToListAsync(ct);
         var list = new List<KnowledgeGraphVersionDto>();
@@ -51,6 +52,7 @@ public sealed class KnowledgeGraphVersionService(EduTwinDbContext db, ITenantCon
             return new(null, ErrorCodes.ValidationFailed);
         if (!await db.Subjects.AnyAsync(s => s.CenterId == tenant.CenterId && s.SubjectId == request.SubjectId && !s.IsDeleted, ct))
             return new(null, ErrorCodes.ResourceNotFound);
+        if (!await TeachesSubject(request.SubjectId, ct)) return new(null, ErrorCodes.ResourceNotFound);
         KnowledgeGraphVersion? source = null;
         if (request.SourceGraphVersionId.HasValue)
         {
@@ -87,6 +89,9 @@ public sealed class KnowledgeGraphVersionService(EduTwinDbContext db, ITenantCon
         if (transaction != null) await transaction.CommitAsync(ct);
         return new(await Project(version, ct));
     }
+
+    private Task<bool> TeachesSubject(Guid subjectId, CancellationToken ct) => db.Classes.AnyAsync(c =>
+        c.CenterId == tenant.CenterId && c.TeacherId == tenant.UserId && c.SubjectId == subjectId && !c.IsDeleted, ct);
 
     public async Task<GraphVersionOperation> UpdateAsync(Guid id, UpdateKnowledgeGraphVersionRequest request, CancellationToken ct)
     {
@@ -216,7 +221,7 @@ public sealed class KnowledgeGraphVersionService(EduTwinDbContext db, ITenantCon
             .Select(n => new KnowledgeNodeMappingDto { NodeId = n.NodeId.ToString(), ParentNodeId = n.ParentNodeId.HasValue ? n.ParentNodeId.Value.ToString() : null }).ToListAsync(ct);
         var edges = await db.KnowledgeEdgeGrades.AsNoTracking().Where(e => e.CenterId == v.CenterId && e.GraphVersionId == v.GraphVersionId).OrderBy(e => e.EdgeId)
             .Select(e => new KnowledgeEdgeMappingDto { EdgeId = e.EdgeId.ToString(), RelationType = e.RelationType.ToString(), Weight = e.Weight, SourceGraphVersionId = e.SourceGraphVersionId }).ToListAsync(ct);
-        return new() { GraphVersionId = v.GraphVersionId.ToString("D"), SubjectId = v.SubjectId.ToString("D"), GradeLevel = v.GradeLevel,
+        return new() { GraphVersionId = v.GraphVersionId.ToString("D"), CreatedBy = v.CreatedBy?.ToString("D"), SubjectId = v.SubjectId.ToString("D"), GradeLevel = v.GradeLevel,
             Status = v.Status, IsCurrent = v.IsCurrent, IsLegacy = v.IsLegacy, Title = v.Title, SourceGraphVersionId = v.SourceGraphVersionId?.ToString("D"),
             RowVersion = v.RowVersion.ToString(), NodeCount = nodes.Count, EdgeCount = edges.Count, NodeMappings = nodes, EdgeMappings = edges };
     }

@@ -116,6 +116,13 @@ public class ListCurriculumsUseCaseTests : IDisposable
         _dbContext.Users.Add(user);
         _dbContext.Teachers.Add(teacher);
         _dbContext.Subjects.Add(subject);
+        _dbContext.Classes.Add(new Class
+        {
+            ClassId = Guid.NewGuid(), CenterId = centerId, TeacherId = teacherId,
+            SubjectId = subject.SubjectId, ClassName = "Lớp Toán phụ trách",
+            AcademicYear = "2026-2027", Status = ClassStatus.Active,
+            CreatedAt = now, UpdatedAt = now
+        });
         await _dbContext.SaveChangesAsync();
 
         return (center, user, teacher, subject);
@@ -406,6 +413,8 @@ public class ListCurriculumsUseCaseTests : IDisposable
         SetupTenant(centerId, teacherId, nameof(UserRole.Teacher));
 
         var seed = await SeedBasicEntitiesAsync(centerId, teacherId);
+        _dbContext.Classes.RemoveRange(_dbContext.Classes.Where(c => c.TeacherId == teacherId));
+        await _dbContext.SaveChangesAsync();
         _dbContext.Teachers.Remove(seed.Teacher);
         await _dbContext.SaveChangesAsync();
 

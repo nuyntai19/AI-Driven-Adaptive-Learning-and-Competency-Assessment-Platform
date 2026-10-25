@@ -50,6 +50,9 @@ public class GetCurriculumUseCase : IGetCurriculumUseCase
         {
             return GetCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
+        if (!await _dbContext.Classes.AnyAsync(c => c.CenterId == centerId && c.TeacherId == actorId &&
+            c.SubjectId == curriculum.SubjectId && !c.IsDeleted, cancellationToken))
+            return GetCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
 
         var nodes = await _dbContext.CurriculumNodes
             .AsNoTracking()

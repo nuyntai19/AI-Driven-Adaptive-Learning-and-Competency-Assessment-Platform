@@ -58,6 +58,7 @@ public class KnowledgeEdgeMappingDto
 public class KnowledgeGraphVersionDto
 {
     public string GraphVersionId { get; set; } = "";
+    public string? CreatedBy { get; set; }
     public string SubjectId { get; set; } = "";
     public byte GradeLevel { get; set; }
     public string Status { get; set; } = "Draft";

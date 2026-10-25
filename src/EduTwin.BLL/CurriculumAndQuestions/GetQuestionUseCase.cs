@@ -50,6 +50,10 @@ public class GetQuestionUseCase : IGetQuestionUseCase
         if (question == null)
             return GetQuestionResult.Failure(ErrorCodes.ResourceNotFound);
 
+        if (!await _dbContext.Classes.AnyAsync(c => c.CenterId == centerId && c.TeacherId == actorId &&
+            c.SubjectId == question.SubjectId && !c.IsDeleted, cancellationToken))
+            return GetQuestionResult.Failure(ErrorCodes.ResourceNotFound);
+
         // 4. Teacher ownership check
         if (question.CreatedByTeacherId != actorId &&
             !(question.Visibility == Contracts.CurriculumAndQuestions.MaterialVisibility.Shared && question.Status == Contracts.CurriculumAndQuestions.QuestionStatus.Active))

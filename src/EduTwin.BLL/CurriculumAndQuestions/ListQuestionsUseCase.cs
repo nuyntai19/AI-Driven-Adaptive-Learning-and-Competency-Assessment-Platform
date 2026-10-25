@@ -86,6 +86,8 @@ public class ListQuestionsUseCase : IListQuestionsUseCase
         if (isTeacher)
             baseQ = baseQ.Where(q => q.CreatedByTeacherId == actorId ||
                 (q.Visibility == MaterialVisibility.Shared && q.Status == QuestionStatus.Active));
+        baseQ = baseQ.Where(q => _dbContext.Classes.Any(c => c.CenterId == centerId &&
+            c.TeacherId == actorId && c.SubjectId == q.SubjectId && !c.IsDeleted));
 
         if (query.OwnedOnly) baseQ = baseQ.Where(q => q.CreatedByTeacherId == actorId);
         if (query.Visibility != null)
