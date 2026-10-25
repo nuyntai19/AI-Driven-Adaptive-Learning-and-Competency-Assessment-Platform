@@ -10,6 +10,10 @@ public class LearningGoalConfiguration : IEntityTypeConfiguration<LearningGoal>
     public void Configure(EntityTypeBuilder<LearningGoal> builder)
     {
         builder.ToTable("learning_goals");
+        builder.Property(g => g.TargetScore).HasColumnName("target_score").HasColumnType("decimal(4,2)");
+        builder.Property(g => g.StartWithPlacement).HasColumnName("start_with_placement").HasDefaultValue(false);
+        builder.Property(g => g.ScheduleSettings).HasColumnName("schedule_settings").HasColumnType("json")
+            .HasConversion(v => v != null ? v.RootElement.GetRawText() : null, v => v != null ? JsonDocument.Parse(v, default) : null);
 
         builder.HasKey(g => g.GoalId).HasName("pk_learning_goals");
 

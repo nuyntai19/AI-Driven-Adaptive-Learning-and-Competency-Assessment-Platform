@@ -53,7 +53,30 @@ public static class LearningPathV4Data
         .Where(q => q.CenterId == center && q.SubjectId == subject && nodes.Contains(q.PrimaryTopicNodeId) &&
             q.Status == QuestionStatus.Active && !q.IsDeleted && q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual &&
             q.QuestionType != QuestionType.Essay).OrderBy(q => q.Difficulty).ThenBy(q => q.QuestionId).ToListAsync(ct);
-        return questions.Where(q => scope.IncludesQuestion(q.PrimaryTopicNodeId, q.GradeLevel)).ToList();
+        questions = questions.Where(q => scope.IncludesQuestion(q.PrimaryTopicNodeId, q.GradeLevel) && AutoGradable(q)).ToList();
+        var choiceIds = questions.Where(q => q.QuestionType == QuestionType.MultipleChoice).Select(q => q.QuestionId).ToList();
+        if (choiceIds.Count > 0)
+        {
+            var options = await db.QuestionOptions.AsNoTracking().Where(o => o.CenterId == center && choiceIds.Contains(o.QuestionId)).ToListAsync(ct);
+            var validChoices = options.GroupBy(o => o.QuestionId).Where(g => g.Count() >= 2 && g.Count(o => o.IsCorrect) == 1)
+                .Where(g => { var right = g.Single(o => o.IsCorrect); var answer = questions.Single(q => q.QuestionId == g.Key).CorrectAnswer?.Trim();
+                    return string.Equals(answer, right.OptionLabel?.Trim(), StringComparison.OrdinalIgnoreCase) || answer == right.OptionId.ToString(); })
+                .Select(g => g.Key).ToHashSet();
+            questions = questions.Where(q => q.QuestionType != QuestionType.MultipleChoice || validChoices.Contains(q.QuestionId)).ToList();
+        }
+        return questions;
+    }
+
+    public static bool AutoGradable(Question question)
+    {
+        if (question.QuestionType == QuestionType.Essay || question.AnswerEvaluationMode == QuestionAnswerEvaluationMode.Manual ||
+            string.IsNullOrWhiteSpace(question.CorrectAnswer) || question.MaxScore <= 0) return false;
+        // Test the published reference against its actual grading mode, including numeric/coordinate/math configuration.
+        var grader = new AssessmentAndReasoning.PreliminaryGrading.ShortAnswerGrader();
+        return question.QuestionType == QuestionType.MultipleChoice && question.AnswerEvaluationMode == QuestionAnswerEvaluationMode.TextExact ||
+            question.QuestionType == QuestionType.ShortAnswer && grader.Grade(question.CorrectAnswer, question.CorrectAnswer,
+                new AssessmentAndReasoning.PreliminaryGrading.QuestionGradingContext { EvaluationMode = question.AnswerEvaluationMode,
+                    MaxScore = question.MaxScore, Criteria = question.GradingCriteria }).IsCorrect == true;
     }
 
     public static bool Matches(LearningContentVersion content, KnowledgeNode node) =>
@@ -121,7 +144,7 @@ public static class LearningPathV4Data
                 SkillId = node.NodeId.ToString(), SkillName = node.NodeName, TopicName = topic.NodeName, TopicId = topic.NodeId.ToString(),
                 Description = node.Description ?? "", State = state, Availability = hasContent ? "Available" : "ContentUnavailable",
                 EvidenceCount = (uint)usable.Count, RequiresProbe = usable.Count == 0,
-                MasteryScore = twins.TryGetValue(node.NodeId, out var twin) && twin.EvidenceCount > 0 ? twin.MasteryPercentage : null,
+                MasteryScore = twins.TryGetValue(node.NodeId, out var twin) && twin.EvidenceCount > 0 ? twin.MasteryPercentage : usable.Count > 0 ? Math.Round(100m * usable.Count(Correct) / usable.Count, 1) : null,
                 PrerequisiteSkillIds = prerequisites,
                 Rationale = confirmed ? $"Đạt trên {usable.Count} câu độc lập có bằng chứng hợp lệ gần nhất trong 30 ngày."
                     : usable.Count > 0 ? $"Có {usable.Count} câu hợp lệ; cần tiếp tục học hoặc kiểm tra để xác nhận."

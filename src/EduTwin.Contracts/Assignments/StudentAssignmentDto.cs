@@ -4,6 +4,8 @@ namespace EduTwin.Contracts.Assignments;
 
 public class StudentAssignmentDto
 {
+    public string Kind { get; set; } = "Regular";
+    public DateTime? ExamAt { get; set; }
     public string AssignmentId { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string? Instructions { get; set; }

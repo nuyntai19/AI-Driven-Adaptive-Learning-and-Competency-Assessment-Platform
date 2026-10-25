@@ -73,6 +73,8 @@ public sealed partial class LearningPathV4Planner
             GoalId = Guid.NewGuid(), CenterId = centerId, StudentId = studentId, SubjectId = source.SubjectId,
             ClassId = source.Goal.ClassId, Title = source.Goal.Title, GoalType = source.Goal.GoalType,
             Description = source.Goal.Description, PreferredMode = source.Goal.PreferredMode, PreferredPace = source.Goal.PreferredPace,
+            TargetScore = source.Goal.TargetScore, StartWithPlacement = source.Goal.StartWithPlacement,
+            ScheduleSettings = source.Goal.ScheduleSettings == null ? null : JsonDocument.Parse(source.Goal.ScheduleSettings.RootElement.GetRawText()),
             TargetSkillIds = new LearningGoalScope { TargetSkillIds = plan.RequestedSkillIds,
                 SelfReportedPrerequisiteSkillIds = plan.SelfReportedPrerequisiteSkillIds, SelfAssessedSkillIds = plan.SelfAssessedSkillIds }.Store(),
             AvailableMinutesPerDay = request.AvailableMinutesPerDay, AvailableDaysPerWeek = request.AvailableDaysPerWeek,
@@ -100,6 +102,9 @@ public sealed partial class LearningPathV4Planner
         plan.FeasibilityMessage = $"Ước lượng khoảng {Math.Max(1, plan.EstimatedWeeks - 1)}–{plan.EstimatedWeeks + 1} tuần với tổng quỹ {goal.AvailableMinutesPerDay} phút/ngày, {goal.AvailableDaysPerWeek} ngày/tuần; số câu mỗi bộ theo từng phần học. Tự kiểm tra vẫn gồm 5 câu độc lập."
             + (plan.FeasibilityStatus == "InsufficientTime" ? " Lịch hiện tại chưa đủ trước mốc đã chọn; bạn có thể điều chỉnh thời gian hoặc phần học." : "");
         plan.ExpiresAt = Now.AddDays(1); plan.Status = "Pending";
+        plan.Schedule = LearningAssessmentPolicy.Settings(goal.ScheduleSettings);
+        if (plan.Schedule.StudyDays.Count != goal.AvailableDaysPerWeek) plan.Schedule.StudyDays.Clear();
+        LearningPathCalendar.Schedule(plan, Now);
         db.LearningGoals.Add(goal);
         db.PathProposals.Add(new PathProposal
         {

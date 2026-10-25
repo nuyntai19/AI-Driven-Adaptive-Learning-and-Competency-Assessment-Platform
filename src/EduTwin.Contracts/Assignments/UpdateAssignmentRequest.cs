@@ -14,6 +14,8 @@ public class UpdateAssignmentRequest
     public string? Instructions { get; set; }
     public DateTime? DueAt { get; set; }
     public int? TimeLimitMinutes { get; set; }
+    public string? Kind { get; set; }
+    public DateTime? ExamAt { get; set; }
 
     /// <summary>
     /// Danh sách questionId mới. Nếu null → giữ nguyên; nếu cung cấp → replace toàn bộ.

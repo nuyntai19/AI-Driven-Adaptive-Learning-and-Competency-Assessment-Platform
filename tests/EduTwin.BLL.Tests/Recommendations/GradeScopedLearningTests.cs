@@ -164,7 +164,7 @@ public sealed class GradeScopedLearningTests : IDisposable
         StartedAt = DateTime.UtcNow, ApplicationRole = role, IsGradeException = exception, GradeMismatchReason = exception ? "Ôn tập kiến thức nền tảng" : null });
     private Question Question(ulong id, ulong node, byte grade) => new() { CenterId = center, SubjectId = subject, QuestionId = id,
         PrimaryTopicNodeId = node, GradeLevel = grade, Status = QuestionStatus.Active, QuestionType = QuestionType.ShortAnswer,
-        AnswerEvaluationMode = QuestionAnswerEvaluationMode.TextExact, QuestionText = "Question", CorrectAnswer = "A", Solution = "Solution", LanguageCode = "vi", Difficulty = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+        AnswerEvaluationMode = QuestionAnswerEvaluationMode.TextExact, QuestionText = "Question", CorrectAnswer = "A", Solution = "Solution", MaxScore = 10, LanguageCode = "vi", Difficulty = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
     private KnowledgeEdge Edge(ulong id, ulong source, ulong target) => new() { CenterId = center, SubjectId = subject, EdgeId = id,
         SourceNodeId = source, TargetNodeId = target, RelationType = RelationType.PrerequisiteOf, Weight = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
     private KnowledgeTwin Twin(ulong node, decimal mastery) => new() { CenterId = center, StudentId = student, SubjectId = subject,

@@ -5,6 +5,12 @@ namespace EduTwin.Contracts.Recommendations;
 
 public class LearningAgendaDto
 {
+    public decimal? TargetScore { get; set; }
+    public decimal? PredictedScore { get; set; }
+    public string ForecastMessage { get; set; } = "Chưa đủ dữ liệu để dự báo điểm.";
+    public LearningScheduleSettings Schedule { get; set; } = new();
+    public LearningScheduleSummaryDto? ScheduleSummary { get; set; }
+    public List<ExamMilestoneDto> Exams { get; set; } = new();
     public List<string> SelfReportedPrerequisiteSkillIds { get; set; } = new();
     /// <summary>Minutes of work available today at the largest time budget; more time adds nothing.</summary>
     public uint AvailableTodayMinutes { get; set; }
@@ -17,6 +23,8 @@ public class LearningAgendaDto
     public DateTime? DeadlineDate { get; set; }
     public List<string> TargetSkillIds { get; set; } = new();
     public uint AvailableMinutesPerDay { get; set; } = 15;
+    public uint StudiedMinutesToday { get; set; }
+    public string PreferredPace { get; set; } = "Moderate";
     public uint AvailableDaysPerWeek { get; set; } = 5;
     public PlacementReportDto? PlacementReport { get; set; }
     public bool CanAdvance { get; set; }
@@ -58,6 +66,8 @@ public class PlacementReportDto
 
 public class PlacementSkillResultDto
 {
+    public string Classification { get; set; } = "Inconclusive";
+    public string Confidence { get; set; } = "Insufficient";
     public string SkillId { get; set; } = "";
     public string SkillName { get; set; } = "";
     public string TopicName { get; set; } = "";
@@ -110,6 +120,13 @@ public class MissionRunSummaryDto
 
 public class AgendaItemDto
 {
+    public DateOnly? PlannedDate { get; set; }
+    public bool Deferred { get; set; }
+    public uint RemainingUnscheduledMinutes { get; set; }
+    public string? SkipReason { get; set; }
+    public bool IsMilestoneExam { get; set; }
+    public bool IsMockExam { get; set; }
+    public uint? TimeLimitMinutes { get; set; }
     public bool IsSelfAssessedCheck { get; set; }
     public DateTime? AvailableFrom { get; set; }
     public uint QuestionCount { get; set; }

@@ -12,6 +12,13 @@ namespace EduTwin.BLL.Tests.Recommendations;
 /// <summary>Hints, pause/cancel, retry, weakness-based sizing and the daily time budget.</summary>
 public sealed class LearningPathStudyFlowTests
 {
+    private static async Task<PathProposalDto> ActivateWithBudget(LearningPathV4Fixture f, uint minutes, params string[] skills)
+    {
+        var goal = await f.Planner.CreateOrUpdateGoalAsync(f.Center, f.Student, new() { SubjectId = f.English,
+            GoalType = "Foundation", TargetSkillIds = skills.ToList(), AvailableMinutesPerDay = minutes });
+        var proposal = await f.Planner.GeneratePathProposalAsync(f.Center, f.Student, new() { SubjectId = f.English, GoalId = goal.GoalId });
+        await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId); return proposal;
+    }
     private static async Task FinishGrading(LearningPathV4Fixture f)
     {
         foreach (var a in await f.Db.Attempts.Where(a => a.Status != AttemptStatus.Completed).ToListAsync()) { a.Status = AttemptStatus.Completed; await f.Assess(a); }
@@ -214,14 +221,15 @@ public sealed class LearningPathStudyFlowTests
         using var f = new LearningPathV4Fixture();
         AddQuestions(f, 101, 30); AddQuestions(f, 102, 30);
         for (ulong i = 1; i <= 4; i++) await f.RecordEvidence(102, i, correct: false);
-        await f.Activate("Practice", "101", "102");
+        await ActivateWithBudget(f, 180, "101", "102");
         var shortDay = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 15);
         var longDay = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 180);
-        Assert.Equal(300u, (await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 999)).AvailableMinutes);
+        Assert.Equal(180u, (await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 999)).AvailableMinutes);
         Assert.InRange(longDay.PlannedMinutes, 1u, 180u);
         Assert.True(longDay.PlannedQuestionCount > shortDay.PlannedQuestionCount);
         Assert.All(longDay.TodayPlan.Concat(shortDay.TodayPlan).Where(m => m.Purpose == "Practice"), m =>
-        { Assert.Equal(LearningPathPacing.SetSize, m.QuestionCount); Assert.InRange(m.PlannedSets, 1u, LearningPathPacing.MaxSetsPerSkillPerDay); });
+        { Assert.InRange(m.QuestionCount, 1u, LearningPathPacing.SetSize); Assert.InRange(m.PlannedSets, 1u, LearningPathPacing.MaxSetsPerSkillPerDay); });
+        Assert.InRange(shortDay.PlannedMinutes, 1u, 15u);
         var weak = longDay.TodayPlan.Single(m => m.SkillId == "102" && m.Purpose == "Practice").PlannedSets;
         var other = longDay.TodayPlan.Single(m => m.SkillId == "101" && m.Purpose == "Practice").PlannedSets;
         Assert.True(weak >= other && weak > 1, $"weak {weak} vs other {other}");
@@ -236,7 +244,7 @@ public sealed class LearningPathStudyFlowTests
     {
         using var f = new LearningPathV4Fixture();
         AddQuestions(f, 101, 20);
-        await f.Activate("Practice", "101");
+        await ActivateWithBudget(f, 60, "101");
         var first = await DoSet(f, await NextSet(f, "101"), correct: true);
         Assert.Equal(1m, first.PracticeAccuracy);
         Assert.Contains("khó hơn", first.NextStep);
@@ -287,7 +295,8 @@ public sealed class LearningPathStudyFlowTests
     public async Task FailedReview_SendsAConfirmedSkillBackToPractice()
     {
         using var f = new LearningPathV4Fixture();
-        var mission = await f.Activate("IndependentCheck", "103");
+        var proposal = await ActivateWithBudget(f, 60, "103");
+        var mission = proposal.Milestones.SelectMany(m => m.Missions).Single(m => m.Purpose == "IndependentCheck");
         var check = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId));
         await SubmitAll(f, check, correct: true);
         await FinishGrading(f);

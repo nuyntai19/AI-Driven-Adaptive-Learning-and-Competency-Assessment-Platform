@@ -98,6 +98,15 @@ public class ListStudentSubjectGoalsUseCase : IListStudentSubjectGoalsUseCase
             })
             .ToListAsync(cancellationToken);
 
+        var acceptedGoals = await _dbContext.LearningGoals.AsNoTracking().Where(g => g.CenterId == centerId && g.StudentId == studentId && g.Status == "Active")
+            .OrderByDescending(g => g.CreatedAt).ToListAsync(cancellationToken);
+        foreach (var projection in goals)
+        {
+            var accepted = acceptedGoals.FirstOrDefault(g => g.SubjectId.ToString("D") == projection.SubjectId);
+            if (accepted == null) continue;
+            projection.TargetScore = accepted.TargetScore ?? projection.TargetScore;
+            projection.RemainingDays = (int)Recommendations.Planning.LearningGoalBridge.RemainingDays(accepted, DateTime.UtcNow);
+        }
         return ListStudentSubjectGoalsResult.Success(goals);
     }
 }

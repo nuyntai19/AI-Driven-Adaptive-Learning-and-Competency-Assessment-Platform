@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using EduTwin.DAL.Assignments;
+using EduTwin.Contracts.Assignments;
 
 namespace EduTwin.DAL.Persistence.Configurations.Assignments;
 
@@ -8,6 +9,8 @@ public class AssignmentConfiguration : IEntityTypeConfiguration<Assignment>
 {
     public void Configure(EntityTypeBuilder<Assignment> builder)
     {
+        builder.Property(a => a.Kind).HasColumnName("assignment_kind").HasConversion<string>().HasColumnType("varchar(24)").HasDefaultValue(AssignmentKind.Regular);
+        builder.Property(a => a.ExamAt).HasColumnName("exam_at").HasColumnType("datetime(6)");
         builder.ToTable("assignments");
 
         // Primary Key

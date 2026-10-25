@@ -1053,6 +1053,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("datetime(6)")
                         .HasColumnName("due_at");
 
+                    b.Property<DateTime?>("ExamAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("exam_at");
+
                     b.Property<string>("GradeMismatchReason")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)")
@@ -1067,6 +1071,13 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("tinyint(1)")
                         .HasDefaultValue(false)
                         .HasColumnName("is_deleted");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(24)")
+                        .HasDefaultValue("Regular")
+                        .HasColumnName("assignment_kind");
 
                     b.Property<DateTime?>("PublishedAt")
                         .HasColumnType("datetime(6)")
@@ -7035,6 +7046,16 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasDefaultValue(1ul)
                         .HasColumnName("row_version");
 
+                    b.Property<string>("ScheduleSettings")
+                        .HasColumnType("json")
+                        .HasColumnName("schedule_settings");
+
+                    b.Property<bool>("StartWithPlacement")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("start_with_placement");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -7051,6 +7072,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("varchar(36)")
                         .HasColumnName("subject_id");
+
+                    b.Property<decimal?>("TargetScore")
+                        .HasColumnType("decimal(4,2)")
+                        .HasColumnName("target_score");
 
                     b.Property<string>("TargetSkillIds")
                         .HasColumnType("json")
@@ -7392,6 +7417,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.Property<uint>("PhaseNumber")
                         .HasColumnType("int unsigned")
                         .HasColumnName("phase_number");
+
+                    b.Property<DateOnly?>("PlannedDate")
+                        .HasColumnType("date")
+                        .HasColumnName("planned_date");
 
                     b.Property<string>("PolicyVersion")
                         .IsRequired()

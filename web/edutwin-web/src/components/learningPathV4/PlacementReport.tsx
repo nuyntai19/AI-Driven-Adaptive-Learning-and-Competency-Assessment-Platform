@@ -21,9 +21,10 @@ export function PlacementReport({ report, pending, onBuild, onContinue }: {
       const score = possible > 0 ? Math.round(100 * completed.reduce((sum, s) => sum + s.earnedScore, 0) / possible) / 10 : null;
       return <div key={topic}><div className="flex items-center justify-between gap-3"><h3 className="font-semibold">{topic}</h3>
         {score != null && <p className="text-sm font-medium">{score}/10 <span className="text-xs font-normal text-slate-500">· phần đã kiểm tra</span></p>}</div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">{report.skills.filter(s => s.topicName === topic).map(skill => <article key={skill.skillId} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+      <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-3">{report.skills.filter(s => s.topicName === topic).map(skill => <article key={skill.skillId} className="min-w-0 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
         <div className="flex items-start justify-between gap-3"><h4 className="font-medium">{skill.skillName}</h4><span className="text-xs text-slate-500">{statusLabels[skill.status] ?? skill.status}</span></div>
         {skill.scoreOutOfTen != null && <p className="mt-2 font-semibold">{skill.scoreOutOfTen}/10 · đúng {skill.correctAnswers}/{skill.answeredQuestions} câu</p>}
+        {skill.classification && <p className="mt-2 text-sm font-medium text-indigo-700 dark:text-indigo-300">{({Strong:"Vững",NeedsSupport:"Cần củng cố",Inconclusive:"Chưa kết luận"} as Record<string,string>)[skill.classification]}{skill.confidence === "Low" ? " · Độ tin cậy thấp (mẫu ít)" : skill.confidence === "Insufficient" ? " · Chưa đủ dữ liệu" : ""}</p>}
         <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{skill.recommendation}</p>
       </article>)}</div>
     </div>; })}

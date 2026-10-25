@@ -105,6 +105,8 @@ export function TeacherAssignmentEditorView() {
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState("");
   const [dueAt, setDueAt] = useState("");
+  const [kind, setKind] = useState("Regular");
+  const [examAt, setExamAt] = useState("");
   const [dueDateError, setDueDateError] = useState<string | null>(null);
   const [timeLimitValue, setTimeLimitValue] = useState("");
   const [timeLimitUnit, setTimeLimitUnit] = useState<"minutes" | "hours">("minutes");
@@ -372,6 +374,8 @@ export function TeacherAssignmentEditorView() {
     setClassId(assignment.classId);
     setTitle(assignment.title);
     setInstructions(assignment.instructions || "");
+    setKind(assignment.kind ?? "Regular");
+    setExamAt(toLocalDateTime(assignment.examAt ?? null));
     const localDue = toLocalDateTime(assignment.dueAt);
     setDueAt(localDue);
     if (localDue && new Date(localDue).getTime() <= Date.now()) {
@@ -489,6 +493,11 @@ export function TeacherAssignmentEditorView() {
       setStep(0);
       return false;
     }
+    if (kind !== "Regular" && (!examAt || !Number.isFinite(new Date(examAt).getTime()) || new Date(examAt).getTime() <= Date.now() || !effectiveTimeLimitMinutes ||
+        (dueAt && new Date(dueAt).getTime() < new Date(examAt).getTime() + effectiveTimeLimitMinutes * 60000))) {
+      setFormError({message: "Bài thi cần giờ bắt đầu trong tương lai và giới hạn thời gian. Hạn nộp phải sau khi kết thúc thời gian làm bài."});
+      setStep(0); return false;
+    }
     if (dueAt) {
       const dueTime = new Date(dueAt).getTime();
       if (isNaN(dueTime)) {
@@ -594,6 +603,7 @@ export function TeacherAssignmentEditorView() {
 
     if (!isEditing) {
       const createPayload: CreateAssignmentRequest = {
+        kind, examAt: kind !== "Regular" && examAt ? new Date(examAt).toISOString() : null,
         classId,
         title: title.trim(),
         instructions: instructions.trim() || null,
@@ -629,6 +639,7 @@ export function TeacherAssignmentEditorView() {
       }
 
       const updatePayload: UpdateAssignmentRequest = {
+        kind, examAt: kind !== "Regular" && examAt ? new Date(examAt).toISOString() : null,
         title: title.trim(),
         instructions: instructions.trim() || null,
         dueAt: payloadDueAt,
@@ -877,6 +888,8 @@ export function TeacherAssignmentEditorView() {
             </div>
 
             <div>
+              <label className="mb-4 block text-xs font-semibold text-[var(--th-text-muted)]">Phân loại bài<select className="th-input mt-1 w-full text-sm" value={kind} disabled={isReadOnly} onChange={e => setKind(e.target.value)}><option value="Regular">Bài tập thường</option><option value="Midterm">Thi giữa kỳ</option><option value="Final">Thi cuối kỳ</option><option value="MockExam">Thi thử</option></select></label>
+              {kind !== "Regular" && <label className="mb-4 block text-xs font-semibold text-[var(--th-text-muted)]">Ngày giờ thi<input type="datetime-local" className="th-input mt-1 w-full text-sm" min={minDateTime} disabled={isReadOnly} value={examAt} onChange={e => setExamAt(e.target.value)} /><span className="mt-1 block font-normal">Bài thi đã công bố sẽ xuất hiện trong lộ trình học sinh thuộc phạm vi giao bài.</span></label>}
               <label htmlFor="teacher-assignment-dueat-input" className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1">
                 Hạn chót nộp bài (tùy chọn)
               </label>

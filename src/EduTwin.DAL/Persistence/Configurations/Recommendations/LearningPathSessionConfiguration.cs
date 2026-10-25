@@ -10,6 +10,7 @@ public class LearningPathSessionConfiguration : IEntityTypeConfiguration<Learnin
     public void Configure(EntityTypeBuilder<LearningPathSession> builder)
     {
         builder.ToTable("learning_path_sessions");
+        builder.Property(s => s.PlannedDate).HasColumnName("planned_date").HasColumnType("date");
 
         builder.HasKey(s => s.SessionId).HasName("pk_learning_path_sessions");
 

@@ -96,6 +96,13 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
         }
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
+        var kind = assignment.Kind;
+        if (request.Kind != null && (!Enum.TryParse(request.Kind, false, out kind) || !Enum.IsDefined(kind)))
+            return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+        var examAt = request.ExamAt ?? assignment.ExamAt;
+        if (kind != AssignmentKind.Regular && (!examAt.HasValue || examAt <= now || request.TimeLimitMinutes is not > 0 ||
+            request.DueAt.HasValue && request.DueAt < examAt.Value.AddMinutes(request.TimeLimitMinutes.Value)))
+            return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
         if (request.DueAt.HasValue && request.DueAt.Value <= now)
             return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
 
@@ -338,8 +345,9 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
 
             // Allow clearing DueAt by sending null explicitly — we use a sentinel here.
             // If the caller wants to clear DueAt, they'd send null; we accept it.
-            assignment.DueAt = request.DueAt;
+            assignment.DueAt = request.DueAt ?? (kind == AssignmentKind.Regular ? null : examAt?.AddMinutes(request.TimeLimitMinutes ?? 0));
             assignment.TimeLimitMinutes = request.TimeLimitMinutes;
+            assignment.Kind = kind; assignment.ExamAt = kind == AssignmentKind.Regular ? null : examAt;
 
             if (newTargetMode != null)
             {
@@ -447,6 +455,7 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
                 Instructions = assignment.Instructions,
                 DueAt = assignment.DueAt,
                 TimeLimitMinutes = assignment.TimeLimitMinutes,
+                Kind = assignment.Kind.ToString(), ExamAt = assignment.ExamAt,
                 TargetMode = assignment.TargetMode.ToString(),
                 AllowGradeMismatch = assignment.AllowGradeMismatch,
                 GradeMismatchReason = assignment.GradeMismatchReason,

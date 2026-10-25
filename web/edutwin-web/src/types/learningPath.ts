@@ -237,7 +237,40 @@ export interface EvaluateSessionResponse {
 }
 
 // --- V4 Personalized Learning Path Interfaces ---
+export interface LearningScheduleSettings {
+  studyDays: number[];
+  excludedDates: string[];
+  timeZoneId: string;
+  reviewReservePercent: number;
+  shortCheckDays: number;
+  mockExamDays: number;
+}
+export interface LearningScheduleSummary {
+  calculatedFrom: string;
+  deadline?: string | null;
+  capacityMinutes: number;
+  requiredMinutes: number;
+  reserveMinutes: number;
+  missingMinutes: number;
+  phase: 'Balanced' | 'ShortChecks' | 'MockExam';
+  deferredSkillIds: string[];
+  message: string;
+}
+export interface ExamMilestone {
+  assignmentId: string;
+  classId: string;
+  title: string;
+  kind: string;
+  examAt: string;
+  timeLimitMinutes: number;
+  status: string;
+  supportSkillIds: string[];
+}
+
 export interface LearningGoalDto {
+  targetScore?: number | null;
+  startWithPlacement?: boolean;
+  schedule?: LearningScheduleSettings;
   selfReportedPrerequisiteSkillIds?: string[];
   goalId: string;
   studentId: string;
@@ -258,6 +291,10 @@ export interface LearningGoalDto {
 }
 
 export interface CreateLearningGoalRequest {
+  clearDeadline?: boolean;
+  targetScore?: number | null;
+  startWithPlacement?: boolean;
+  schedule?: LearningScheduleSettings;
   selfReportedPrerequisiteSkillIds?: string[];
   /** Parts left out of the placement check (self-assessed as mastered). */
   selfAssessedSkillIds?: string[];
@@ -275,6 +312,10 @@ export interface CreateLearningGoalRequest {
 }
 
 export interface ProposedMissionDto {
+  plannedDate?: string | null;
+  deferred?: boolean;
+  isMilestoneExam?: boolean;
+  timeLimitMinutes?: number | null;
   isSelfAssessedCheck?: boolean;
   difficultyFloor?: number | null;
   isProbe?: boolean;
@@ -293,6 +334,7 @@ export interface ProposedMissionDto {
 }
 
 export interface ProposedMilestoneDto {
+  plannedDate?: string | null;
   isSelfAssessedCheck?: boolean;
   order: number;
   title: string;
@@ -303,6 +345,9 @@ export interface ProposedMilestoneDto {
 }
 
 export interface PathProposalDto {
+  targetScore?: number | null;
+  schedule?: LearningScheduleSettings;
+  scheduleSummary?: LearningScheduleSummary;
   selfReportedPrerequisiteSkillIds?: string[];
   selfAssessedSkillIds?: string[];
   isPlacement?: boolean;
@@ -373,6 +418,13 @@ export interface CapabilityMapDto {
 }
 
 export interface AgendaItemDto {
+  remainingUnscheduledMinutes?: number;
+  isMockExam?: boolean;
+  plannedDate?: string | null;
+  deferred?: boolean;
+  skipReason?: string | null;
+  isMilestoneExam?: boolean;
+  timeLimitMinutes?: number | null;
   isSelfAssessedCheck?: boolean;
   latestRunId?: number | null;
   reviewOnly?: boolean;
@@ -440,6 +492,14 @@ export interface PathHistoryItemDto {
 }
 
 export interface LearningAgendaDto {
+  studiedMinutesToday?: number;
+  preferredPace?: string;
+  targetScore?: number | null;
+  predictedScore?: number | null;
+  forecastMessage?: string;
+  schedule?: LearningScheduleSettings;
+  scheduleSummary?: LearningScheduleSummary;
+  exams?: ExamMilestone[];
   availableTodayMinutes?: number;
   primaryReason?: string | null;
   selfReportedPrerequisiteSkillIds?: string[];
@@ -481,6 +541,8 @@ export interface PlacementReportDto {
   scoreOutOfTen?: number | null;
   skills: {
     skillId: string; skillName: string; topicName: string;
+    classification?: 'Strong' | 'NeedsSupport' | 'Inconclusive';
+    confidence?: 'Standard' | 'Low' | 'Insufficient';
     answeredQuestions: number; correctAnswers: number; scoreOutOfTen?: number | null;
     earnedScore: number; possibleScore: number;
     status: string; recommendation: string; estimatedPracticeSets: number;
@@ -584,6 +646,7 @@ export interface SubmitActivityRequest {
 }
 
 export interface MissionRunDto {
+  expiresAt?: string | null;
   outcome: string;
   sessionRunId: number;
   sessionId: string;

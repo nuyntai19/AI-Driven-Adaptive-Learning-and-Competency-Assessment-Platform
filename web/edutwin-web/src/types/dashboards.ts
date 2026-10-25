@@ -18,6 +18,9 @@ export interface SubjectBasicInfoDto {
 }
 
 export interface StudentSubjectGoalDto {
+  hasPrediction?: boolean | null;
+  hasDeadline?: boolean | null;
+  forecastMessage?: string | null;
   hasGoal: boolean;
   targetScore: number;
   remainingDays: number;

@@ -106,12 +106,13 @@ public sealed class LearningPathPlacementTests
         f.Db.Questions.RemoveRange(await f.Db.Questions.Where(q => q.PrimaryTopicNodeId == 101 && q.QuestionId > 10103).ToListAsync());
         await f.Db.SaveChangesAsync();
         var proposal = await Placement(f, "101", "102");
-        Assert.False(proposal.Milestones.First().Missions.Single().CanStart);
+        Assert.True(proposal.Milestones.First().Missions.Single().CanStart);
+        Assert.Equal(3u, proposal.Milestones.First().Missions.Single().QuestionCount);
         await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId);
         await Complete(f, proposal.Milestones.Last().Missions.Single(), 5);
         var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
         var missing = agenda.PlacementReport!.Skills.Single(s => s.SkillId == "101");
-        Assert.Equal("Unavailable", missing.Status);
+        Assert.Equal("NotStarted", missing.Status);
         Assert.Null(missing.ScoreOutOfTen);
         Assert.Equal(10m, agenda.PlacementReport.ScoreOutOfTen);
         Assert.False(agenda.PlacementReport.IsComplete);

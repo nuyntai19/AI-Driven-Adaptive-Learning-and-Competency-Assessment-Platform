@@ -72,6 +72,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
 
   const { progress, questions } = assignment;
   const isReadOnly = assignment.isReadOnly === true || searchParams.get("history") === "true";
+  const examUpcoming = !!assignment.examAt && new Date(assignment.examAt).getTime() > Date.now();
   const draftQuestionIds = new Set<string>();
   if (!assignment.isSubmitted) {
     for (const draft of assignment.draftAnswers ?? []) {
@@ -217,7 +218,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
             </div>
 
             {/* Primary Action Button */}
-            {isAssignmentFinished || isReadOnly ? (
+            {examUpcoming && !isAssignmentFinished ? <span className="rounded-lg bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700">Chưa tới giờ thi</span> : isAssignmentFinished || isReadOnly ? (
               <Link
                 to={studentScopeUrl(`/hoc-tap/luyen-tap/${questions[0]?.questionId || ""}`, searchParams, { assignmentId:assignment.assignmentId })}
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 px-4 py-2 text-xs sm:text-sm font-semibold text-white dark:text-stone-900 transition-colors cursor-pointer self-start sm:self-auto"
@@ -240,6 +241,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
               {assignment.title}
             </h1>
+            {assignment.examAt && <p className="mt-2 text-sm font-medium text-indigo-700 dark:text-indigo-300">Giờ thi: {new Date(assignment.examAt).toLocaleString("vi-VN")}{examUpcoming ? " · Bài thi mở theo lịch giáo viên; tải lại trang khi đến giờ." : ""}</p>}
             <p className="mt-1.5 text-xs sm:text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
               {assignment.instructions ||
                 "Hoàn thành các câu hỏi bên dưới và giải trình các bước tư duy để hệ thống đánh giá năng lực thích ứng."}
@@ -373,7 +375,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                   Thời lượng ước tính: ~{Math.round(timeSec / 60)} phút
                 </span>
 
-                <Link
+                {!examUpcoming && <Link
                   to={studentScopeUrl(`/hoc-tap/luyen-tap/${question.questionId}`, searchParams, { assignmentId:assignment.assignmentId })}
                   className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                     isDone || isReadOnly
@@ -383,7 +385,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                 >
                   <span>{isDone || isReadOnly ? "Xem lại" : "Làm câu này"}</span>
                   <span className="text-[11px]">→</span>
-                </Link>
+                </Link>}
               </div>
             </div>
           );

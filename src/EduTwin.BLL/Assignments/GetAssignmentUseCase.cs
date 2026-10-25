@@ -98,7 +98,7 @@ public class GetAssignmentUseCase : IGetAssignmentUseCase
             Title = assignment.Title,
             Instructions = assignment.Instructions,
             DueAt = assignment.DueAt,
-            TimeLimitMinutes = assignment.TimeLimitMinutes,
+            TimeLimitMinutes = assignment.TimeLimitMinutes, Kind = assignment.Kind.ToString(), ExamAt = assignment.ExamAt,
             TargetMode = assignment.TargetMode.ToString(),
             AllowGradeMismatch = assignment.AllowGradeMismatch,
             GradeMismatchReason = assignment.GradeMismatchReason,

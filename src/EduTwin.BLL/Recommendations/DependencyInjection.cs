@@ -11,7 +11,8 @@ public static class DependencyInjection
         services.AddScoped<IOpportunityCandidateBuilder, OpportunityCandidateBuilder>();
         services.AddSingleton<ILinearFallbackSelector, LinearFallbackSelector>();
         services.AddScoped<IAdaptiveQuestionSelector, AdaptiveQuestionSelector>();
-        services.AddScoped<IRecommendationEngine, RecommendationEngine>();
+        services.AddScoped<RecommendationEngine>();
+        services.AddScoped<IRecommendationEngine>(provider => new V4RecommendationEngine(provider.GetRequiredService<RecommendationEngine>()));
 
         services.AddScoped<ILearningSessionExecutionService, LearningSessionExecutionService>();
         services.AddScoped<Planning.ILearningPathV4Planner, Planning.LearningPathV4Planner>();
@@ -25,7 +26,6 @@ public static class DependencyInjection
         services.AddScoped<IGetActiveLearningPathUseCase, GetActiveLearningPathUseCase>();
         services.AddScoped<IGetLearningPathTopicsUseCase, GetLearningPathTopicsUseCase>();
         services.AddScoped<IGetStudentLearningPathPreferenceUseCase, GetStudentLearningPathPreferenceUseCase>();
-        services.AddScoped<IGenerateLearningPathUseCase, GenerateLearningPathUseCase>();
         services.AddScoped<IGetDetailedLearningPathUseCase, GenerateLearningPathUseCase>();
         services.AddScoped<IUpdateLearningPathSessionUseCase, UpdateLearningPathSessionUseCase>();
 

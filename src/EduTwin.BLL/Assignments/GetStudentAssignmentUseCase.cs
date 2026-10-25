@@ -250,6 +250,7 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             ClassId = progress.Assignment.ClassId.ToString(),
             IsReadOnly = await StudentAssignmentScope.SuspendedAsync(_dbContext, centerId.Value, progress.Assignment.ClassId, cancellationToken),
             TimeLimitMinutes = progress.Assignment.TimeLimitMinutes,
+            Kind = progress.Assignment.Kind.ToString(), ExamAt = progress.Assignment.ExamAt,
             StartedAt = progress.StartedAt,
             IsSubmitted = isSubmitted,
             SubmittedAt = submittedAt,

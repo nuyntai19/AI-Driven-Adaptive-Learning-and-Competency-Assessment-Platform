@@ -40,6 +40,7 @@ export const StudentLayout: React.FC = () => {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const activeSubjectId = searchParams.get("subjectId") || "";
+  const isLearningPathPage = location.pathname === "/hoc-tap/lo-trinh-hoc-tap";
   const activeClassId = searchParams.get("classId") || "";
   const isHistory = searchParams.get("history") === "true";
   const isAccountPage = ["/hoc-tap/thong-bao", "/hoc-tap/nhat-ky-hoat-dong"].includes(location.pathname);
@@ -348,13 +349,14 @@ export const StudentLayout: React.FC = () => {
               </span>
               <div className="relative min-w-0">
                 <select
+                  aria-label="Môn học đang xem"
                   value={activeSubjectId}
                   onChange={(e) => handleSubjectChange(e.target.value)}
                   className="appearance-none rounded-lg border border-[var(--student-border,#E8E6DF)] bg-white dark:bg-[#172033] hover:bg-slate-50 dark:hover:bg-slate-800 pl-3 pr-8 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 transition-colors focus:border-[var(--student-brand,#6546D7)] focus:outline-none cursor-pointer shadow-2xs max-w-[160px] sm:max-w-[200px] truncate"
                   title="Chuyển đổi môn học đang theo dõi"
                   data-testid="student-subject-selector-sub"
                 >
-                  <option value="">Toàn bộ</option>
+                  {isLearningPathPage ? <option value="" disabled>Chọn môn học</option> : <option value="">Toàn bộ</option>}
                   {subjects.map((sub) => (
                     <option key={sub.subjectId} value={sub.subjectId}>
                       {sub.subjectName}
@@ -418,6 +420,7 @@ export const StudentLayout: React.FC = () => {
                 <div className="mt-4">
                   <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 block">Môn học đang chọn:</label>
                   <select
+                    aria-label="Môn học trong menu"
                     value={activeSubjectId}
                     onChange={(e) => {
                       handleSubjectChange(e.target.value);
@@ -425,7 +428,7 @@ export const StudentLayout: React.FC = () => {
                     }}
                     className="w-full rounded-lg border border-[var(--student-border)] p-2 text-xs font-bold text-slate-800 dark:text-white bg-white dark:bg-[#172033]"
                   >
-                    <option value="">Toàn bộ</option>
+                    {isLearningPathPage ? <option value="" disabled>Chọn môn học</option> : <option value="">Toàn bộ</option>}
                     {subjects.map((sub) => (
                       <option key={sub.subjectId} value={sub.subjectId}>
                         {sub.subjectName}

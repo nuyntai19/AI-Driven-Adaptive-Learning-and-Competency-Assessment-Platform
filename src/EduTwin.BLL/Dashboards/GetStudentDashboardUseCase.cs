@@ -262,23 +262,31 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
         var learningPathPreference = await _dbContext.StudentLearningPathPreferences.AsNoTracking()
             .Where(p => p.CenterId == centerId && p.StudentId == studentId && p.SubjectId == targetSubjectId && !p.IsDeleted)
             .FirstOrDefaultAsync(cancellationToken);
+        var canonicalGoal = await _dbContext.LearningGoals.AsNoTracking().Where(g => g.CenterId == centerId && g.StudentId == studentId && g.SubjectId == targetSubjectId && g.Status == "Active")
+            .OrderByDescending(g => g.CreatedAt).FirstOrDefaultAsync(cancellationToken);
 
-        var targetScore = learningPathPreference is not null
+        var targetScore = canonicalGoal != null ? canonicalGoal.TargetScore ?? 0m : learningPathPreference is not null
             ? Math.Round(learningPathPreference.TargetMastery / 10m, 1, MidpointRounding.AwayFromZero)
             : goalEntity?.TargetScore ?? 0m;
-        var remainingDays = learningPathPreference is not null
+        var remainingDays = canonicalGoal != null ? Recommendations.Planning.LearningGoalBridge.RemainingDays(canonicalGoal, _timeProvider.GetUtcNow().UtcDateTime) : learningPathPreference is not null
             ? checked((uint)learningPathPreference.TargetWeeks * 7u)
             : goalEntity?.RemainingDays ?? 0u;
         var currentPredictedScore = goalEntity?.CurrentPredictedScore ?? 0m;
+        var forecast = canonicalGoal == null ? null : await Recommendations.Planning.LearningGoalForecast.ReadAsync(_dbContext, centerId, studentId, targetSubjectId,
+            canonicalGoal.ClassId, _timeProvider.GetUtcNow().UtcDateTime, Recommendations.Planning.LearningGoalScope.Read(canonicalGoal.TargetSkillIds).TargetSkillIds, cancellationToken);
+        if (forecast?.Score is { } estimate) currentPredictedScore = estimate;
 
         var singleGoalDto = new StudentGoalSummaryDto
         {
-            HasGoal = learningPathPreference is not null || goalEntity is not null,
+            HasPrediction = forecast == null ? null : forecast.Score.HasValue,
+            HasDeadline = canonicalGoal?.DeadlineDate.HasValue,
+            ForecastMessage = forecast?.Message,
+            HasGoal = canonicalGoal != null ? canonicalGoal.TargetScore.HasValue : learningPathPreference is not null || goalEntity is not null,
             TargetScore = targetScore,
             RemainingDays = remainingDays,
             CurrentPredictedScore = currentPredictedScore,
-            RiskScore = learningPathPreference is not null
-                ? StudentSubjectGoalRiskCalculator.CalculateRisk(targetScore, currentPredictedScore, checked((int)remainingDays))
+            RiskScore = forecast is { Score: null } ? 0m : canonicalGoal != null || learningPathPreference is not null
+                ? StudentSubjectGoalRiskCalculator.CalculateRisk(targetScore, currentPredictedScore, canonicalGoal is { DeadlineDate: null } ? 3650 : checked((int)remainingDays))
                 : goalEntity?.RiskScore ?? 0m
         };
 

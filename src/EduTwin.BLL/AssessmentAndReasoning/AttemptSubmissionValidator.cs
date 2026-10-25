@@ -145,6 +145,8 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             {
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             }
+            if (Recommendations.Planning.LearningAssessmentPolicy.ExpiresAt(sessionRun.PolicySnapshot, sessionRun.StartedAt) is { } expires && _timeProvider.GetUtcNow().UtcDateTime >= expires)
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             var assignedQuestions = Recommendations.Services.LearningSessionExecutionService.ParseQuestionIds(sessionRun.QuestionsAssigned);
             if (sessionRun.CheckpointQuestionId.HasValue && !assignedQuestions.Contains(sessionRun.CheckpointQuestionId.Value))
             {
@@ -192,6 +194,8 @@ public sealed class AttemptSubmissionValidator : IAttemptSubmissionValidator
             {
                 return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
             }
+            if (assignment.ExamAt.HasValue && assignment.ExamAt > _timeProvider.GetUtcNow().UtcDateTime)
+                return AttemptSubmissionValidationResult.Failure(ErrorCodes.AssignmentNotAvailable);
 
             if (await EduTwin.BLL.Assignments.StudentAssignmentScope.SuspendedAsync(_dbContext, centerId, assignment.ClassId, cancellationToken) ||
                 (request.ClassId.HasValue && request.ClassId != assignment.ClassId))

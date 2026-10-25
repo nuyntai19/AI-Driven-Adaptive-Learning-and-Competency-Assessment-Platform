@@ -1,20 +1,22 @@
 # Kiểm tra đầu vào và cập nhật lộ trình
 
-Trang lộ trình hỗ trợ hai cách bắt đầu: kiểm tra đầu vào theo phạm vi được chọn hoặc học từ nền tảng. Checklist gom các kỹ năng lá theo chủ đề trong giáo trình; chọn một chủ đề chọn các kỹ năng con. Quan hệ tiên quyết lấy từ Knowledge Graph, bao gồm quan hệ giữa các chủ đề cha được mở rộng xuống kỹ năng lá. Với nền tảng chưa có bằng chứng trên web, học sinh chọn bổ sung vào tuyến hoặc tự xác nhận đã học ở trường và bỏ qua. Không tự mở rộng tuyến qua các nền tảng đã chọn bỏ qua.
+> Bản nghiệp vụ mới: [Lộ trình học tập V4](plans/learning-path-v4-revision.md). Trạng thái triển khai: [báo cáo V4](plans/learning-path-v4-implementation.md).
+
+Trang lộ trình có một nút “Bắt đầu lộ trình”; trong hộp thoại, học sinh chọn kiểm tra đầu vào theo phạm vi được chọn hoặc bỏ qua để học ngay từ nền tảng. Checklist gom các kỹ năng lá theo chủ đề trong giáo trình; chọn một chủ đề chọn các kỹ năng con. Quan hệ tiên quyết lấy từ Knowledge Graph, bao gồm quan hệ giữa các chủ đề cha được mở rộng xuống kỹ năng lá. Với nền tảng chưa có bằng chứng trên web, học sinh chọn bổ sung vào tuyến hoặc tự xác nhận đã học ở trường và bỏ qua. Không tự mở rộng tuyến qua các nền tảng đã chọn bỏ qua.
 
 ## Luồng kiểm tra đầu vào → lộ trình
 
-1. Bấm "Kiểm tra đầu vào", chọn một, vài hoặc tất cả các phần (chủ đề) rồi bấm "Bắt đầu kiểm tra". Không có bước xem trước: bài kiểm tra được tạo và mở ngay.
+1. Bấm “Bắt đầu lộ trình”, giữ lựa chọn “Kiểm tra đầu vào · Đề xuất”, chọn một, vài hoặc tất cả các phần (chủ đề) rồi bấm “Bắt đầu kiểm tra”. Không có bước xem trước: bài kiểm tra được tạo và mở ngay.
 2. Các phần nối tiếp nhau trong một bài (`Kiểm tra đầu vào · phần x/y`). Đóng giữa chừng thì lưu lại; nút "Tiếp tục kiểm tra" làm tiếp.
 3. Xong phần cuối và chấm xong, hộp "Lộ trình đề xuất từ kết quả kiểm tra" tự mở: điểm từng phần, nhận xét, rồi lộ trình chi tiết. Học sinh có thể tùy chỉnh (phần học, số câu, lịch) trước khi chọn.
-4. Phần không chọn kiểm tra được ghi là "Tự đánh giá đã vững" (`SelfAssessedSkillIds` trong `LearningGoal.TargetSkillIds`). Không tính là đã nắm vững, không kéo vào học như tiên quyết, không chặn tự kiểm tra của phần khác. Cuối lộ trình mỗi phần có một bài "Ôn xác nhận" 3 câu (`IsSelfAssessedCheck`, mục đích `Review`), chỉ đưa vào kế hoạch hôm nay khi các phần chính đã xong; học sinh vẫn có thể làm sớm.
+4. Phần không chọn kiểm tra giữ trạng thái chưa biết; không tự biến thành "Tự đánh giá đã vững". Chỉ lựa chọn bỏ qua nền tảng có chủ đích mới được lưu là tự xác nhận; lựa chọn đó không trở thành bằng chứng năng lực.
 5. Ôn xác nhận đạt: giữ lịch ôn giãn cách. Chưa đạt: phần đó thành phần học bình thường, thêm bộ rèn lại và bài tự kiểm tra 5 câu.
 
 ## Kiểm tra đầu vào
 
-- Mục tiêu `Placement` tạo một tuyến kiểm tra riêng: mỗi kỹ năng chưa được xác nhận có 5 câu độc lập chưa làm/chưa lộ lời giải. Câu hỏi có mức vừa/khó được đưa vào nếu ngân hàng có sẵn. Có thể lưu tiến độ theo từng phần.
+- `StartWithPlacement` tạo một tuyến kiểm tra riêng và giữ nguyên loại mục tiêu học: mỗi kỹ năng dùng 3–5 câu độc lập chưa làm/chưa lộ lời giải. Mẫu dưới 5 câu chỉ có độ tin cậy thấp và không xác nhận vững. Có thể lưu tiến độ theo từng phần.
 - Kiểm tra đầu vào có thể đánh giá một kỹ năng khi nền tảng chưa được xác nhận. Với tuyến học thông thường, mỗi nền tảng cần có bằng chứng hợp lệ hoặc được học sinh tự xác nhận bỏ qua trong chính tuyến đó. Lựa chọn này không đổi trạng thái năng lực toàn môn và không mở khóa các nền tảng khác chưa được tự xác nhận.
-- Phần đã có bằng chứng độc lập hợp lệ được dùng lại, không phát sinh điểm kiểm tra mới. Không đủ 5 câu mới thì ghi rõ thiếu câu, không tính là 0 điểm.
+- Phần đã có bằng chứng độc lập hợp lệ được dùng lại, không phát sinh điểm kiểm tra mới. Chỉ còn 0–2 câu hợp lệ thì ghi rõ thiếu câu, không tính là 0 điểm và không chặn tạo tuyến học.
 - Không thêm vòng rèn lại hoặc lịch ôn trong giai đoạn thu thập đầu vào. Sau khi chấm từng phần, báo cáo tổng hợp điểm theo kỹ năng, chủ đề, toàn bài và ước lượng số bộ luyện. Điểm lấy từ điểm chấm thực tế, gồm điểm thành phần và điểm giáo viên sửa; không dùng điểm của các môn hoặc lượt luyện khác.
 - Báo cáo đang làm chỉ tính phần đã hoàn thành. Học sinh có thể xem tuyến tạm với phần chưa kiểm tra được đánh dấu chưa đủ bằng chứng; không chuyển tuyến khi còn lượt đang làm hoặc chờ chấm.
 
@@ -28,6 +30,6 @@ Trang lộ trình hỗ trợ hai cách bắt đầu: kiểm tra đầu vào theo
 
 ## Dữ liệu và triển khai
 
-Không cần migration: dùng `LearningGoal.GoalType`, các trường JSON kế hoạch và hệ thống mission/activity/attempt hiện có. API mục tiêu, đề xuất và agenda có `selfReportedPrerequisiteSkillIds`. JSON `LearningGoal.TargetSkillIds` vẫn là mảng khi không bỏ qua nền tảng; với tự xác nhận, lưu object gồm `targetSkillIds` và `selfReportedPrerequisiteSkillIds`. `LearningGoalScope` đọc được cả hai định dạng, mọi API vẫn trả `targetSkillIds` dạng mảng. API đề xuất có `isPlacement`, `goalType`, `requestedSkillIds`; agenda có phạm vi/lịch mục tiêu, `placementReport`, `canAdvance`, `nextSkillIds`. Capability map có `topicId`, `topicName` là chủ đề cha gần nhất. Tuyến cũ vẫn đọc được; phạm vi/lịch lấy lại từ mục tiêu đã lưu.
+Cần migration `20261025142829_LearningPathCalendarAndExams`: bổ sung ngày kế hoạch, điểm mục tiêu, cấu hình lịch, cờ đầu vào và metadata kỳ thi. Migration chuyển mục tiêu cũ sang nguồn chính thức và giữ dấu vết dữ liệu tương thích. Vẫn dùng hệ thống mission/activity/attempt hiện có. `LearningGoalScope` đọc được cả mảng kỹ năng cũ và object chứa phạm vi/tự xác nhận. API trả ngày dự kiến, ngân sách, kỳ thi, báo cáo đầu vào và giới hạn dự báo. Tuyến cũ vẫn đọc được; đường sinh legacy trả HTTP 410, callback chấm bài không tạo tuyến legacy mới.
 
 Chất lượng phân tích phụ thuộc cấu trúc chủ đề/kỹ năng, quan hệ tiên quyết và ngân hàng câu hỏi do giáo viên biên soạn. Báo cáo chỉ nêu kết quả quan sát được, không tự suy đoán nguyên nhân sai cụ thể khi chưa có bằng chứng.

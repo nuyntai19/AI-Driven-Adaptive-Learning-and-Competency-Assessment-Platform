@@ -19,6 +19,9 @@ public class LearningGoal : IMutableTenantAggregate
 
     public JsonDocument? TargetSkillIds { get; set; }
     public DateTime? DeadlineDate { get; set; }
+    public decimal? TargetScore { get; set; }
+    public bool StartWithPlacement { get; set; }
+    public JsonDocument? ScheduleSettings { get; set; }
 
     public uint AvailableMinutesPerDay { get; set; } = 15;
     public uint AvailableDaysPerWeek { get; set; } = 5;

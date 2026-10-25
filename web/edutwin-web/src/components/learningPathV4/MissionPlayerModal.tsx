@@ -9,8 +9,8 @@ import { extractProblemDetails } from "../../utils/problemDetails";
 import { ongoingMissionFromError } from "../../utils/learningMission";
 
 const outcomeNames: Record<string, string> = { Passed: "Đạt yêu cầu kiểm tra độc lập", NotPassed: "Cần củng cố thêm", NeedsSupport: "Cần củng cố thêm",
-  ActivityOnlyCompleted: "Đã hoàn thành hoạt động học", InsufficientEvidence: "Chưa đủ bằng chứng",
-  PendingGrading: "Đang chờ chấm bài" };
+  ActivityOnlyCompleted: "Đã hoàn thành hoạt động học", InsufficientEvidence: "Chưa đủ bằng chứng", Inconclusive: "Chưa kết luận · sẽ kiểm tra bổ sung",
+  PendingGrading: "Đang chờ chấm bài", TimedOut: "Đã hết giờ · giữ nguyên câu đã nộp" };
 const activityNames: Record<string, string> = { Study: "Tìm hiểu và ví dụ", WorkedExample: "Ví dụ từng bước", FindError: "Tìm và sửa lỗi",
   Explore: "Khám phá", Practice: "Luyện có hướng dẫn", IndependentCheck: "Tự kiểm tra", Explain: "Giải thích", CompleteSolution: "Hoàn thiện lời giải" };
 const done = (a: ActivityRunDto) => a.status === "Submitted" || a.status === "Completed";
@@ -24,9 +24,17 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
   const run = useQuery({ queryKey: key, queryFn: () => reviewing ? getMissionRun(mission!.missionId, mission!.latestRunId!)
     : startLearningMission(mission!.missionId, { retry: mission!.retry, questionCount: mission!.questionCount || undefined }), enabled: isOpen && !!mission,
     staleTime: Infinity, retry: false, refetchOnWindowFocus: false });
-  const current = reviewing ? undefined : run.data?.activities.find(a => !done(a));
+  const [wallClock, setWallClock] = useState(Date.now);
+  const remainingSeconds = run.data?.expiresAt ? Math.max(0, Math.ceil((new Date(run.data.expiresAt).getTime() - wallClock) / 1000)) : null;
+  const expired = remainingSeconds === 0;
+  useEffect(() => {
+    if (!run.data?.expiresAt || reviewing) return;
+    const timer = setInterval(() => setWallClock(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [run.data?.expiresAt, reviewing]);
+  const current = reviewing || expired ? undefined : run.data?.activities.find(a => !done(a));
   const evaluation = useQuery({ queryKey: ["mission-evaluation", actor?.centerId, actor?.userId, run.data?.sessionRunId],
-    queryFn: () => evaluateMissionRunV4(run.data!.sessionRunId), enabled: !reviewing && !!run.data && !current && !feedbackActivity && run.data.activities.length > 0 && run.data.activities.every(done),
+    queryFn: () => evaluateMissionRunV4(run.data!.sessionRunId), enabled: !reviewing && !!run.data && !current && !feedbackActivity && run.data.activities.length > 0 && (run.data.activities.every(done) || expired),
     retry: false, refetchInterval: query => query.state.data?.outcome === "PendingGrading" ? 3000 : false, refetchIntervalInBackground: true });
   // Drop the cached run on close: reopening must read the server state (saved draft, hints, a cancelled or finished run).
   const close = () => { cache.removeQueries({ queryKey: ["mission-run"] }); void cache.invalidateQueries({ queryKey: ["learning-agenda"] }); void cache.invalidateQueries({ queryKey: ["learning-paths"] }); onClose(); };
@@ -52,12 +60,13 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
         <div>{contextLabel && <p className="mb-1 text-xs font-medium text-slate-500">{contextLabel}</p>}<p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">{mission.skillName}</p><h2 id="mission-title" className="mt-1 text-xl font-semibold">{mission.title}</h2>
           {run.data && <p className="mt-2 text-xs text-slate-500">{run.data.activities.filter(done).length}/{run.data.activities.length} hoạt động đã nộp · Tiến độ lưu theo tài khoản</p>}</div>
         <div className="flex shrink-0 items-center gap-2">
-          {runActive && <span className="font-mono text-sm tabular-nums text-slate-500" title="Thời gian học thực tế (không tính lúc tạm dừng)">{clock(activeSeconds)}</span>}
-          {runActive && !paused && <button className="rounded-lg border px-3 py-1 text-sm" onClick={() => { setPaused(true); setConfirmCancel(false); }}>Tạm dừng</button>}
+          {runActive && <span className="font-mono text-sm tabular-nums text-slate-500" title={remainingSeconds != null ? "Thời gian làm bài còn lại" : "Thời gian học thực tế (không tính lúc tạm dừng)"}>{clock(remainingSeconds ?? activeSeconds)}</span>}
+          {runActive && !paused && remainingSeconds == null && <button className="rounded-lg border px-3 py-1 text-sm" onClick={() => { setPaused(true); setConfirmCancel(false); }}>Tạm dừng</button>}
           <button className="rounded-lg border px-3 py-1" aria-label="Đóng và giữ tiến độ" title="Đóng · tiến độ và bản nháp được giữ" onClick={close}>×</button>
         </div>
       </header>
       <div className="min-h-0 space-y-5 overflow-y-auto p-5 sm:p-7">
+        {remainingSeconds != null && !reviewing && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Bài bấm giờ: đồng hồ tiếp tục chạy khi đóng cửa sổ. Hết giờ sẽ giữ các câu đã nộp và kết thúc lượt.</p>}
         {reviewing && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">Đang xem lại lượt học đã lưu. Không tạo lượt làm mới.</p>}
         {run.isPending && <p role="status">Đang mở nhiệm vụ và khôi phục tiến độ…</p>}
         {run.error && <div role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-800">
@@ -92,6 +101,7 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
         {current && !feedbackActivity && <div hidden={paused}><Activity key={current.activityRunId} activity={current} paused={paused} onSubmitted={(res, submittedResponse) => {
           const updated = { ...current, status: res.activityStatus, learningFeedback: res.learningFeedback, submittedResponse };
           cache.setQueryData<MissionRunDto>(key, old => old ? { ...old, activities: old.activities.map(a => a.activityRunId === current.activityRunId ? updated : a) } : old);
+          void run.refetch();
           if ((current.activityType === "Practice" && res.learningFeedback) || current.content) setFeedbackActivity(updated);
         }} /></div>}
         {reviewing && run.data && !feedbackActivity && <div className="rounded-xl bg-indigo-50 p-4 text-indigo-950"><h3 className="font-semibold">{outcomeNames[run.data.outcome] ?? "Bài làm đã lưu"}</h3><p className="mt-2 text-sm">Chọn số câu hoặc mở phần bên dưới để xem lại câu trả lời và lời giải đã lưu.</p></div>}

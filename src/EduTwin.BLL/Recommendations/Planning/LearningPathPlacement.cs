@@ -18,7 +18,7 @@ public sealed partial class LearningPathV4Planner
             i.ActivityRun.SessionRun.StudentId == student && i.ActivityRun.SessionRun.Session.LearningPathId == path.LearningPathId &&
             runIds.Contains(i.ActivityRun.SessionRunId) && i.AttemptId != null)
             .Select(i => new { i.ActivityRun.SessionRunId, i.AttemptId, i.Attempt!.IsCorrect, i.Attempt.Skipped,
-                i.Attempt.AwardedScore, i.Attempt.Question.MaxScore }).ToListAsync(ct);
+                i.Attempt.AwardedScore, i.Attempt.Question.MaxScore, i.Attempt.Question.PrimaryTopicNodeId, i.Attempt.Question.QuestionType }).ToListAsync(ct);
         var attemptIds = issued.Select(i => i.AttemptId!.Value).ToList();
         var reviews = await db.ReasoningAnalyses.AsNoTracking().Where(a => a.CenterId == center && attemptIds.Contains(a.AttemptId))
             .ToDictionaryAsync(a => a.AttemptId, ct);
@@ -29,10 +29,10 @@ public sealed partial class LearningPathV4Planner
             if (skill == null) continue;
             var missionIds = milestone.Missions.Select(m => m.MissionId).ToHashSet();
             var run = latest.FirstOrDefault(r => missionIds.Contains(r.SessionId.ToString()));
-            var answers = issued.Where(i => i.SessionRunId == run?.SessionRunId && !i.Skipped)
+            var answers = issued.Where(i => i.SessionRunId == run?.SessionRunId && i.PrimaryTopicNodeId.ToString() == id && !i.Skipped)
                 .Select(i => new { Correct = reviews.GetValueOrDefault(i.AttemptId!.Value)?.OverrideIsCorrect ?? i.IsCorrect,
                     Earned = reviews.GetValueOrDefault(i.AttemptId!.Value)?.OverrideAwardedScore ?? i.AwardedScore ??
-                        ((reviews.GetValueOrDefault(i.AttemptId.Value)?.OverrideIsCorrect ?? i.IsCorrect) == true ? i.MaxScore : 0), i.MaxScore })
+                        ((reviews.GetValueOrDefault(i.AttemptId.Value)?.OverrideIsCorrect ?? i.IsCorrect) == true ? i.MaxScore : 0), i.MaxScore, i.QuestionType })
                 .Where(a => a.Correct.HasValue).ToList();
             var correct = answers.Count(a => a.Correct == true);
             var possible = answers.Sum(a => a.MaxScore);
@@ -41,6 +41,8 @@ public sealed partial class LearningPathV4Planner
             var confirmed = skill.State == "Confirmed";
             var result = new PlacementSkillResultDto
             {
+                Classification = !assessed ? "Inconclusive" : LearningAssessmentPolicy.Classify(answers.Count, correct, answers.Count(a => a.QuestionType == Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice) * 2 > answers.Count),
+                Confidence = !assessed || answers.Count < 3 ? "Insufficient" : answers.Count < 5 ? "Low" : "Standard",
                 SkillId = id, SkillName = skill.SkillName, TopicName = skill.TopicName,
                 AnsweredQuestions = (uint)answers.Count, CorrectAnswers = (uint)correct,
                 EarnedScore = assessed ? earned : 0, PossibleScore = assessed ? possible : 0,
@@ -60,10 +62,14 @@ public sealed partial class LearningPathV4Planner
                 : result.Status == "Unavailable" ? "Chưa đủ câu mới để kiểm tra; cần giáo viên bổ sung. Có thể bắt đầu học với trạng thái chưa đủ bằng chứng."
                 : "Chưa chấm xong phần này; chưa kết luận mức độ nắm vững.";
             report.Skills.Add(result);
+            var foundation = issued.Where(i => i.SessionRunId == run?.SessionRunId && i.PrimaryTopicNodeId.ToString() != id && !i.Skipped).ToList();
+            if (foundation.Count > 0) result.Recommendation += $" Đã thử thêm {foundation.Count} câu nền tảng; đây là tín hiệu cần xác minh, chưa đủ để kết luận hổng nền hay chưa học. Lộ trình sẽ ưu tiên phần nền tảng có câu sai và tiếp tục kiểm tra.";
         }
         report.TotalSkills = (uint)report.Skills.Count;
         report.AssessedSkills = (uint)report.Skills.Count(s => s.Status is "Assessed" or "Confirmed");
         report.IsComplete = report.TotalSkills > 0 && report.TotalSkills == report.AssessedSkills;
+        // Unavailable sections remain Unknown, but cannot prevent the student from finishing the available baseline.
+        report.IsComplete = report.TotalSkills > 0 && report.Skills.All(s => s.Status is "Assessed" or "Confirmed" or "Unavailable");
         var scored = report.Skills.Where(s => s.ScoreOutOfTen.HasValue).ToList();
         var total = scored.Sum(s => s.PossibleScore);
         report.ScoreOutOfTen = total > 0 ? Math.Round(10m * scored.Sum(s => s.EarnedScore) / total, 1) : null;

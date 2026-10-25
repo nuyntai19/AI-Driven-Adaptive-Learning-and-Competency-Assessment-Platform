@@ -37,6 +37,20 @@ public sealed class StudentGoalRiskUpdater : IStudentGoalRiskUpdater
         {
             return null;
         }
+        var acceptedGoal = await _dbContext.LearningGoals.AsNoTracking().Where(g => g.CenterId == centerId && g.StudentId == studentId && g.SubjectId == subjectId && g.Status == "Active")
+            .OrderByDescending(g => g.CreatedAt).FirstOrDefaultAsync(cancellationToken);
+        if (acceptedGoal != null)
+        {
+            var forecast = await Recommendations.Planning.LearningGoalForecast.ReadAsync(_dbContext, centerId, studentId, subjectId,
+                acceptedGoal.ClassId, utcNow, Recommendations.Planning.LearningGoalScope.Read(acceptedGoal.TargetSkillIds).TargetSkillIds, cancellationToken);
+            goal.TargetScore = acceptedGoal.TargetScore ?? goal.TargetScore;
+            goal.RemainingDays = Recommendations.Planning.LearningGoalBridge.RemainingDays(acceptedGoal, utcNow);
+            if (forecast.Score.HasValue) goal.CurrentPredictedScore = forecast.Score.Value;
+            goal.RiskScore = forecast.Score.HasValue ? StudentSubjectGoalRiskCalculator.CalculateRisk(goal.TargetScore, forecast.Score.Value,
+                acceptedGoal.DeadlineDate.HasValue ? (int)goal.RemainingDays : 3650) : 0;
+            goal.UpdatedAt = utcNow;
+            return goal;
+        }
 
         var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(
             _dbContext, centerId, studentId, subjectId, null, false, cancellationToken);

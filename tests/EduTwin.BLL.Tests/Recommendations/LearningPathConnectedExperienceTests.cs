@@ -98,16 +98,19 @@ public sealed class LearningPathConnectedExperienceTests
     }
 
     [Fact]
-    public async Task SmallBank_AllowsFivePracticeQuestions_ThenReportsNoFreshIndependentEvidence()
+    public async Task SmallBank_ReservesIndependentQuestions_AndGeneralPracticeNeverCertifiesTheMissingSkill()
     {
         using var f = new LearningPathV4Fixture();
         f.Db.Questions.RemoveRange(await f.Db.Questions.Where(q => q.PrimaryTopicNodeId == 101 && q.QuestionId > 10105).ToListAsync()); await f.Db.SaveChangesAsync();
         var mission = await f.Activate("Practice", "101");
-        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId)); Assert.Equal(5, run.Activities.Count);
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId));
+        Assert.NotEmpty(run.Activities);
+        Assert.All(run.Activities, a => Assert.NotEqual(101ul, a.Question!.Question!.QuestionId / 100));
         foreach (var a in run.Activities) await f.Execution.SubmitActivityAsync(f.Center, f.Student, a.ActivityRunId,
             new SubmitActivityRequest { ClientSubmissionId = Guid.NewGuid(), QuestionId = a.Question!.Question!.QuestionId, FinalAnswer = "wrong" });
         var check = (await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English)).Missions.Single(m => m.Purpose == "IndependentCheck");
-        Assert.False(check.CanStart); Assert.Contains("0/5", check.RecommendationReason);
+        Assert.True(check.CanStart); Assert.Equal(5u, check.QuestionCount);
+        Assert.Equal("Unknown", (await f.Planner.GetCapabilityMapAsync(f.Center, f.Student, f.English)).Skills.Single(s => s.SkillId == "101").State);
     }
 
     [Theory]

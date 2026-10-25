@@ -37,6 +37,9 @@ public sealed class SubjectBasicInfoDto
 
 public sealed class StudentGoalSummaryDto
 {
+    public bool? HasPrediction { get; set; }
+    public bool? HasDeadline { get; set; }
+    public string? ForecastMessage { get; set; }
     public bool HasGoal { get; set; }
     public decimal TargetScore { get; set; }
     public uint RemainingDays { get; set; }

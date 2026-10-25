@@ -60,6 +60,10 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             return CreateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
+        if (!Enum.TryParse<AssignmentKind>(request.Kind, false, out var kind) || !Enum.IsDefined(kind) ||
+            kind != AssignmentKind.Regular && (!request.ExamAt.HasValue || request.ExamAt <= now || request.TimeLimitMinutes is not > 0 ||
+                request.DueAt.HasValue && request.DueAt < request.ExamAt.Value.AddMinutes(request.TimeLimitMinutes.Value)))
+            return CreateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
         if (request.DueAt.HasValue && request.DueAt.Value <= now)
             return CreateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
 
@@ -209,8 +213,9 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             CreatedByTeacherId = isTeacher ? actorId : classEntity.TeacherId,
             Title = request.Title,
             Instructions = request.Instructions,
-            DueAt = request.DueAt,
+            DueAt = request.DueAt ?? (kind == AssignmentKind.Regular ? null : request.ExamAt?.AddMinutes(request.TimeLimitMinutes ?? 0)),
             TimeLimitMinutes = request.TimeLimitMinutes,
+            Kind = kind, ExamAt = kind == AssignmentKind.Regular ? null : request.ExamAt,
             TargetMode = isSelectedStudents ? EduTwin.Contracts.Assignments.TargetSource.SelectedStudents : EduTwin.Contracts.Assignments.TargetSource.WholeClass,
             AllowGradeMismatch = request.AllowGradeMismatch,
             GradeMismatchReason = string.IsNullOrWhiteSpace(request.GradeMismatchReason) ? null : request.GradeMismatchReason.Trim(),
@@ -313,6 +318,7 @@ public class CreateAssignmentUseCase : ICreateAssignmentUseCase
             Instructions = assignment.Instructions,
             DueAt = assignment.DueAt,
             TimeLimitMinutes = assignment.TimeLimitMinutes,
+            Kind = assignment.Kind.ToString(), ExamAt = assignment.ExamAt,
             TargetMode = assignment.TargetMode.ToString(),
             AllowGradeMismatch = assignment.AllowGradeMismatch,
             GradeMismatchReason = assignment.GradeMismatchReason,

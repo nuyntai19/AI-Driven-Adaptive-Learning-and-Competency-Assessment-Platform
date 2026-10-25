@@ -165,6 +165,7 @@ public class V4SessionEvaluationResultDto
 
 public class MissionRunDto
 {
+    public DateTime? ExpiresAt { get; set; }
     public string Outcome { get; set; } = "None";
     public ulong SessionRunId { get; set; }
     public Guid SessionId { get; set; }
