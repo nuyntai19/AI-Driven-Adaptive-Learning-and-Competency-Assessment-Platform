@@ -123,7 +123,8 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
                         if (state == "Strong") result.ProvenSkills.Add(skillGroup.Key.ToString()); else result.SkillsNeedingSupport.Add(skillGroup.Key.ToString());
                     }
                     var definition = JsonSerializer.Deserialize<PathProposalDto>(run.Session.LearningPath.PlanJson!.RootElement.GetRawText(), LearningPathV4Data.Json);
-                    var reference = (definition?.TargetScore ?? 8m) / 10m;
+                    // Never pass an exam milestone below 80%; a higher target score raises the bar.
+                    var reference = Math.Max(.8m, (definition?.TargetScore ?? 8m) / 10m);
                     result.Outcome = correct / (decimal)valid.Count >= reference ? "Passed" : "NeedsSupport";
                     reason = $"Mốc thi: đúng {correct}/{valid.Count} câu; đối chiếu điểm mục tiêu {definition?.TargetScore ?? 8m}/10. Mức vững được kết luận riêng theo từng kỹ năng, không lấy điểm tổng để xác nhận tất cả.";
                 }
