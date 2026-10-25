@@ -9,6 +9,15 @@ public static class LearningAssessmentPolicy
     public const int DesiredQuestions = 5;
     public const string Version = "baseline-three-levels-1";
 
+    /// <summary>Placement result: Strong at >= 80% (4/5, 3/3), NeedsSupport at <= 40%, Inconclusive between or under 3 answers.
+    /// A single wrong multiple-choice answer no longer turns a 4/5 into "not passed".</summary>
+    public static string ClassifyPlacement(int answered, int correct)
+    {
+        if (answered < MinimumPlacementQuestions) return "Inconclusive";
+        var rate = correct / (decimal)answered;
+        return rate >= .8m ? "Strong" : rate <= .4m ? "NeedsSupport" : "Inconclusive";
+    }
+
     public static string Classify(int answered, int correct, bool mostlyMultipleChoice = false)
     {
         if (answered < MinimumPlacementQuestions) return "Inconclusive";

@@ -19,6 +19,18 @@ public sealed class LearningPathCalendarAndBaselineTests
     public void Baseline_uses_three_levels_and_never_confirms_a_tiny_sample(int answered, int correct, string expected)
         => Assert.Equal(expected, LearningAssessmentPolicy.Classify(answered, correct));
 
+    [Theory]
+    [InlineData(2, 2, "Inconclusive")]
+    [InlineData(3, 3, "Strong")]
+    [InlineData(3, 2, "Inconclusive")]
+    [InlineData(3, 1, "NeedsSupport")]
+    [InlineData(4, 3, "Inconclusive")]
+    [InlineData(5, 4, "Strong")]
+    [InlineData(5, 3, "Inconclusive")]
+    [InlineData(5, 2, "NeedsSupport")]
+    public void Placement_uses_80_and_40_percent_cut_offs(int answered, int correct, string expected)
+        => Assert.Equal(expected, LearningAssessmentPolicy.ClassifyPlacement(answered, correct));
+
     [Fact]
     public void Real_days_exclusions_and_reserved_review_never_exceed_the_daily_limit()
     {

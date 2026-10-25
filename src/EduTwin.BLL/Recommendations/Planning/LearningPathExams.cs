@@ -12,7 +12,8 @@ public sealed partial class LearningPathV4Planner
     private void AddExamPreparationMilestones(PathProposalDto plan, List<SkillCapabilityStatusDto> ordered,
         List<DAL.CurriculumAndQuestions.Question> questions, HashSet<ulong> used, Dictionary<string, decimal> importance)
     {
-        if (plan.IsPlacement || plan.GoalType != "ExamPrep" || !plan.DeadlineDate.HasValue) return;
+        // Any goal with a real target date gets checkpoints and a mock exam; open-ended goals keep the plain route.
+        if (plan.IsPlacement || !plan.DeadlineDate.HasValue) return;
         var remaining = LearningPathCalendar.LocalDate(plan.DeadlineDate.Value, plan.Schedule.TimeZoneId).DayNumber - LearningPathCalendar.LocalDate(Now, plan.Schedule.TimeZoneId).DayNumber;
         if (remaining <= plan.Schedule.ShortCheckDays)
             foreach (var milestone in plan.Milestones)

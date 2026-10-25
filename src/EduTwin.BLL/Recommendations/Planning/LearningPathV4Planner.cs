@@ -23,6 +23,9 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         }
         if (request.TargetScore is < 0 or > 10 || !new[] { "Gentle", "Moderate", "Accelerated" }.Contains(request.PreferredPace))
             throw new ArgumentException("Điểm mục tiêu hoặc tốc độ học không hợp lệ.");
+        if (!request.ClearDeadline && request.DeadlineDate.HasValue &&
+            LearningPathCalendar.LocalDate(request.DeadlineDate.Value, request.Schedule.TimeZoneId) < LearningPathCalendar.LocalDate(Now, request.Schedule.TimeZoneId))
+            throw new ArgumentException("Ngày đích đã qua. Hãy chọn ngày thi hoặc hạn học từ hôm nay trở đi.");
         var currentGoal = await db.LearningGoals.AsNoTracking().Where(g => g.CenterId == centerId && g.StudentId == studentId &&
             g.SubjectId == request.SubjectId && g.Status == "Active").OrderByDescending(g => g.UpdatedAt).FirstOrDefaultAsync(cancellationToken);
         var twinGoal = await db.StudentSubjectGoals.AsNoTracking().FirstOrDefaultAsync(g => g.CenterId == centerId && g.StudentId == studentId && g.SubjectId == request.SubjectId, cancellationToken);
@@ -121,7 +124,10 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 if (wanted.Add(p)) pending.Enqueue(p);
         }
         var selected = map.Skills.Where(s => wanted.Contains(s.SkillId)).ToList();
-        var examPriority = nodes.ToDictionary(n => n.NodeId.ToString(), n => n.ExamImportance > 0 ? n.ExamImportance : 1m);
+        // Unweighted nodes count as average importance (median of the weighted ones, or 50 on the 0-100 scale), never as the lowest.
+        var weighted = nodes.Where(n => n.ExamImportance > 0).Select(n => n.ExamImportance).Order().ToList();
+        var neutralImportance = weighted.Count > 0 ? weighted[weighted.Count / 2] : 50m;
+        var examPriority = nodes.ToDictionary(n => n.NodeId.ToString(), n => n.ExamImportance > 0 ? n.ExamImportance : neutralImportance);
         if (goal.GoalType == "ExamPrep")
             for (var pass = 0; pass < selected.Count; pass++)
                 foreach (var skill in selected)
@@ -252,7 +258,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             {
             Add("IndependentCheck", $"Tự kiểm tra: {node.NodeName}", 15, count >= 5,
                 count < 5 ? $"Hiện có {count}/5 câu hợp lệ; chưa đủ để xác nhận kỹ năng."
-                    : "Kiểm tra bằng câu chưa lộ đáp án; cần ít nhất 5 câu độc lập, đạt 80% và qua kiểm duyệt bằng chứng.");
+                    : "Làm 5 câu mới, chưa xem đáp án và không có gợi ý; đúng từ 80% trở lên là qua kỹ năng này.");
             missions.Last().QuestionCount = 5;
             if (goal.GoalType is "ExamPrep" or "Diagnostic" or "Advanced" && skill.State != "Confirmed" && LearningGoalScope.PrerequisitesSatisfied(skill, map, LearningGoalScope.Vouched(scope.SelfReportedPrerequisiteSkillIds, scope.SelfAssessedSkillIds)) && missions.Last().CanStart)
             {
@@ -333,7 +339,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             SelfAssessedSkillIds = milestones.Where(m => m.IsSelfAssessedCheck).SelectMany(m => m.SkillIds).ToList(),
             AvailableMinutesPerDay = goal.AvailableMinutesPerDay, AvailableDaysPerWeek = goal.AvailableDaysPerWeek, DeadlineDate = goal.DeadlineDate,
             PacingVersion = 2, ProposalId = Guid.NewGuid(), GoalId = goal.GoalId, SubjectId = goal.SubjectId, GoalTitle = goal.Title,
-            StartingBaselineSummary = $"{insights.AnswerCount} lượt trả lời trong 30 ngày. {insights.Summary} {ordered.Count} kỹ năng trong tuyến; {ordered.Count(s => s.State == "Confirmed")} có bằng chứng độc lập."
+            StartingBaselineSummary = $"{insights.AnswerCount} lượt trả lời trong 30 ngày. {insights.Summary} {ordered.Count} kỹ năng trong lộ trình; {ordered.Count(s => s.State == "Confirmed")} kỹ năng đã được xác nhận vững qua bài kiểm tra."
                 + (scope.SelfReportedPrerequisiteSkillIds.Count > 0 ? $" Đã bỏ qua {scope.SelfReportedPrerequisiteSkillIds.Count} nền tảng theo tự xác nhận của em; chưa coi đó là bằng chứng nắm vững trên hệ thống." : "")
                 + (milestones.Any(m => m.IsSelfAssessedCheck) ? $" {milestones.Count(m => m.IsSelfAssessedCheck)} phần em tự đánh giá đã vững có bài ôn xác nhận ngắn ở cuối lộ trình." : ""),
             ConfirmedSkills = ordered.Where(s => s.State == "Confirmed").Select(s => s.SkillId).ToList(),

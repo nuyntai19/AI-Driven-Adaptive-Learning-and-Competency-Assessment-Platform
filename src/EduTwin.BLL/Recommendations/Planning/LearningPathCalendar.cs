@@ -39,6 +39,20 @@ public static class LearningPathCalendar
     public static uint Work(ProposedMissionDto mission, uint practiceSize) => mission.EstimatedMinutes +
         (mission.Purpose == "Practice" && mission.EstimatedSets > 1 ? (mission.EstimatedSets - 1) * practiceSize * LearningPathPacing.MinutesPerQuestion : 0);
 
+    /// <summary>Concrete options instead of a generic warning: minutes/day needed at the current study days, or the earliest workable deadline.</summary>
+    private static string InsufficientTimeAdvice(PathProposalDto plan, int studyDays, uint required, uint reserve, DateOnly today)
+    {
+        var need = required + reserve;
+        var perDay = studyDays > 0 ? (uint)Math.Ceiling(need / (decimal)studyDays) : need;
+        var days = Math.Max(1u, plan.AvailableDaysPerWeek);
+        var weeks = (int)Math.Ceiling(need / (decimal)Math.Max(1u, plan.AvailableMinutesPerDay * days));
+        var options = new List<string>();
+        if (perDay <= 300) options.Add($"tăng lên khoảng {perDay} phút/ngày với {studyDays} buổi học còn lại");
+        options.Add($"dời ngày đích tới khoảng {today.AddDays(weeks * 7):dd/MM/yyyy} nếu giữ {plan.AvailableMinutesPerDay} phút/ngày, {days} ngày/tuần");
+        options.Add("hoặc bỏ bớt kỹ năng trọng số thấp khỏi phạm vi");
+        return "Có thể " + string.Join(", ", options) + ".";
+    }
+
     public static void Schedule(PathProposalDto plan, DateTime now, IReadOnlySet<string>? completed = null,
         IReadOnlyDictionary<DateOnly, uint>? fixedMinutes = null)
     {
@@ -69,7 +83,7 @@ public static class LearningPathCalendar
         }
         var summary = new LearningScheduleSummaryDto { CalculatedFrom = today, Deadline = deadline,
             CapacityMinutes = capacity, RequiredMinutes = required, ReserveMinutes = reserve,
-            Phase = plan.GoalType != "ExamPrep" || deadline == null ? "Balanced" : deadline.Value.DayNumber - today.DayNumber <= plan.Schedule.MockExamDays ? "MockExam"
+            Phase = plan.IsPlacement || deadline == null ? "Balanced" : deadline.Value.DayNumber - today.DayNumber <= plan.Schedule.MockExamDays ? "MockExam"
                 : deadline.Value.DayNumber - today.DayNumber <= plan.Schedule.ShortCheckDays ? "ShortChecks" : "Balanced" };
         DateOnly? Allocate(ProposedMissionDto mission, Dictionary<DateOnly, uint> room, uint cost, DateOnly earliest)
         {
@@ -152,7 +166,7 @@ public static class LearningPathCalendar
         }
         summary.DeferredSkillIds = deferred.Union(partial).Union(phaseDeferred).ToList();
         summary.Message = summary.MissingMinutes > 0
-            ? $"Vượt ngân sách học theo ước tính hiện tại: còn thiếu {summary.MissingMinutes} phút; {deferred.Count} kỹ năng có phần bị hoãn. Hãy giảm phạm vi hoặc tăng thời gian học. Đã dành {reserve} phút cho ôn/thi thử."
+            ? $"Không đủ thời gian tới ngày đích: còn thiếu {summary.MissingMinutes} phút, {deferred.Count} kỹ năng có phần bị hoãn. {InsufficientTimeAdvice(plan, days.Count, required, reserve, today)} Đã dành {reserve} phút cho ôn/thi thử."
             : $"Đã xếp theo ngày học thực tế, tối đa {plan.AvailableMinutesPerDay} phút/ngày; dành {reserve} phút cho ôn/thi thử. Thời lượng là ước tính và sẽ cập nhật sau bài làm.";
         plan.ScheduleSummary = summary;
         if (phaseDeferred.Count > 0) summary.Message += $" Đã tạm hoãn phần học mới của {phaseDeferred.Count} kỹ năng trọng số thấp để ưu tiên thi thử và vá lỗ hổng; nền tảng thiết yếu được giữ.";

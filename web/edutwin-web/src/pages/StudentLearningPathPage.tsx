@@ -183,7 +183,7 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
     </section>}
     {agenda.data?.canAdvance && <section className={`${panel} border-emerald-200`}>
       <h2 className="text-xl font-semibold">Em đã nắm vững phạm vi của chặng này</h2>
-      <p className="mt-2 text-sm text-slate-500">Các kỹ năng đã có bằng chứng độc lập hợp lệ. Em có thể chọn chặng tiếp theo; lịch sử bài làm tiếp tục được dùng để lập tuyến mới.</p>
+      <p className="mt-2 text-sm text-slate-500">Các kỹ năng đã được xác nhận vững qua bài kiểm tra. Em có thể chọn chặng tiếp theo; lịch sử bài làm tiếp tục được dùng để lập tuyến mới.</p>
       <button className={`${action} mt-4`} onClick={() => openSetup("Next", agenda.data?.nextSkillIds)}>{agenda.data.nextSkillIds?.length ? "Khám phá và học phần tiếp theo" : "Chọn mục tiêu tiếp theo"}</button>
     </section>}
     {agenda.data?.insights && agenda.data.insights.answerCount > 0 && <section className={`${panel} border-indigo-200`} aria-labelledby="path-insights-title">

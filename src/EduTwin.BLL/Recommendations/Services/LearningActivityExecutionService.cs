@@ -190,7 +190,7 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
             var requested = request.QuestionCount is > 0 ? request.QuestionCount.Value : definition.QuestionCount;
             var size = requested > 0 ? (int)Math.Clamp(requested, 1u, LearningPathPacing.MaxPracticeQuestions) : 6;
             var picked = independent ? definition.IsMilestoneExam && assessedNodes.Length > 1
-                ? assessedNodes.SelectMany(id => MixedCheck(pool.Where(q => q.PrimaryTopicNodeId == id).ToList())).ToList() : MixedCheck(pool) : pool.Take(size).ToList();
+                ? assessedNodes.SelectMany(id => MixedCheck(pool.Where(q => q.PrimaryTopicNodeId == id).ToList(), studentId)).ToList() : MixedCheck(pool, studentId) : pool.Take(size).ToList();
             foreach (var q in picked) Add(independent ? "IndependentCheck" : "Practice", questionId: q.QuestionId);
         }
         var assigned = activities.SelectMany(a => a.IssuedItems).Where(i => i.QuestionId.HasValue && i.SolutionExposedAt == null).Select(i => i.QuestionId!.Value).ToList();
@@ -205,13 +205,21 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
     }
 
     /// <summary>Five unseen questions with at least two of medium-or-higher difficulty when the bank has them, ordered easy to hard.</summary>
-    private static List<DAL.CurriculumAndQuestions.Question> MixedCheck(List<DAL.CurriculumAndQuestions.Question> pool)
+    private static List<DAL.CurriculumAndQuestions.Question> MixedCheck(List<DAL.CurriculumAndQuestions.Question> pool, Guid studentId)
     {
-        var ordered = pool.OrderBy(q => q.Difficulty).ThenBy(q => q.QuestionId).ToList();
-        var size = Math.Min(5, ordered.Count);
-        var harder = ordered.Where(q => q.Difficulty >= 3).Take(Math.Min(2, size)).ToList();
-        var pick = harder.Concat(ordered.Where(q => !harder.Contains(q)).Take(size - harder.Count)).ToList();
-        return pick.OrderBy(q => q.Difficulty).ThenBy(q => q.QuestionId).ToList();
+        // Seeded per student and skill: classmates get different questions, the same student gets a stable pick.
+        var rng = new Random(HashCode.Combine(studentId, pool.Count > 0 ? pool[0].PrimaryTopicNodeId : 0UL));
+        var shuffled = pool.OrderBy(q => q.QuestionId).Select(q => (q, k: rng.Next())).OrderBy(x => x.k).Select(x => x.q).ToList();
+        var size = Math.Min(5, shuffled.Count);
+        // Target mix for 5 questions: 2 easy (1-2), 2 medium (3), 1 hard (4-5); shortfalls are filled from the rest of the pool.
+        var hardWant = size >= 4 ? 1 : 0;
+        var mediumWant = (size - hardWant) / 2;
+        var easyWant = size - hardWant - mediumWant;
+        var pick = shuffled.Where(q => q.Difficulty <= 2).Take(easyWant)
+            .Concat(shuffled.Where(q => q.Difficulty == 3).Take(mediumWant))
+            .Concat(shuffled.Where(q => q.Difficulty >= 4).Take(hardWant)).ToList();
+        pick.AddRange(shuffled.Where(q => !pick.Contains(q)).OrderBy(q => Math.Abs(q.Difficulty - 3)).Take(size - pick.Count));
+        return pick.OrderBy(q => q.Difficulty).ThenBy(q => shuffled.IndexOf(q)).ToList();
     }
 
     private async Task<ActivityRun> LoadAsync(Guid center, Guid student, ulong id, CancellationToken ct)
