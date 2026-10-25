@@ -4,13 +4,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adaptivePracticeApi } from "../api/adaptivePracticeApi";
 import { organizationApi } from "../api/organizationApi";
 import type { AdaptivePracticeMode } from "../types/adaptivePractice";
-import { useAuthStore } from "../stores/authStore";
 
 export const AdaptivePracticeOverviewPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const user = useAuthStore((state) => state.user);
 
   const selectedSubjectId = searchParams.get("subjectId") || "";
   const [selectedMode, setSelectedMode] = useState<AdaptivePracticeMode>("Weakness");
@@ -113,7 +111,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
             >
               {subjects.map((sub) => (
                 <option key={sub.subjectId} value={sub.subjectId}>
-                  {sub.name} ({sub.code})
+                  {sub.subjectName} ({sub.subjectCode})
                 </option>
               ))}
             </select>

@@ -57,6 +57,7 @@ public class TeacherStudentNotesUseCaseTests : IDisposable
 
     private async Task SeedEntitiesAsync()
     {
+        var now = DateTime.UtcNow;
         var teacherUser = new User
         {
             UserId = _teacherId,
@@ -66,14 +67,17 @@ public class TeacherStudentNotesUseCaseTests : IDisposable
             RoleName = UserRole.Teacher,
             Status = UserStatus.Active,
             PasswordHash = "hash",
-            PasswordSalt = "salt"
+            CreatedAt = now,
+            UpdatedAt = now
         };
         var teacher = new Teacher
         {
             TeacherId = _teacherId,
             CenterId = _centerId,
             Department = "Toán",
-            User = teacherUser
+            User = teacherUser,
+            CreatedAt = now,
+            UpdatedAt = now
         };
 
         var studentUser = new User
@@ -85,7 +89,8 @@ public class TeacherStudentNotesUseCaseTests : IDisposable
             RoleName = UserRole.Student,
             Status = UserStatus.Active,
             PasswordHash = "hash",
-            PasswordSalt = "salt"
+            CreatedAt = now,
+            UpdatedAt = now
         };
         var student = new Student
         {
@@ -93,7 +98,9 @@ public class TeacherStudentNotesUseCaseTests : IDisposable
             CenterId = _centerId,
             FullName = "Nguyễn Văn B",
             GradeLevel = 10,
-            User = studentUser
+            User = studentUser,
+            CreatedAt = now,
+            UpdatedAt = now
         };
 
         _dbContext.Users.AddRange(teacherUser, studentUser);
@@ -197,12 +204,16 @@ public class TeacherStudentNotesUseCaseTests : IDisposable
         _dbContext.TeacherStudentNotes.Add(note);
         await _dbContext.SaveChangesAsync();
 
+        var staleRowVersion = note.RowVersion.ToString();
+        note.Content = "Đã được cập nhật bởi yêu cầu khác";
+        await _dbContext.SaveChangesAsync();
+
         var sut = new UpdateTeacherStudentNoteUseCase(_dbContext, _mockTenantContext.Object, TimeProvider.System);
 
         var result = await sut.ExecuteAsync(note.NoteId, new UpdateTeacherStudentNoteRequest
         {
             Content = "Thay đổi",
-            RowVersion = "1" // Stale version
+            RowVersion = staleRowVersion
         }, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
@@ -249,6 +260,18 @@ public class TeacherStudentNotesUseCaseTests : IDisposable
     {
         await SeedEntitiesAsync();
         var student2Id = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        _dbContext.Users.Add(new User
+        {
+            UserId = student2Id, CenterId = _centerId, Username = "student02",
+            DisplayName = "Học Sinh C", RoleName = UserRole.Student,
+            Status = UserStatus.Active, PasswordHash = "hash", CreatedAt = now, UpdatedAt = now
+        });
+        _dbContext.Students.Add(new Student
+        {
+            StudentId = student2Id, CenterId = _centerId, FullName = "Nguyễn Văn C",
+            GradeLevel = 10, CreatedAt = now, UpdatedAt = now
+        });
         var note1 = new TeacherStudentNote
         {
             NoteId = Guid.NewGuid(),

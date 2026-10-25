@@ -117,6 +117,8 @@ export interface SubjectDto {
   subjectId: string;
   subjectCode: string;
   subjectName: string;
+  readonly name?: string;
+  readonly code?: string;
   description: string | null;
   isActive: boolean;
   rowVersion: string;

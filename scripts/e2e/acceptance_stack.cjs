@@ -16,9 +16,13 @@ function manifest() {
 async function start() {
   if (fs.existsSync(manifestPath)) throw new Error('Recover the existing acceptance manifest with stop before a new run.');
   const cfg = readEnv();
+  const apiImage = process.env.EDUTWIN_ACCEPTANCE_API_IMAGE || 'edutwin-api:latest';
+  const webImage = process.env.EDUTWIN_ACCEPTANCE_WEB_IMAGE || 'edutwin-web:latest';
   const runId = crypto.randomUUID().replaceAll('-', '');
   const state = { runId, database: `edutwin_e2e_${runId}`, databaseUser: `e2e_${runId.slice(0, 16)}`,
-    api: 'edutwin-acceptance-api', web: 'edutwin-acceptance-web', createdAt: new Date().toISOString(), fixtures: [] };
+    api: 'edutwin-acceptance-api', web: 'edutwin-acceptance-web', apiImage, webImage,
+    sourceRevision: process.env.EDUTWIN_ACCEPTANCE_SOURCE_REVISION || null,
+    createdAt: new Date().toISOString(), fixtures: [] };
   for (const name of [state.api, state.web]) {
     assert.equal(docker(['ps', '-a', '--filter', `name=^/${name}$`, '--format', '{{.Names}}']).trim(), '', `Existing container ${name}: stop.`);
   }
@@ -39,10 +43,10 @@ async function start() {
       Logging__LogLevel__Default: 'Warning', Logging__LogLevel__Microsoft: 'Warning',
     };
     docker(['run', '-d', '--name', state.api, '--network', 'edutwin_default', '--label', `edutwin.e2e.owner=${runId}`,
-      '-p', '127.0.0.1:5001:8080', ...Object.keys(apiEnv).flatMap(k => ['-e', k]), 'edutwin-api:latest'],
+      '-p', '127.0.0.1:5001:8080', ...Object.keys(apiEnv).flatMap(k => ['-e', k]), apiImage],
       { env: { ...process.env, ...apiEnv } });
     docker(['run', '-d', '--name', state.web, '--network', 'edutwin_default', '--label', `edutwin.e2e.owner=${runId}`,
-      '-p', '127.0.0.1:3002:80', '-v', `${path.join(root, 'scripts/e2e/acceptance.nginx.conf')}:/etc/nginx/conf.d/default.conf:ro`, 'edutwin-web:latest']);
+      '-p', '127.0.0.1:3002:80', '-v', `${path.join(root, 'scripts/e2e/acceptance.nginx.conf')}:/etc/nginx/conf.d/default.conf:ro`, webImage]);
     // A fresh MySQL schema runs all migrations before seeding. Allow cold startup.
     for (let n = 0; n < 600; n++) {
       try {

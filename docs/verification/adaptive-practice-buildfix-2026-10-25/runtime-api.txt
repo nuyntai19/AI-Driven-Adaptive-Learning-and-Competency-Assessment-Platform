@@ -1,0 +1,8 @@
+warn: Microsoft.EntityFrameworkCore.Model.Validation[20601]
+      The 'QuestionAnswerEvaluationMode' property 'AnswerEvaluationMode' on entity type 'Question' is configured with a database-generated default, but has no configured sentinel value. The database-generated default will always be used for inserts when the property has the value '0', since this is the CLR default for the 'QuestionAnswerEvaluationMode' type. Consider using a nullable type, using a nullable backing field, or setting the sentinel value for the property to ensure the database default is used when, and only when, appropriate. See https://aka.ms/efcore-docs-default-values for more information.
+fail: Microsoft.EntityFrameworkCore.Migrations[20409]
+      The model for context 'EduTwinDbContext' has pending changes. Add a new migration before updating the database. See https://aka.ms/efcore-docs-pending-changes.
+warn: Microsoft.EntityFrameworkCore.Migrations[20410]
+      The migration operation 'START TRANSACTION;
+      INSERT INTO authorization_audit_logs
+        (center_id, actor_user_id, action_type, ...' from migration 'AlignClassLifecycleScope' cannot be executed in a transaction. If the app is terminated or an unrecoverable error occurs while this operation is being executed then the migration will be left in a partially applied state and would need to be reverted manually before it can be applied again. Create a separate migration that contains just this operation.

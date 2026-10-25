@@ -10,6 +10,8 @@ using EduTwin.Contracts.AdaptivePractice;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.Contracts.Assignments;
+using EduTwin.Contracts.Organization;
+using EduTwin.DAL.Assignments;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.DigitalTwin;
 using EduTwin.DAL.IdentityAndTenancy;
@@ -40,7 +42,7 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
 
         _tenantContext = new TenantContext();
         _tenantContext.Initialize(_centerId, _studentId, "Student", 1);
-        _dbContext = new EduTwinDbContext(options, _tenantContext);
+        _dbContext = new AdaptivePracticeTestDbContext(options, _tenantContext);
         _engine = new AdaptivePracticeEngine(_dbContext);
 
         SeedInitialData();
@@ -56,10 +58,12 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
         var center = new Center
         {
             CenterId = _centerId,
-            Code = "CTR_TEST",
-            Name = "Center Test",
+            CenterCode = "CTR_TEST",
+            CenterName = "Center Test",
+            Timezone = "Asia/Ho_Chi_Minh",
             Status = CenterStatus.Active,
-            CreatedAt = _utcNow
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
         };
         _dbContext.Centers.Add(center);
 
@@ -67,9 +71,8 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
         {
             CenterId = _centerId,
             StudentId = _studentId,
+            FullName = "Test student",
             GradeLevel = 10,
-            EnrollmentDate = _utcNow,
-            Status = StudentStatus.Active,
             CreatedAt = _utcNow
         };
         _dbContext.Students.Add(student);
@@ -78,9 +81,9 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
         {
             CenterId = _centerId,
             SubjectId = _subjectId,
-            Name = "Toán Học",
-            Code = "MATH10",
-            Status = SubjectStatus.Active,
+            SubjectName = "Toán Học",
+            SubjectCode = "MATH10",
+            IsActive = true,
             CreatedAt = _utcNow
         };
         _dbContext.Subjects.Add(subject);
@@ -90,9 +93,9 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
             CenterId = _centerId,
             SubjectId = _subjectId,
             NodeId = _prereqTopicId,
-            Name = "Quy tắc chuyển vế và đổi dấu",
-            Status = NodeStatus.Active,
-            Difficulty = 1,
+            NodeName = "Quy tắc chuyển vế và đổi dấu",
+            NodeCode = "AP_PREREQ",
+            IsActive = true,
             CreatedAt = _utcNow
         };
         _dbContext.KnowledgeNodes.Add(prereqTopic);
@@ -102,9 +105,9 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
             CenterId = _centerId,
             SubjectId = _subjectId,
             NodeId = _mainTopicId,
-            Name = "Phương trình bậc nhất một ẩn",
-            Status = NodeStatus.Active,
-            Difficulty = 2,
+            NodeName = "Phương trình bậc nhất một ẩn",
+            NodeCode = "AP_MAIN",
+            IsActive = true,
             CreatedAt = _utcNow
         };
         _dbContext.KnowledgeNodes.Add(mainTopic);
@@ -169,6 +172,11 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
             });
         }
 
+        foreach (var entry in _dbContext.ChangeTracker.Entries())
+        {
+            if (entry.Entity is EduTwin.DAL.Persistence.Models.IMutableTenantAggregate aggregate)
+                aggregate.UpdatedAt = _utcNow;
+        }
         _dbContext.SaveChanges();
     }
 
@@ -367,15 +375,16 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
         {
             AssignmentId = Guid.NewGuid(),
             CenterId = _centerId,
-            SubjectId = _subjectId,
             Title = "Bài kiểm tra 15 phút",
             Status = AssignmentStatus.Published,
-            CreatedAt = _utcNow
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
         };
         _dbContext.Assignments.Add(assignment);
 
         _dbContext.AssignmentQuestions.Add(new AssignmentQuestion
         {
+            CenterId = _centerId,
             AssignmentId = assignment.AssignmentId,
             QuestionId = 1,
             OrderIndex = 0,
@@ -419,5 +428,19 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
         var sessionDb = await _dbContext.AdaptivePracticeSessions.FindAsync(session.SessionId);
         Assert.Equal(AdaptivePracticeSessionStatus.Closed, sessionDb!.Status);
         Assert.Equal(AdaptivePracticeCloseReason.StudentStopped, sessionDb.CloseReason);
+    }
+
+    private sealed class AdaptivePracticeTestDbContext(
+        DbContextOptions<EduTwinDbContext> options, TenantContext tenantContext)
+        : EduTwinDbContext(options, tenantContext)
+    {
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            // MySQL accepts the engine's explicit unsigned IDs. InMemory's auto-ID
+            // generator converts them to Int64 and can overflow before the test runs.
+            modelBuilder.Entity<EduTwin.DAL.AssessmentAndReasoning.Attempt>()
+                .Property(attempt => attempt.AttemptId).ValueGeneratedNever();
+        }
     }
 }

@@ -1,0 +1,283 @@
+{
+  "generatedAt": "2026-10-25T13:54:42.401Z",
+  "sourceHead": "dd47b89dc5133022f7cb298c9bdf0adde5dbab2a",
+  "runId": "fddcc76efd594261b7ff1cfb41d38895",
+  "isolatedSchema": "edutwin_e2e_fddcc76efd594261b7ff1cfb41d38895",
+  "baseUrl": "http://127.0.0.1:3002/api/v1",
+  "testMode": "real HTTP/MySQL acceptance; NOT browser E2E",
+  "ownership": "Requires acceptance_stack manifest; all SQL uses fixture_manager.execSql and its generated isolated schema.",
+  "assumptions": [
+    "Existing disposable seed bank has an eligible deterministic question.",
+    "Adaptive endpoints return raw DTOs; login alone uses data.accessToken.",
+    "No live AI credentials, quality or async callback assertions.",
+    "Follow-up test checks distinct session/history; predecessor linkage is absent from the current contract.",
+    "Student session activity in the disposable schema is intentionally retained for browser inspection until stack cleanup."
+  ],
+  "totals": {
+    "pass": 10,
+    "fail": 1,
+    "blocked": 25
+  },
+  "results": [
+    {
+      "id": "APAPI01",
+      "name": "Unauthenticated adaptive access is denied",
+      "kind": "real-http-mysql",
+      "status": "PASS"
+    },
+    {
+      "id": "APAPI02",
+      "name": "Student login in isolated schema",
+      "kind": "real-http-mysql",
+      "status": "PASS"
+    },
+    {
+      "id": "APAPI03",
+      "name": "Second student login in isolated schema",
+      "kind": "real-http-mysql",
+      "status": "PASS"
+    },
+    {
+      "id": "APAPI04",
+      "name": "Teacher login in isolated schema",
+      "kind": "real-http-mysql",
+      "status": "PASS"
+    },
+    {
+      "id": "APAPI05",
+      "name": "Other-center student login in isolated schema",
+      "kind": "real-http-mysql",
+      "status": "PASS"
+    },
+    {
+      "id": "APAPI06",
+      "name": "Weakness proposal explains target without issuing questions",
+      "kind": "real-http-mysql",
+      "status": "PASS"
+    },
+    {
+      "id": "APAPI07",
+      "name": "Learning Path mode returns a meaningful proposal",
+      "kind": "real-http-mysql",
+      "status": "PASS"
+    },
+    {
+      "id": "APAPI08",
+      "name": "Custom topic mode preserves selected topic",
+      "kind": "real-http-mysql",
+      "status": "PASS"
+    },
+    {
+      "id": "APAPI09",
+      "name": "Adaptive persistence tables exist in isolated schema",
+      "kind": "real-http-mysql",
+      "status": "FAIL",
+      "error": "Missing migration table adaptive_practice_sessions"
+    },
+    {
+      "id": "APAPI10",
+      "name": "Start a ten-minute session",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: tables"
+    },
+    {
+      "id": "APAPI11",
+      "name": "Ten-minute session has four/eight question limits",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: session"
+    },
+    {
+      "id": "APAPI12",
+      "name": "Repeated start returns the active session",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: session"
+    },
+    {
+      "id": "APAPI13",
+      "name": "First question belongs to the selected session topic",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: session"
+    },
+    {
+      "id": "APAPI14",
+      "name": "Repeated next request preserves unanswered question identity",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: question"
+    },
+    {
+      "id": "APAPI15",
+      "name": "Progressive hint is persisted on issued item",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: question"
+    },
+    {
+      "id": "APAPI16",
+      "name": "Second student cannot read another session",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: session"
+    },
+    {
+      "id": "APAPI17",
+      "name": "Second student cannot request another students hint",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: question"
+    },
+    {
+      "id": "APAPI18",
+      "name": "Pause persists Paused state",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: session"
+    },
+    {
+      "id": "APAPI19",
+      "name": "Paused session does not issue a new question",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: paused"
+    },
+    {
+      "id": "APAPI20",
+      "name": "Resume preserves the current question",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: question, paused"
+    },
+    {
+      "id": "APAPI21",
+      "name": "Submit stores one graded answer and updates session progress",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: question, resumed, tables"
+    },
+    {
+      "id": "APAPI22",
+      "name": "Same-submission replay does not duplicate attempt or evidence",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: submitted"
+    },
+    {
+      "id": "APAPI23",
+      "name": "Session progress remains one answer after replay",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: submitted"
+    },
+    {
+      "id": "APAPI24",
+      "name": "Voluntary close produces an incomplete-goal summary",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: session"
+    },
+    {
+      "id": "APAPI25",
+      "name": "Summary can be retrieved after close",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: closed"
+    },
+    {
+      "id": "APAPI26",
+      "name": "Second student cannot read another students summary",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: closed"
+    },
+    {
+      "id": "APAPI27",
+      "name": "Closed session appears in student history",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: closed"
+    },
+    {
+      "id": "APAPI28",
+      "name": "Closed session cannot issue another question",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: closed"
+    },
+    {
+      "id": "APAPI29",
+      "name": "Closed session cannot accept a new answer",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: closed, submitted"
+    },
+    {
+      "id": "APAPI30",
+      "name": "Follow-up practice creates a distinct session and preserves history",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: closed"
+    },
+    {
+      "id": "APAPI31",
+      "name": "Fifteen-minute session has five/twelve limits",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: tables"
+    },
+    {
+      "id": "APAPI32",
+      "name": "Twenty-minute session has six/fifteen limits",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: tables"
+    },
+    {
+      "id": "APAPI33",
+      "name": "Teacher cannot see sessions through an unrelated class scope",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: closed"
+    },
+    {
+      "id": "APAPI34",
+      "name": "Student cannot use teacher monitoring endpoint",
+      "kind": "real-http-mysql",
+      "status": "PASS",
+      "evidence": {
+        "type": "https://edutwin.local/problems/auth-permission-required",
+        "title": "Thiếu quyền truy cập",
+        "status": 403,
+        "detail": "Tài khoản không có quyền thực hiện thao tác này.",
+        "instance": "/api/v1/adaptive-practice/teacher/sessions",
+        "traceId": "0HNPIJTAF2AVL:00000001",
+        "errorCode": "AUTH_PERMISSION_REQUIRED"
+      }
+    },
+    {
+      "id": "APAPI35",
+      "name": "Other-center student cannot read session or summary",
+      "kind": "real-http-mysql",
+      "status": "BLOCKED",
+      "reason": "Missing prerequisites: closed"
+    },
+    {
+      "id": "APAPI36",
+      "name": "Teacher cannot create a student practice session",
+      "kind": "real-http-mysql",
+      "status": "PASS",
+      "evidence": {
+        "type": "https://edutwin.local/problems/auth-permission-required",
+        "title": "Thiếu quyền truy cập",
+        "status": 403,
+        "detail": "Tài khoản không có quyền thực hiện thao tác này.",
+        "instance": "/api/v1/adaptive-practice/sessions",
+        "traceId": "0HNPIJTAF2AVM:00000001",
+        "errorCode": "AUTH_PERMISSION_REQUIRED"
+      }
+    }
+  ]
+}

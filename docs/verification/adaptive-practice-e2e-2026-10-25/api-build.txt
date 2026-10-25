@@ -1,0 +1,173 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 944B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for mcr.microsoft.com/dotnet/sdk:10.0
+#2 DONE 0.1s
+
+#3 [internal] load metadata for mcr.microsoft.com/dotnet/aspnet:10.0
+#3 DONE 2.8s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 151B done
+#4 DONE 0.0s
+
+#5 [build 1/9] FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:2fa828c68761b1b8c23d7662dc134421b9d3b59fe1425fdbc80804e390cdb24d
+#5 resolve mcr.microsoft.com/dotnet/sdk:10.0@sha256:2fa828c68761b1b8c23d7662dc134421b9d3b59fe1425fdbc80804e390cdb24d 0.0s done
+#5 DONE 0.0s
+
+#6 [final 1/3] FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:8af87eba5e7cdafb1514d7388be287365da97c132509e84dfe252ffd552398ca
+#6 resolve mcr.microsoft.com/dotnet/aspnet:10.0@sha256:8af87eba5e7cdafb1514d7388be287365da97c132509e84dfe252ffd552398ca 0.0s done
+#6 DONE 0.1s
+
+#7 [internal] load build context
+#7 transferring context: 18.73MB 3.7s done
+#7 DONE 3.7s
+
+#8 [build 2/9] WORKDIR /src
+#8 CACHED
+
+#9 [build 3/9] COPY [src/EduTwin.API/EduTwin.API.csproj, src/EduTwin.API/]
+#9 CACHED
+
+#6 [final 1/3] FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:8af87eba5e7cdafb1514d7388be287365da97c132509e84dfe252ffd552398ca
+#6 sha256:9b660e3f3a1a97d9bf64bb18f8e17b89cc78e7fb667a5b62264e13f565ad233f 12.75MB / 12.75MB 3.4s done
+#6 sha256:2aa13cb6e98641bbfcc67a90c97c29e7696b21ffae339ccb6a110378191c88a7 155B / 155B 0.2s done
+#6 sha256:4ce2187f4e63680885b76b67d07b33a4b39e2404d2741d8bcdb5512f637492ae 14.68MB / 36.63MB 3.6s
+#6 sha256:e271a0d133c8cba0b3c0724d39498bb64a46bafa24fa9856ad549b09094e58e8 3.56kB / 3.56kB 0.3s done
+#6 sha256:809fe014b8c9ea3822f20ea868f467405ed02e146e942a0bf6910d93dfdd2e7a 7.34MB / 16.78MB 3.5s
+#6 ...
+
+#10 [build 4/9] COPY [src/EduTwin.BLL/EduTwin.BLL.csproj, src/EduTwin.BLL/]
+#10 DONE 0.1s
+
+#11 [build 5/9] COPY [src/EduTwin.DAL/EduTwin.DAL.csproj, src/EduTwin.DAL/]
+#11 DONE 0.0s
+
+#12 [build 6/9] COPY [src/EduTwin.Contracts/EduTwin.Contracts.csproj, src/EduTwin.Contracts/]
+#12 DONE 0.0s
+
+#6 [final 1/3] FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:8af87eba5e7cdafb1514d7388be287365da97c132509e84dfe252ffd552398ca
+#6 sha256:4ce2187f4e63680885b76b67d07b33a4b39e2404d2741d8bcdb5512f637492ae 16.78MB / 36.63MB 3.9s
+#6 sha256:809fe014b8c9ea3822f20ea868f467405ed02e146e942a0bf6910d93dfdd2e7a 8.39MB / 16.78MB 3.8s
+#6 sha256:809fe014b8c9ea3822f20ea868f467405ed02e146e942a0bf6910d93dfdd2e7a 9.44MB / 16.78MB 3.9s
+#6 sha256:809fe014b8c9ea3822f20ea868f467405ed02e146e942a0bf6910d93dfdd2e7a 10.49MB / 16.78MB 4.1s
+#6 sha256:4ce2187f4e63680885b76b67d07b33a4b39e2404d2741d8bcdb5512f637492ae 18.87MB / 36.63MB 4.4s
+#6 sha256:809fe014b8c9ea3822f20ea868f467405ed02e146e942a0bf6910d93dfdd2e7a 11.53MB / 16.78MB 4.4s
+#6 sha256:4ce2187f4e63680885b76b67d07b33a4b39e2404d2741d8bcdb5512f637492ae 20.97MB / 36.63MB 4.8s
+#6 sha256:809fe014b8c9ea3822f20ea868f467405ed02e146e942a0bf6910d93dfdd2e7a 12.58MB / 16.78MB 4.7s
+#6 sha256:809fe014b8c9ea3822f20ea868f467405ed02e146e942a0bf6910d93dfdd2e7a 13.63MB / 16.78MB 5.1s
+#6 sha256:809fe014b8c9ea3822f20ea868f467405ed02e146e942a0bf6910d93dfdd2e7a 14.68MB / 16.78MB 5.4s
+#6 sha256:4ce2187f4e63680885b76b67d07b33a4b39e2404d2741d8bcdb5512f637492ae 23.07MB / 36.63MB 5.7s
+#6 sha256:809fe014b8c9ea3822f20ea868f467405ed02e146e942a0bf6910d93dfdd2e7a 15.73MB / 16.78MB 5.7s
+#6 sha256:809fe014b8c9ea3822f20ea868f467405ed02e146e942a0bf6910d93dfdd2e7a 16.78MB / 16.78MB 5.9s done
+#6 extracting sha256:809fe014b8c9ea3822f20ea868f467405ed02e146e942a0bf6910d93dfdd2e7a
+#6 extracting sha256:809fe014b8c9ea3822f20ea868f467405ed02e146e942a0bf6910d93dfdd2e7a 0.2s done
+#6 extracting sha256:e271a0d133c8cba0b3c0724d39498bb64a46bafa24fa9856ad549b09094e58e8 0.0s done
+#6 sha256:4ce2187f4e63680885b76b67d07b33a4b39e2404d2741d8bcdb5512f637492ae 25.17MB / 36.63MB 6.6s
+#6 sha256:4ce2187f4e63680885b76b67d07b33a4b39e2404d2741d8bcdb5512f637492ae 27.26MB / 36.63MB 8.0s
+#6 sha256:4ce2187f4e63680885b76b67d07b33a4b39e2404d2741d8bcdb5512f637492ae 29.36MB / 36.63MB 10.1s
+#6 ...
+
+#13 [build 7/9] RUN dotnet restore "src/EduTwin.API/EduTwin.API.csproj"
+#13 0.817   Determining projects to restore...
+#13 1.422   Restored /src/src/EduTwin.Contracts/EduTwin.Contracts.csproj (in 57 ms).
+#13 ...
+
+#6 [final 1/3] FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:8af87eba5e7cdafb1514d7388be287365da97c132509e84dfe252ffd552398ca
+#6 sha256:4ce2187f4e63680885b76b67d07b33a4b39e2404d2741d8bcdb5512f637492ae 31.46MB / 36.63MB 14.7s
+#6 sha256:4ce2187f4e63680885b76b67d07b33a4b39e2404d2741d8bcdb5512f637492ae 33.55MB / 36.63MB 17.1s
+#6 ...
+
+#13 [build 7/9] RUN dotnet restore "src/EduTwin.API/EduTwin.API.csproj"
+#13 13.64   Restored /src/src/EduTwin.BLL/EduTwin.BLL.csproj (in 12.29 sec).
+#13 13.64   Restored /src/src/EduTwin.API/EduTwin.API.csproj (in 12.29 sec).
+#13 13.64   Restored /src/src/EduTwin.DAL/EduTwin.DAL.csproj (in 12.29 sec).
+#13 DONE 13.9s
+
+#14 [build 8/9] COPY src/ src/
+#14 DONE 0.1s
+
+#6 [final 1/3] FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:8af87eba5e7cdafb1514d7388be287365da97c132509e84dfe252ffd552398ca
+#6 ...
+
+#15 [build 9/9] WORKDIR /src/src/EduTwin.API
+#15 DONE 0.0s
+
+#6 [final 1/3] FROM mcr.microsoft.com/dotnet/aspnet:10.0@sha256:8af87eba5e7cdafb1514d7388be287365da97c132509e84dfe252ffd552398ca
+#6 sha256:4ce2187f4e63680885b76b67d07b33a4b39e2404d2741d8bcdb5512f637492ae 35.65MB / 36.63MB 18.3s
+#6 sha256:4ce2187f4e63680885b76b67d07b33a4b39e2404d2741d8bcdb5512f637492ae 36.63MB / 36.63MB 18.7s done
+#6 extracting sha256:4ce2187f4e63680885b76b67d07b33a4b39e2404d2741d8bcdb5512f637492ae
+#6 extracting sha256:4ce2187f4e63680885b76b67d07b33a4b39e2404d2741d8bcdb5512f637492ae 0.3s done
+#6 extracting sha256:2aa13cb6e98641bbfcc67a90c97c29e7696b21ffae339ccb6a110378191c88a7
+#6 extracting sha256:2aa13cb6e98641bbfcc67a90c97c29e7696b21ffae339ccb6a110378191c88a7 0.0s done
+#6 extracting sha256:9b660e3f3a1a97d9bf64bb18f8e17b89cc78e7fb667a5b62264e13f565ad233f 0.1s done
+#6 DONE 19.3s
+
+#16 [publish 1/1] RUN dotnet publish "EduTwin.API.csproj" --no-restore -c Release -o /app/publish /p:UseAppHost=false
+#16 ...
+
+#17 [final 2/3] WORKDIR /app
+#17 DONE 0.1s
+
+#16 [publish 1/1] RUN dotnet publish "EduTwin.API.csproj" --no-restore -c Release -o /app/publish /p:UseAppHost=false
+#16 2.595   EduTwin.Contracts -> /src/src/EduTwin.Contracts/bin/Release/net10.0/EduTwin.Contracts.dll
+#16 6.840   EduTwin.DAL -> /src/src/EduTwin.DAL/bin/Release/net10.0/EduTwin.DAL.dll
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeHintGenerator.cs(14,35): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(48,85): error CS1061: 'KnowledgeNode' does not contain a definition for 'Status' and no accessible extension method 'Status' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(48,95): error CS0103: The name 'NodeStatus' does not exist in the current context [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(54,96): error CS1061: 'Subject' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'Subject' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(79,89): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(98,87): error CS1061: 'Subject' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'Subject' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(121,96): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(125,89): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(135,35): error CS1061: 'Subject' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'Subject' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(137,39): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(138,99): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(214,62): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(215,59): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(421,26): error CS8602: Dereference of a possibly null reference. [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(817,69): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(856,41): error CS1061: 'Subject' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'Subject' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(857,41): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(901,42): error CS1061: 'User' does not contain a definition for 'FullName' and no accessible extension method 'FullName' accepting a first argument of type 'User' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(903,37): error CS1061: 'Subject' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'Subject' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(904,37): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(940,42): error CS1061: 'User' does not contain a definition for 'FullName' and no accessible extension method 'FullName' accepting a first argument of type 'User' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(943,37): error CS1061: 'Subject' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'Subject' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(945,37): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(947,80): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(963,37): error CS1061: 'Subject' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'Subject' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(965,37): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1002,30): error CS0104: 'StudentQuestionOptionDto' is an ambiguous reference between 'EduTwin.Contracts.Assignments.StudentQuestionOptionDto' and 'EduTwin.Contracts.CurriculumAndQuestions.StudentQuestionOptionDto' [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1005,27): error CS1061: 'QuestionOption' does not contain a definition for 'Label' and no accessible extension method 'Label' accepting a first argument of type 'QuestionOption' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1006,26): error CS1061: 'QuestionOption' does not contain a definition for 'Text' and no accessible extension method 'Text' accepting a first argument of type 'QuestionOption' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1016,30): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1139,96): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1142,108): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1145,86): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+#16 ERROR: process "/bin/sh -c dotnet publish \"EduTwin.API.csproj\" --no-restore -c Release -o /app/publish /p:UseAppHost=false" did not complete successfully: exit code: 1
+------
+ > [publish 1/1] RUN dotnet publish "EduTwin.API.csproj" --no-restore -c Release -o /app/publish /p:UseAppHost=false:
+8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(947,80): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(963,37): error CS1061: 'Subject' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'Subject' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(965,37): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1002,30): error CS0104: 'StudentQuestionOptionDto' is an ambiguous reference between 'EduTwin.Contracts.Assignments.StudentQuestionOptionDto' and 'EduTwin.Contracts.CurriculumAndQuestions.StudentQuestionOptionDto' [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1005,27): error CS1061: 'QuestionOption' does not contain a definition for 'Label' and no accessible extension method 'Label' accepting a first argument of type 'QuestionOption' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1006,26): error CS1061: 'QuestionOption' does not contain a definition for 'Text' and no accessible extension method 'Text' accepting a first argument of type 'QuestionOption' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1016,30): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1139,96): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1142,108): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+8.874 /src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1145,86): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]
+------
+Dockerfile:18
+--------------------
+  16 |     # Publish stage
+  17 |     FROM build AS publish
+  18 | >>> RUN dotnet publish "EduTwin.API.csproj" --no-restore -c Release -o /app/publish /p:UseAppHost=false
+  19 |     
+  20 |     # Runtime stage
+--------------------
+ERROR: failed to build: failed to solve: process "/bin/sh -c dotnet publish \"EduTwin.API.csproj\" --no-restore -c Release -o /app/publish /p:UseAppHost=false" did not complete successfully: exit code: 1

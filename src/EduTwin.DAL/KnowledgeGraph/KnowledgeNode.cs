@@ -14,6 +14,13 @@ public class KnowledgeNode : IMutableTenantAggregate
     public NodeType NodeType { get; set; }
     public string NodeCode { get; set; } = null!;
     public string NodeName { get; set; } = null!;
+    // Compatibility alias; the persisted value remains node_name.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string Name
+    {
+        get => NodeName;
+        set => NodeName = value;
+    }
     public string? Description { get; set; }
     public uint OrderIndex { get; set; }
     public decimal ExamImportance { get; set; }

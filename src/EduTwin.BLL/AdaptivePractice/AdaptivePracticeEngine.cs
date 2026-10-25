@@ -18,6 +18,7 @@ using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.DigitalTwin;
 using EduTwin.DAL.KnowledgeGraph;
 using EduTwin.DAL.Persistence;
+using StudentQuestionOptionDto = EduTwin.Contracts.CurriculumAndQuestions.StudentQuestionOptionDto;
 
 namespace EduTwin.BLL.AdaptivePractice;
 
@@ -45,7 +46,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
 
         var allTopics = await _dbContext.KnowledgeNodes
             .AsNoTracking()
-            .Where(kn => kn.CenterId == centerId && kn.SubjectId == subjectId && kn.Status == NodeStatus.Active && !kn.IsDeleted)
+            .Where(kn => kn.CenterId == centerId && kn.SubjectId == subjectId && kn.IsActive && !kn.IsDeleted)
             .OrderBy(kn => kn.NodeId)
             .ToListAsync(ct);
 
@@ -176,12 +177,10 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         }
 
         var subject = await _dbContext.Subjects
-            .AsNoTracking()
             .SingleOrDefaultAsync(s => s.CenterId == centerId && s.SubjectId == request.SubjectId && !s.IsDeleted, ct)
             ?? throw new InvalidOperationException($"Subject '{request.SubjectId}' not found.");
 
         var topic = await _dbContext.KnowledgeNodes
-            .AsNoTracking()
             .SingleOrDefaultAsync(kn => kn.CenterId == centerId && kn.NodeId == request.TopicNodeId && !kn.IsDeleted, ct)
             ?? throw new InvalidOperationException($"TopicNode '{request.TopicNodeId}' not found.");
 
@@ -418,7 +417,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         // Multi-Stage Question Selector (UC-04)
         // Stage 1: Filter eligible questions (active, not deleted, same center & subject)
         var protectedAssignmentQuestionIds = await _dbContext.AssignmentQuestions
-            .Where(aq => aq.Assignment.CenterId == centerId
+            .Where(aq => aq.Assignment != null && aq.Assignment.CenterId == centerId
                 && (aq.Assignment.Status == AssignmentStatus.Published || aq.Assignment.Status == AssignmentStatus.Draft)
                 && !aq.Assignment.IsDeleted)
             .Select(aq => aq.QuestionId)
@@ -550,7 +549,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         await _dbContext.SaveChangesAsync(ct);
 
         sessionItem.Question = chosenQuestion;
-        var node = await _dbContext.KnowledgeNodes.AsNoTracking().SingleOrDefaultAsync(kn => kn.CenterId == centerId && kn.NodeId == targetNodeId, ct);
+        var node = await _dbContext.KnowledgeNodes.SingleOrDefaultAsync(kn => kn.CenterId == centerId && kn.NodeId == targetNodeId, ct);
         sessionItem.KnowledgeNode = node!;
 
         return await BuildQuestionDtoAsync(centerId, sessionItem, session, ct);
@@ -898,7 +897,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         {
             SessionId = s.SessionId,
             StudentId = s.StudentId,
-            StudentName = s.Student.User?.FullName ?? "Học sinh",
+            StudentName = s.Student.FullName,
             ClassName = "Lớp học",
             SubjectName = s.Subject.Name,
             TopicName = s.TopicNode.Name,
@@ -937,7 +936,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         {
             AlertId = s.SessionId.ToString("N"),
             StudentId = s.StudentId,
-            StudentName = s.Student.User?.FullName ?? "Học sinh",
+            StudentName = s.Student.FullName,
             ClassName = "Lớp học",
             SubjectId = s.SubjectId,
             SubjectName = s.Subject.Name,
@@ -1002,8 +1001,8 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             .Select(o => new StudentQuestionOptionDto
             {
                 OptionId = o.OptionId.ToString(CultureInfo.InvariantCulture),
-                Label = o.Label,
-                Text = o.Text,
+                Label = o.OptionLabel,
+                Text = o.OptionText,
                 OrderIndex = o.OrderIndex
             })
             .ToListAsync(ct);

@@ -1,0 +1,37 @@
+APAPI01 PASS Unauthenticated adaptive access is denied
+APAPI02 PASS Student login in isolated schema
+APAPI03 PASS Second student login in isolated schema
+APAPI04 PASS Teacher login in isolated schema
+APAPI05 PASS Other-center student login in isolated schema
+APAPI09 FAIL Missing migration table adaptive_practice_sessions
+APAPI06 PASS Weakness proposal explains target without issuing questions
+APAPI07 PASS Learning Path mode returns a meaningful proposal
+APAPI08 PASS Custom topic mode preserves selected topic
+APAPI10 BLOCKED Missing prerequisites: tables
+APAPI11 BLOCKED Missing prerequisites: session
+APAPI12 BLOCKED Missing prerequisites: session
+APAPI13 BLOCKED Missing prerequisites: session
+APAPI14 BLOCKED Missing prerequisites: question
+APAPI15 BLOCKED Missing prerequisites: question
+APAPI16 BLOCKED Missing prerequisites: session
+APAPI17 BLOCKED Missing prerequisites: question
+APAPI18 BLOCKED Missing prerequisites: session
+APAPI19 BLOCKED Missing prerequisites: paused
+APAPI20 BLOCKED Missing prerequisites: question, paused
+APAPI21 BLOCKED Missing prerequisites: question, resumed, tables
+APAPI22 BLOCKED Missing prerequisites: submitted
+APAPI23 BLOCKED Missing prerequisites: submitted
+APAPI24 BLOCKED Missing prerequisites: session
+APAPI25 BLOCKED Missing prerequisites: closed
+APAPI26 BLOCKED Missing prerequisites: closed
+APAPI27 BLOCKED Missing prerequisites: closed
+APAPI28 BLOCKED Missing prerequisites: closed
+APAPI29 BLOCKED Missing prerequisites: closed, submitted
+APAPI30 BLOCKED Missing prerequisites: closed
+APAPI31 BLOCKED Missing prerequisites: tables
+APAPI32 BLOCKED Missing prerequisites: tables
+APAPI33 BLOCKED Missing prerequisites: closed
+APAPI34 PASS Student cannot use teacher monitoring endpoint
+APAPI35 BLOCKED Missing prerequisites: closed
+APAPI36 PASS Teacher cannot create a student practice session
+{"pass":10,"fail":1,"blocked":25,"sourceHead":"dd47b89dc5133022f7cb298c9bdf0adde5dbab2a","resultsDirectory":"C:\\Users\\ADMIN\\OneDrive\\Documents\\GitHub\\AI-Driven-Adaptive-Learning-and-Competency-Assessment-Platform\\docs\\verification\\adaptive-practice-buildfix-2026-10-25","testMode":"real HTTP/MySQL acceptance; NOT browser E2E"}
