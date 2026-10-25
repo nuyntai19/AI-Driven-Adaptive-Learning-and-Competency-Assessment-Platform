@@ -15,6 +15,7 @@ public static class DependencyInjection
         services.AddScoped<IPlatformCenterService, PlatformCenterService>();
         services.AddScoped<IPlatformAuditService, PlatformAuditService>();
         services.AddScoped<IPlatformMeService, PlatformMeService>();
+        services.AddScoped<EduTwin.BLL.IdentityAndTenancy.AccountSecurityService>();
         services.AddScoped<Operations.IPlatformOperationsService, Operations.PlatformOperationsService>();
         services.AddScoped<Operations.OperationsMaintenance>();
         services.AddSingleton<Operations.OperationalTelemetry>();

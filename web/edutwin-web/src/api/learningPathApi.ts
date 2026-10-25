@@ -133,6 +133,16 @@ export const generatePathProposal = async (
   return response.data;
 };
 
+export const customizePathProposal = async (
+  proposalId: string,
+  request: import("../types/learningPath").CustomizePathProposalRequest
+): Promise<import("../types/learningPath").PathProposalDto> => {
+  const response = await httpClient.post<import("../types/learningPath").PathProposalDto>(
+    `/students/me/path-proposals/${encodeURIComponent(proposalId)}/customize`, request
+  );
+  return response.data;
+};
+
 export const acceptPathProposal = async (
   proposalId: string
 ): Promise<import("../types/learningPath").AcceptPathProposalResponse> => {
@@ -165,9 +175,22 @@ export const getLearningAgenda = async (
   return response.data;
 };
 
-export const startLearningMission = async (missionId: string): Promise<import("../types/learningPath").MissionRunDto> => {
+export const startLearningMission = async (
+  missionId: string,
+  options: { retry?: boolean; questionCount?: number } = {}
+): Promise<import("../types/learningPath").MissionRunDto> => {
   const response = await httpClient.post<import("../types/learningPath").MissionRunDto>(
-    `/students/me/missions/${encodeURIComponent(missionId)}/start`
+    `/students/me/missions/${encodeURIComponent(missionId)}/start`,
+    undefined,
+    { params: { retry: options.retry || undefined, questionCount: options.questionCount || undefined } }
+  );
+  return response.data;
+};
+
+/** Cancels an unfinished run. Submitted answers are kept; the mission can be started again. */
+export const abandonMissionRun = async (missionId: string, runId: number): Promise<import("../types/learningPath").MissionRunDto> => {
+  const response = await httpClient.post<import("../types/learningPath").MissionRunDto>(
+    `/students/me/missions/${encodeURIComponent(missionId)}/runs/${runId}/abandon`
   );
   return response.data;
 };
@@ -228,6 +251,16 @@ export const evaluateMissionRunV4 = async (
 ): Promise<import("../types/learningPath").V4SessionEvaluationResultDto> => {
   const response = await httpClient.post<import("../types/learningPath").V4SessionEvaluationResultDto>(
     `/students/me/mission-runs/${sessionRunId}/evaluate-v4`
+  );
+  return response.data;
+};
+
+/** Adds 5-question checks for more parts to the active route without replacing it. */
+export const extendPathWithCheck = async (
+  request: import("../types/learningPath").ExtendPathCheckRequest
+): Promise<import("../types/learningPath").ExtendPathCheckResponse> => {
+  const response = await httpClient.post<import("../types/learningPath").ExtendPathCheckResponse>(
+    `/students/me/learning-paths/extend-check`, request
   );
   return response.data;
 };

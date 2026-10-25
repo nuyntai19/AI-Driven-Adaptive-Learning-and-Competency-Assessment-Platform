@@ -49,12 +49,70 @@ public sealed class GetAttemptFeedbackUseCaseTests : IDisposable
 
     public void Dispose() => _dbContext.Dispose();
 
+    [Theory]
+    [InlineData(true, "Some reasoning", false)]
+    [InlineData(false, "", false)]
+    [InlineData(false, "khum", false)]
+    [InlineData(false, "Em không biết!", false)]
+    [InlineData(false, "Some reasoning", true)]
+    public async Task ExecuteAsync_ReasoningMetricsRequireSuccessfulAnalysisAndEvidence(bool fallback, string reasoning, bool expectedMetrics)
+    {
+        var now = DateTime.UtcNow;
+        AddActionQuestion(now);
+        _dbContext.Attempts.Add(new Attempt { CenterId = _centerId, AttemptId = 20, QuestionId = 10,
+            StudentId = _studentId, Status = AttemptStatus.Completed, FinalAnswer = "2", ReasoningText = reasoning,
+            ReasoningLanguage = "vi", IsCorrect = true, AwardedScore = 10m, CreatedAt = now, UpdatedAt = now });
+        _dbContext.ReasoningAnalyses.Add(new ReasoningAnalysis { CenterId = _centerId, AnalysisId = 30, AttemptId = 20,
+            SchemaVersion = "1.0", IsFallback = fallback, FeedbackOrigin = "Gemini", ReasoningQuality = 70m,
+            ReasoningVerdict = "Valid", Feedback = "Saved", MissingSteps = JsonDocument.Parse("[]"),
+            RootCauseNodeIds = JsonDocument.Parse("[]"), CreatedAt = now, UpdatedAt = now });
+        await _dbContext.SaveChangesAsync();
+        var result = await new GetAttemptFeedbackUseCase(_dbContext, _tenantContext, _guardMock.Object).ExecuteAsync(20, default);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expectedMetrics ? 70 : (int?)null, result.Data!.Analysis!.ReasoningQuality);
+        Assert.Equal(expectedMetrics, result.Data.Analysis.QualityBand != null);
+        Assert.Equal(expectedMetrics ? "Valid" : null, result.Data.Analysis.ReasoningVerdict);
+        Assert.Equal(10m, result.Data.Grading.AwardedScore);
+        if (!fallback && !expectedMetrics)
+        {
+            Assert.Equal(EduTwin.BLL.AssessmentAndReasoning.ReasoningEvidencePolicy.MissingFeedback, result.Data.Analysis.Feedback);
+            Assert.Null(result.Data.Analysis.MethodDetected);
+            Assert.Null(result.Data.Analysis.Confidence);
+            Assert.Equal("RuleBased", result.Data.Analysis.FeedbackOrigin);
+            Assert.Equal(70m, (await _dbContext.ReasoningAnalyses.SingleAsync()).ReasoningQuality); // Historical source is retained.
+        }
+    }
+
     private void AddActionQuestion(DateTime now) => _dbContext.Questions.Add(new Question
     {
         CenterId = _centerId, QuestionId = 10, SubjectId = _subjectId, QuestionText = "Tính x.",
         CorrectAnswer = "2", Solution = "x = 2", LanguageCode = "vi", MaxScore = 10m,
         CreatedAt = now, UpdatedAt = now
     });
+
+    [Theory]
+    [InlineData("Approved", true, false)]
+    [InlineData("Adjusted", false, true)]
+    public async Task ExecuteAsync_ExplicitDecisionDistinguishesApprovalFromAdjustmentEvenWithVersion(
+        string decision, bool approved, bool adjusted)
+    {
+        var now = DateTime.UtcNow; AddActionQuestion(now);
+        _dbContext.Attempts.Add(new Attempt { CenterId = _centerId, AttemptId = 20, QuestionId = 10,
+            StudentId = _studentId, Status = AttemptStatus.Completed, FinalAnswer = "2", ReasoningText = "x=2",
+            ReasoningLanguage = "vi", IsCorrect = true, AwardedScore = 10m, CreatedAt = now, UpdatedAt = now });
+        _dbContext.ReasoningAnalyses.Add(new ReasoningAnalysis { CenterId = _centerId, AnalysisId = 30, AttemptId = 20,
+            SchemaVersion = "1.0", Feedback = "Saved", ReviewDecision = decision, OverrideVersion = 2,
+            OverrideIsCorrect = true, OverrideAwardedScore = 9m, TeacherReviewNote = "Reviewed note",
+            MissingSteps = JsonDocument.Parse("[]"), RootCauseNodeIds = JsonDocument.Parse("[]"), CreatedAt = now, UpdatedAt = now });
+        await _dbContext.SaveChangesAsync();
+        var result = await new GetAttemptFeedbackUseCase(_dbContext, _tenantContext, _guardMock.Object).ExecuteAsync(20, default);
+        Assert.True(result.IsSuccess);
+        var evaluation = result.Data!.TeacherFinalEvaluation!;
+        Assert.Equal(approved, evaluation.IsApprovedAsIs);
+        Assert.Equal(adjusted, evaluation.HasTeacherOverride);
+        Assert.Equal(9m, evaluation.TeacherScore);
+        Assert.Equal("Reviewed note", evaluation.TeacherReviewNote);
+    }
 
     [Theory]
     [InlineData("AI_RESPONSE_SEMANTIC_INVALID", "ResponseInvalid")]
@@ -266,6 +324,7 @@ public sealed class GetAttemptFeedbackUseCaseTests : IDisposable
             StudentId = _studentId,
             QuestionId = 1001,
             FinalAnswer = "2",
+            ReasoningText = "Divide both sides by two.",
             AwardedScore = 5m,
             IsCorrect = false,
             ReasoningLanguage = "vi",

@@ -5,7 +5,7 @@ import { normalizeQuestionScore } from "./attemptFeedbackPresentation.ts";
 export interface QuestionDefaultFormValues {
   awardedScore: number;
   isCorrectVal: boolean | null;
-  reasoningQuality: number;
+  reasoningQuality: number | null;
   errorTypeVal: ErrorType;
   feedbackVal: string;
   overrideReasonVal: string;
@@ -47,7 +47,7 @@ export function resolveQuestionDefaultFormValues(
     return {
       awardedScore: 10,
       isCorrectVal: null,
-      reasoningQuality: 80,
+      reasoningQuality: null,
       errorTypeVal: "None",
       feedbackVal: "",
       overrideReasonVal: "",
@@ -68,9 +68,9 @@ export function resolveQuestionDefaultFormValues(
       : !currentQuestion.isFallback && currentQuestion.suggestedScore != null && currentQuestion.answerAssessment === "Incorrect" ? false : null;
 
   const reasoningQuality =
-    currentQuestion.reasoningQuality !== undefined && currentQuestion.reasoningQuality !== null
+    (!currentQuestion.isFallback || currentQuestion.hasTeacherOverride) && currentQuestion.reasoningQuality !== undefined && currentQuestion.reasoningQuality !== null
       ? Math.round(Number(currentQuestion.reasoningQuality))
-      : 80;
+      : null;
 
   const errorTypeVal = (currentQuestion.errorType as ErrorType) || "None";
   const feedbackVal = currentQuestion.teacherFeedback || "";

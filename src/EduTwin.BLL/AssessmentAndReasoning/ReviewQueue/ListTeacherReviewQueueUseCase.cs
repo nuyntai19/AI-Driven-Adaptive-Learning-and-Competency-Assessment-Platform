@@ -181,7 +181,10 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
         var assignmentQuestions = await WhereIn(_dbContext.AssignmentQuestions.AsNoTracking()
             .Where(aq => aq.CenterId == centerId), aq => aq.AssignmentId, assignmentIds)
             .ToListAsync(cancellationToken);
-        var questionOrder = assignmentQuestions.ToDictionary(aq => (aq.AssignmentId, aq.QuestionId), aq => aq.OrderIndex);
+        var questionOrder = assignmentQuestions.GroupBy(aq => aq.AssignmentId)
+            .SelectMany(g => g.OrderBy(aq => aq.OrderIndex).ThenBy(aq => aq.QuestionId)
+                .Select((aq, index) => new { aq.AssignmentId, aq.QuestionId, Number = (uint)(index + 1) }))
+            .ToDictionary(aq => (aq.AssignmentId, aq.QuestionId), aq => aq.Number);
         var questionCounts = assignmentQuestions.GroupBy(aq => aq.AssignmentId).ToDictionary(g => g.Key, g => g.Count());
         var studentIds = entities.Select(e => e.Attempt.StudentId).Distinct().ToList();
         var progressQuery = _dbContext.StudentAssignmentProgresses
@@ -261,6 +264,10 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                 }
             }
 
+            var hasReasoningEvidence = ReasoningEvidencePolicy.HasEvidence(resolvedReasoning,
+                attachedAttemptIds.Contains(evidence.AttemptId), qType, evidence.Attempt.FinalAnswer);
+            var suppressUnsupportedReasoning = !evidence.Analysis!.IsFallback && !hasReasoningEvidence;
+
             return new TeacherReviewQueueItemDto
             {
                 AttemptId = evidence.AttemptId.ToString(CultureInfo.InvariantCulture),
@@ -281,24 +288,25 @@ public sealed class ListTeacherReviewQueueUseCase : IListTeacherReviewQueueUseCa
                 ExpectedReasoning = evidence.Attempt.Question.ExpectedReasoning,
                 GradingCriteria = evidence.Attempt.Question.GradingCriteria,
                 RubricGrade = rubricByAnalysis.GetValueOrDefault(evidence.AnalysisId!.Value),
-                MethodDetected = evidence.Analysis!.MethodDetected,
+                MethodDetected = hasReasoningEvidence ? evidence.Analysis!.MethodDetected : null,
                 HasAttachment = attachedAttemptIds.Contains(evidence.AttemptId),
                 AnalysisId = evidence.AnalysisId!.Value.ToString(CultureInfo.InvariantCulture),
                 FinalAnswer = resolvedFinalAnswer,
                 AnswerDisplayLatex = resolvedDisplayLatex,
                 ReasoningText = resolvedReasoning,
                 IsFallback = evidence.Analysis!.IsFallback,
-                ReasoningQuality = evidence.Analysis.OverrideReasoningQuality ?? evidence.Analysis.ReasoningQuality,
-                OriginalReasoningQuality = evidence.Analysis.ReasoningQuality,
-                AnalysisFeedback = AnalysisFeedbackPresentation.Resolve(evidence.Analysis.FeedbackOrigin,
+                ReasoningQuality = hasReasoningEvidence ? EffectiveReasoningQuality.Resolve(evidence.Analysis) : evidence.Analysis.OverrideReasoningQuality,
+                OriginalReasoningQuality = hasReasoningEvidence ? EffectiveReasoningQuality.Original(evidence.Analysis) : null,
+                AnalysisFeedback = suppressUnsupportedReasoning ? ReasoningEvidencePolicy.MissingFeedback
+                    : AnalysisFeedbackPresentation.Resolve(evidence.Analysis.FeedbackOrigin,
                     evidence.Analysis.Feedback, evidence.Analysis.OverrideIsCorrect ?? evidence.Attempt.IsCorrect),
-                FeedbackOrigin = evidence.Analysis.FeedbackOrigin,
+                FeedbackOrigin = suppressUnsupportedReasoning ? "RuleBased" : evidence.Analysis.FeedbackOrigin,
                 AiSolution = evidence.Analysis.AiSolution,
                 SuggestedScore = evidence.Analysis.SuggestedScore,
                 SuggestedRubricGrade = RubricGrade.Deserialize(evidence.Analysis.SuggestedRubricGradeJson),
-                UsesAlternativeMethod = evidence.Analysis.UsesAlternativeMethod,
+                UsesAlternativeMethod = hasReasoningEvidence && evidence.Analysis.UsesAlternativeMethod,
                 AnswerAssessment = evidence.Analysis.AnswerAssessment,
-                AnalysisConfidence = evidence.Analysis.AnalysisConfidence,
+                AnalysisConfidence = hasReasoningEvidence ? evidence.Analysis.AnalysisConfidence : null,
                 ErrorType = (evidence.Analysis.OverrideErrorType ?? evidence.Analysis.ErrorType).ToString(),
                 Evidence = EvidenceProjectionMapper.Map(evidence),
                 SubmittedAt = NormalizeUtc(evidence.Attempt.CreatedAt),

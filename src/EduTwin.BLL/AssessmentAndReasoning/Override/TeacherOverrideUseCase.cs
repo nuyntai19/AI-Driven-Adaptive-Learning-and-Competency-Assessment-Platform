@@ -422,10 +422,8 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                     effectiveCorrectness = a?.OverrideIsCorrect ?? att.IsCorrect;
                 }
 
-                decimal reasoningWeight = ev?.ReasoningWeight ?? 0m;
-                decimal? effectiveQuality = a is not null
-                    ? (a.OverrideReasoningQuality ?? a.ReasoningQuality ?? (effectiveCorrectness == true ? 70m : 30m))
-                    : null;
+                decimal reasoningWeight = att.Skipped ? 0m : ev?.ReasoningWeight ?? 0m;
+                decimal? effectiveQuality = EduTwin.BLL.AssessmentAndReasoning.EffectiveReasoningQuality.Resolve(a);
 
                 // Fail closed if positive weight evidence has unresolved correctness
                 if (reasoningWeight > 0m && !effectiveCorrectness.HasValue)
@@ -543,7 +541,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
 
             // K. Append TwinUpdateHistory using a replay summary, never a synthetic single-step breakdown.
             var historyBreakdown = new MasteryCalculationBreakdown(
-                IsFallback: false,
+                IsFallback: !request.ReasoningQuality.HasValue,
                 PreviousMastery: previousMastery,
                 NormalizedReasoningQuality: request.ReasoningQuality / 100m,
                 ReasoningWeight: 1.00m,
@@ -553,7 +551,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 Difficulty: attempt.Question.Difficulty,
                 DifficultyMultiplier: 1.00m,
                 LearningRate: 0.25m,
-                EvidenceTarget: request.ReasoningQuality,
+                EvidenceTarget: request.IsCorrect ? 100m : 0m,
                 UnclampedNewMastery: replayedMastery,
                 NewMastery: replayedMastery,
                 Delta: replayedMastery - previousMastery,

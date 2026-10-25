@@ -360,14 +360,12 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
                     ? newEvidence
                     : latestEvidenceByAttempt.GetValueOrDefault(att.AttemptId);
 
-                decimal reasoningWeight = ev?.ReasoningWeight ?? 0m;
+                decimal reasoningWeight = att.Skipped ? 0m : ev?.ReasoningWeight ?? 0m;
                 bool? correctness = att.AttemptId == attempt.AttemptId
                     ? effectiveCorrectness
                     : (a?.OverrideIsCorrect ?? att.IsCorrect);
 
-                decimal? quality = a is not null
-                    ? (a.OverrideReasoningQuality ?? a.ReasoningQuality ?? (correctness == true ? 70m : 30m))
-                    : null;
+                decimal? quality = EduTwin.BLL.AssessmentAndReasoning.EffectiveReasoningQuality.Resolve(a);
 
                 if (reasoningWeight > 0m)
                 {
@@ -473,9 +471,9 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
             await _studentTwinUpdater.UpdateAsync(centerId, studentId, now, cancellationToken);
 
             var historyBreakdown = new MasteryCalculationBreakdown(
-                IsFallback: false,
+                IsFallback: !EffectiveReasoningQuality.Resolve(analysis).HasValue,
                 PreviousMastery: previousMastery,
-                NormalizedReasoningQuality: (analysis.ReasoningQuality ?? 80m) / 100m,
+                NormalizedReasoningQuality: EffectiveReasoningQuality.Resolve(analysis) / 100m,
                 ReasoningWeight: 1.00m,
                 Correctness: effectiveCorrectness == true ? 1m : 0m,
                 TimeQuality: 1.00m,
@@ -483,7 +481,7 @@ public sealed class TeacherApproveUseCase : ITeacherApproveUseCase
                 Difficulty: question.Difficulty,
                 DifficultyMultiplier: 1.00m,
                 LearningRate: 0.25m,
-                EvidenceTarget: analysis.ReasoningQuality ?? 80m,
+                EvidenceTarget: effectiveCorrectness == true ? 100m : 0m,
                 UnclampedNewMastery: replayedMastery,
                 NewMastery: replayedMastery,
                 Delta: replayedMastery - previousMastery,

@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../stores/authStore";
 import { logout } from "../auth/authApi";
 import { organizationApi } from "../api/organizationApi";
-import { getStudentWorkspaceSummary } from "../api/dashboardsApi";
+import { getStudentWorkspaceSummary, getReconciledStudentAcademicContext } from "../api/dashboardsApi";
 import { studentWorkspaceLabels } from "../utils/studentWorkspaceSummary";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { NotificationBell } from "../components/notifications/NotificationBell";
@@ -12,6 +12,11 @@ import { PlatformSecurityModal } from "../components/PlatformSecurityModal";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
 import { StudentAcademicContext } from "../components/student/StudentAcademicContext";
 import { studentScopeChangeUrl } from "../utils/studentAcademicNavigation";
+import {
+  formatStudentClassBadge,
+  formatStudentProfileSubtitle,
+  resolveStudentActiveDisplayClass,
+} from "../utils/studentAcademicScope";
 
 function getInitials(displayName?: string, username?: string): string {
   if (displayName) {
@@ -35,6 +40,8 @@ export const StudentLayout: React.FC = () => {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const activeSubjectId = searchParams.get("subjectId") || "";
+  const activeClassId = searchParams.get("classId") || "";
+  const isHistory = searchParams.get("history") === "true";
   const isAccountPage = ["/hoc-tap/thong-bao", "/hoc-tap/nhat-ky-hoat-dong"].includes(location.pathname);
 
   const user = useAuthStore((state) => state.user);
@@ -47,6 +54,22 @@ export const StudentLayout: React.FC = () => {
     refetchOnWindowFocus: "always",
   });
   const workspaceLabels = studentWorkspaceLabels(workspaceQuery.data, workspaceQuery.isError);
+
+  const academicContextQuery = useQuery({
+    queryKey: ["student-academic-context", user?.centerId, user?.userId, activeSubjectId, activeClassId, isHistory],
+    queryFn: () => getReconciledStudentAcademicContext(activeSubjectId, activeClassId, isHistory),
+    enabled: !!user,
+    staleTime: 30_000,
+  });
+
+  const displayClass = resolveStudentActiveDisplayClass(
+    academicContextQuery.data?.classes ?? [],
+    academicContextQuery.data?.selectedClassId,
+    activeClassId
+  );
+  const classBadge = formatStudentClassBadge(displayClass);
+  const profileSubtitle = formatStudentProfileSubtitle(displayClass);
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
@@ -227,12 +250,12 @@ export const StudentLayout: React.FC = () => {
                   <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[var(--student-brand,#6546D7)] text-white font-bold text-xs flex items-center justify-center shrink-0">
                     {getInitials(user?.displayName, user?.username)}
                   </div>
-                  <div className="hidden min-[1760px]:flex flex-col text-left pr-2">
-                    <span className="text-xs font-bold text-slate-900 dark:text-white leading-tight">
-                      {user?.displayName || "Nguyễn Văn An"}
+                  <div className="hidden min-[1760px]:flex flex-col text-left pr-2 max-w-[190px]">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white leading-tight truncate">
+                      {user?.displayName || "Học sinh"}
                     </span>
-                    <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 leading-tight">
-                      Lớp 12A1 · Học sinh
+                    <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 leading-tight truncate" title={profileSubtitle}>
+                      {profileSubtitle}
                     </span>
                   </div>
                 </button>
@@ -244,8 +267,13 @@ export const StudentLayout: React.FC = () => {
                     onBlur={() => setTimeout(() => setIsProfileDropdownOpen(false), 200)}
                   >
                     <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 mb-1">
-                      <p className="text-xs font-bold text-slate-900 dark:text-white">{user?.displayName || "Nguyễn Văn An"}</p>
-                      <p className="text-[11px] text-slate-400 truncate">{user?.username || "an.nguyen@edutwin.edu.vn"}</p>
+                      <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{user?.displayName || "Học sinh"}</p>
+                      <p className="text-[11px] text-slate-400 truncate">{user?.username || ""}</p>
+                      {classBadge ? (
+                        <p className="mt-1 text-[11px] font-semibold text-[var(--student-brand,#6546D7)] dark:text-[#856BEE] truncate" title={profileSubtitle}>
+                          {profileSubtitle}
+                        </p>
+                      ) : null}
                     </div>
 
                     <button

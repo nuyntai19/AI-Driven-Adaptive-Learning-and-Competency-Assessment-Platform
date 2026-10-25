@@ -113,7 +113,7 @@ export interface TeacherReviewQueueResponse {
 
 export interface TeacherOverrideRequest {
   rubricScores?: RubricScoreInput[];
-  reasoningQuality: number;
+  reasoningQuality: number | null;
   errorType: ErrorType;
   feedback: string;
   isCorrect: boolean;

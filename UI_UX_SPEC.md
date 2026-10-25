@@ -373,9 +373,10 @@ Course MVP không có màn hình tạo/xóa Center hoặc chuyển sang Center k
 
 ### 9.1. Question Bulk Import Modal (QuestionImportModal)
 
-V1 theo [kế hoạch import](docs/plan/QUESTION-BANK-IMPORT-PLAN-2026-10-12.md): modal nhập hàng loạt dành cho Teacher có quyền tạo nội dung; CenterManager không được kế thừa authoring.
+V1 theo [kế hoạch import](docs/plans/QUESTION-BANK-IMPORT-PLAN-2026-10-12.md): modal nhập hàng loạt dành cho Teacher có quyền tạo nội dung; CenterManager không được kế thừa authoring.
 - **Môn và mặc định của lô**: chọn môn trước preview; khối, độ khó, điểm, thời gian, visibility, reasoning, ngôn ngữ và mode ShortAnswer có defaults rõ. Mỗi câu dùng TopicCode riêng; chỉ chế độ file cũ mới cho topic chung.
-- **Tải mẫu/tệp**: XLSX theo môn với Questions/Topics/Guide, cột Text, dropdown; CSV vẫn có. Kéo thả/chọn `.xlsx`/`.csv`; giới hạn 10 MiB/500 câu. DOCX/TXT/TSV và ảnh nhúng chưa hỗ trợ V1.
+- **Tải mẫu/tệp**: XLSX theo môn với Questions/Topics/Guide, cột Text, dropdown; CSV vẫn có. Từ 15/10/2026, mẫu tải xuống dùng tiêu đề cột tiếng Việt (Độ khó, Nội dung câu hỏi, Mã chủ đề…); parser vẫn nhận mẫu tiếng Anh cũ. Tên trang và mã lựa chọn giữ nguyên, có giải thích tiếng Việt từng cột trong Guide. Kéo thả/chọn `.xlsx`/`.csv`; giới hạn 10 MiB/500 câu. DOCX/TXT/TSV và ảnh nhúng chưa hỗ trợ V1.
+- **Bảng cú pháp LaTeX**: nút mở/thu gọn ngay trong modal, không làm mất file/defaults/preview. Có mã sao chép và công thức xem trước cho phân số, căn, lũy thừa, tích phân, giới hạn, tổng, logarit, lượng giác, đạo hàm và hệ phương trình. Guide trong Excel có cùng ví dụ để tra cứu offline. Mã `$...$` dùng cho nội dung; đáp án NumericRational nhập `1/2` không bọc dấu dollar.
 - **Xem trước bảng dữ liệu (Preview)**:
   - Hiển thị thống kê tổng quan: Tổng số câu, số câu hợp lệ (Valid), số câu bị lỗi cấu trúc (Invalid).
   - Bảng danh sách câu hỏi: Cho phép xem trước nội dung, công thức KaTeX, đáp án đúng, lời giải, độ khó, và danh sách các phương án.
@@ -383,6 +384,10 @@ V1 theo [kế hoạch import](docs/plan/QUESTION-BANK-IMPORT-PLAN-2026-10-12.md)
   - V1 sửa file và tải lại, chưa có chỉnh sửa tại chỗ. Đổi môn/file/defaults hủy preview và không cho kết quả upload cũ đè phiên mới.
   - Bảng cảnh báo lỗi: Chỉ rõ số dòng, trường thông tin bị lỗi và nguyên nhân cụ thể.
 - **Xác nhận nhập kho (Confirm)**: mặc định yêu cầu toàn file hợp lệ; tùy chọn rõ nhập các câu hợp lệ được chọn và hiển thị số bỏ qua. Lưu Draft theo token/revision; giáo viên rà soát và kích hoạt riêng bằng quyền publish. Không gán topic chung cho template mới, không tự kích hoạt khi chỉ có quyền create.
+
+**Mở rộng import ngày 15/10/2026:** modal có ba nguồn riêng: Excel/CSV văn bản (V1), Word theo mẫu (.docx) và gói ZIP Excel/CSV kèm thư mục ảnh (V2). Không có TSV. Mẫu Word tiếng Việt dùng bảng Trường/Nội dung mỗi câu; mẫu ZIP có workbook version 2.0, cột Mã ảnh đề bài và một asset minh họa để thay thế. DOCX/ZIP tối đa 30 MiB, 500 câu, 20 câu có ảnh. Chỉ Word có cấu trúc đúng mới được nhận; UI công bố phạm vi công thức Office Math và báo lỗi ngoài subset.
+
+Preview V2 hiển thị nguồn bảng/ô/đoạn thay cho giả lập số dòng Excel, ảnh PNG đã xử lý có nút phóng/thu, kích thước và dung lượng. Ảnh tải bằng auth + header token, Blob URL được revoke khi đổi phiên/đóng modal. Đổi môn/nguồn/file/defaults hủy phiên cũ; upload trễ không ghi đè phiên mới. Công thức khối `$$...$$` được giữ khi mở editor, sửa và lưu; V1 vẫn chỉ cho inline. Câu chỉ ảnh dùng placeholder khi ảnh thực đã hợp lệ, luôn cần đáp án/lời giải/topic/grade đúng. Lưu Draft/chọn tập hợp hợp lệ giữ semantics V1. E5 (Word tự do/OCR/nhiều ảnh/ảnh từng option) cần spec riêng.
 
 ### 9.2. Teacher Workspace & 10 Chuyên trang
 

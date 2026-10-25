@@ -62,9 +62,7 @@ public static class EffectiveEvidenceResolver
                 continue;
             }
 
-            decimal? quality = head.Analysis != null
-                ? (head.Analysis.OverrideReasoningQuality ?? head.Analysis.ReasoningQuality)
-                : null;
+            decimal? quality = EduTwin.BLL.AssessmentAndReasoning.EffectiveReasoningQuality.Resolve(head.Analysis);
 
             if (quality.HasValue)
             {

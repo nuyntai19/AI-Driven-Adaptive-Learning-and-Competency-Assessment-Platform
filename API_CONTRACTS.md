@@ -1,5 +1,7 @@
 # EduTwin — API Contracts
 
+> Student QA fix 2026-10-20: `/activity` chấp nhận thêm source `Assessment` cho `AttemptSubmitted`, `AssignmentSubmitted`, `AIAnalysisCompleted`, lần lượt lấy thời gian thật từ Attempt.CreatedAt, Progress.CompletedAt và ReasoningAnalysis.CreatedAt. Student chỉ thấy dữ liệu của mình; teacher chỉ thấy bài thuộc lớp phụ trách; manager/platform không thấy source này. `TeacherReview` tiếp tục dành cho quyết định duyệt/điều chỉnh của giáo viên. Không trả đáp án, lập luận, feedback AI hoặc ảnh nháp trong nhật ký.
+
 > Amendment PLATFORM-OPS-OBS-01 (11/10/2026), người dùng phê duyệt triển khai: [SPEC vận hành Admin](docs/plans/PLATFORM-OPERATIONS-IMPLEMENTATION-SPEC-2026-10-11.md). Cho phép ba API GET/root-only, ba quyền non-delegable, metadata ledger AI và snapshot/alert vận hành như SPEC. Stage I không còn deferred trong phạm vi này; Stage H vẫn deferred. Ledger là metadata vận hành, ngoại lệ được duyệt đối với cấm bảng log AI, không chứa nội dung học thuật. Không purge/AI retry/billing mutation và không commit/push. Trạng thái COMPLETED-v1 trong phạm vi SPEC; [báo cáo kiểm chứng](docs/verification/PLATFORM-OPERATIONS-REPORT-2026-10-11.md) ghi kết quả, rollout và các giới hạn chưa triển khai. Không coi roadmap observability rộng hơn hoặc tải 1.000 người đồng thời đã nghiệm thu.
 
 > UX amendment 2026-10-11: ActivityDto thêm `targetLabel: string | null` từ tên đối tượng đã được scope, chỉ phục vụ hiển thị; không thay `sourceId/targetId`, filter, quyền hoặc link guard. Manager/Platform không được enrich từ assignment/attempt hoặc title sự kiện học thuật. Dọn box chuông là watermark center/user cục bộ trình duyệt, không API delete/hide mới, không schema mới.
@@ -1294,6 +1296,8 @@ V1 (12/10/2026): file `.csv` hoặc `.xlsx` qua trường `file`; các trường
 
 Mỗi câu trong template V1 có `TopicCode` và `QuestionType`; topic active cùng môn/tenant được resolve ngay tại preview. Legacy CSV chỉ được dùng khi bật `legacyMode=true`; `defaultTopicNodeId` là fallback chủ đề chung có kiểm tra, khối vẫn phải có từ file/defaults. Default ShortAnswer legacy là TextExact; V1 mới là Manual. Các cột scalar theo template; RequiredIdeas/CommonErrors nếu dùng là JSON arrays, không tách theo semicolon/pipe. ScoringNotes độc lập với Solution; quan niệm sai theo phương án được lưu trong grading criteria JSON và trả lại qua options DTO.
 
+Mẫu xuất từ 15/10/2026 dùng tiêu đề tiếng Việt (ví dụ `Nội dung câu hỏi` → `QuestionText`, `Độ khó` → `Difficulty`, `Thời gian (giây)` → `EstimatedTimeSeconds`); canonical DTO/JSON và mã enum không đổi. Header tiếng Anh cũ vẫn hợp lệ; trùng alias Việt/Anh của cùng trường bị từ chối. Guide nhận `Phiên bản mẫu`/`TemplateVersion` và `Mã định danh môn học`/`SubjectId`, chuẩn hóa trước kiểm tra trùng/version/môn nguồn. Tên các trang vẫn là `Questions`, `Topics`, `Guide`; templateVersion vẫn 1.0.
+
 Giới hạn 10 MiB upload, 50 MiB giải nén thực tế, 200 ZIP entries, 500 câu, 128 cột có dữ liệu/hàng, 200.000 XML nodes/part, XML depth 64, 20.000 ký tự/field và 2.000 ký tự/formula. Tổng giá trị trường đầu vào tối đa 10 MiB UTF-8, tính cả mỗi lần tham chiếu shared string và các dòng lỗi trước chuẩn hóa. Snapshot JSON giới hạn 30 MiB cả chiều dài và buffer capacity; vượt ngưỡng trả `NORMALIZED_DATA_LIMIT`. XLSX dùng sheet `Questions` theo workbook relationships; nhận shared/inline strings và từ chối ô formula/date/error sai profile, drawing/media/advanced sheets chưa hỗ trợ. CSV hỗ trợ quoted multiline và UTF-8 BOM. DOCX/TXT/TSV, media và rubric nhiều sheet chưa thuộc V1. `invalidCount` đếm câu lỗi; `errorCount` đếm thông báo. Điểm tối đa trong `(0, 999.99]`, tối đa hai chữ số thập phân; boolean không nhận diện bị báo lỗi.
 
 Server kiểm tra cấu trúc/math safety và nghiệp vụ; browser kiểm tra syntax bằng KaTeX cùng renderer. V1 chỉ nhập Draft, không coi cờ kiểm tra math từ client là quyền xuất bản. Phiên 30 phút, ràng buộc actor/tenant/môn/owner/defaults/file hash và revision; process-local với cleanup, tối đa 8 phiên/actor, 256 phiên/process và tổng snapshot 30 MiB. Tối đa 2 preview đang xử lý; đầy slot trả `IMPORT_BUSY` ngay. Quota được kiểm tra trước clone snapshot. Chưa có receipt bền vững qua restart.
@@ -1402,6 +1406,29 @@ Response 200:
 `AllValid` yêu cầu toàn file không có câu lỗi và danh sách chọn rỗng. `SelectedValid` yêu cầu danh sách key không rỗng/không trùng, tất cả thuộc tập hợp lệ của phiên; số bỏ qua được trả rõ. Confirm không nhận subject/topic hoặc nội dung câu thay thế; tất cả lấy từ snapshot server. Kiểm tra lại owner/môn/topic và dữ liệu trước khi ghi; lưu atomically, fail/cancel rollback cả tập được chọn. Token chỉ dùng một lần, không cho xác nhận đồng thời. Khi kết quả commit không xác định, server tiêu thụ token và trả `IMPORT_COMMIT_UNCERTAIN`; giáo viên kiểm tra kho câu trước khi nhập lại. V1 không nhận targetStatus Active; kích hoạt qua API publish hiện có với quyền phù hợp.
 
 # Assignments
+
+### 48.3. Import V2: DOCX theo mẫu và gói câu hỏi có ảnh (15/10/2026)
+
+Quyền Teacher/capability giống V1. Các route bên dưới có prefix `/api/v1`; V1 tiếp tục chỉ nhận template 1.0. **Không hỗ trợ TSV, Word tự do, OCR, ảnh riêng trong đáp án/lời giải hoặc nhiều ảnh mỗi câu.**
+
+| Method | Route | Contract |
+| --- | --- | --- |
+| POST | `/questions/import-v2/preview` | Multipart `file` + context/defaults V1; bắt buộc `templateVersion=2.0`, `sourceProfile=docx-1.0` hoặc `media-1.0`; không legacy/defaultTopicNodeId. File tối đa 30 MiB, request 32 MiB. |
+| POST | `/questions/import-v2/confirm` | Body confirm V1: previewToken/revision/importMode/selectedQuestionKeys/targetStatus=Draft. Không nhận câu hỏi/ảnh thay thế. Token V1/V2 không dùng chéo route. |
+| GET | `/questions/import-v2/assets/{assetId}?revision=1` | Auth bình thường + header `X-Import-Preview-Token`; kiểm tra tenant/actor/role/revision/TTL. Binary `image/png`, `Cache-Control: no-store, private`, `nosniff`; không đặt token trong URL. |
+| DELETE | `/questions/import-v2/session?revision=1` | Cùng auth/header; hủy phiên chưa confirm để giải phóng staging; 204 thành công, 404 khi không thuộc actor/đang confirm/không tồn tại. |
+
+DOCX phải có bảng metadata đầu tiên `EduTwin Import / docx-1.0`, `TemplateVersion / 2.0`, `SubjectId / GUID`; mỗi câu một bảng `Trường / Nội dung`, header Việt/Anh giống V1 và hàng `Ảnh đề bài`. Tối đa một ảnh inline trong ô này, không crop/xoay/lật/nổi. Bảng `EduTwin Topics`/`EduTwin Guide` được bỏ qua có kiểm soát. Tracked changes, field, OLE, bảng lồng/gộp, dữ kiện ngoài bảng/header/footer/footnote và cấu trúc chưa nhận bị báo lỗi rõ.
+
+Gói `media-1.0` là ZIP gồm đúng một `questions.xlsx` hoặc `questions.csv`, cùng `media/...`. Cột mới **Mã ảnh đề bài** (`ImageRef`) trỏ chính xác asset trong gói; không nhận URL, đường dẫn máy người dùng/Base64 hoặc ảnh thả nổi Excel. Guide XLSX dùng version 2.0; CSV dùng version từ context. File cũ V1 không tự có quyền dùng ImageRef. Từ chối tên trùng sau chuẩn hóa/case, traversal, symlink, external relationships, active content và media không được tham chiếu. Asset dùng chung được phép, quota số lần gán tính theo câu.
+
+Preview thêm `sourceFormat`, `sourceProfile`; item/error thêm `candidateId`, `sourceLocation` (`partPath`, `questionIndex`, `tableIndex`, `tableRowIndex`, `cellIndex`, `paragraphIndex`, `field`, `relationshipId`). Item ảnh có `hasImage`, `imageAssetId`, `imageSha256`, `imageWidth`, `imageHeight`, `imageBytes`; không có bytes/Base64/path staging. InvalidCount theo candidate, lỗi độc lập theo câu cho phép SelectedValid; lỗi toàn package chặn cả phiên.
+
+V2 giữ nguyên kiểm tra topic/defaults, grading modes và Draft. Văn bản LaTeX dùng `$...$` hoặc `$$...$$`; OMML thuộc subset chuyển sang cùng representation (phân số/căn/scripts/nary/limits/functions/delimiters/matrix/eqArr/accents). Cấu trúc chưa hỗ trợ trả `UNSUPPORTED_OMML` tại trường/đoạn nguồn; phân số Word `lin/skw` bị từ chối để tránh mất nghĩa nhóm tử/mẫu. Giới hạn 32 cấp/10.000 phần tử OMML, 2.000 ký tự công thức; DOCX XML tối đa 500.000 nodes/attributes mỗi part và tổng 1.000.000, depth 64, kiểm tra trước cấp phát DOM. NumericRational/Coordinate/MathEquivalent dùng đáp án công thức trần theo mode, không mở rộng thành CAS tổng quát. Native OMML trong đáp án ShortAnswer với mode TextExact (kể cả batch default) báo `UNSUPPORTED_NATIVE_MATH_ANSWER`; nhập đáp án chữ tường minh hoặc chọn mode phù hợp. Browser kiểm tra cú pháp KaTeX trước confirm; server kiểm tra safety/nghiệp vụ; chỉ lưu Draft.
+
+Giới hạn: 500 câu, 20 câu có ảnh; 500 archive entries/100 MiB expanded tính cả XLSX con; tổng field UTF-8 10 MiB. Ảnh PNG/JPEG/WebP tĩnh tối đa 8 MiB/24 triệu pixel, tổng nguồn 40 MiB → decode/orientation/nền trắng/PNG bỏ metadata, cạnh dài ≤2048 và ≤2 MiB/ảnh; tổng ảnh theo lần gán ≤40 MiB. Một decoder/process, hai preview/process. Staging reserve 100 MiB/actor, 500 MiB/center, 1 GiB/process, TTL 30 phút; snapshot JSON dùng quota riêng 30 MiB. Native decode hữu hạn theo pixel; cancellation kiểm tra giữa các bước, không hứa ngắt lệnh native tức thì.
+
+Confirm revalidate owner/môn/topic/hash/asset, giữ lease trong transaction và ghi Questions + Options + QuestionImages + HasImage nguyên tử. Rollback có thể retry giữ phiên còn hạn; thành công consume token và dọn cả ảnh không chọn. Commit không xác định trả `IMPORT_COMMIT_UNCERTAIN`, không tự retry. Hủy/fatal/TTL/restart dọn staging; store local yêu cầu một instance hoặc kiến trúc shared session riêng. Nginx chỉ nâng trần route preview V2 lên 32 MiB; V1 vẫn 11 MiB request.
 
 ## 49. Assignment DTO
 
@@ -3050,6 +3077,18 @@ Response 200:
   }
 }
 ~~~
+
+## Tự quản lý bảo mật tài khoản trung tâm
+
+Các tài khoản Student, Teacher, CenterManager đã đăng nhập sử dụng:
+
+- `GET /account/me/security`: hồ sơ và số phiên còn hiệu lực của chính tài khoản.
+- `POST /account/me/change-password`: `{ currentPassword, newPassword, confirmPassword }`; mật khẩu mới tối thiểu 12 ký tự, khác mật khẩu cũ và phải khớp xác nhận.
+- `POST /account/me/revoke-sessions`: `{ reason? }`; thu hồi toàn bộ phiên, gồm phiên hiện tại, và tăng AuthVersion.
+
+Không nhận userId/centerId đích từ client; lấy trực tiếp từ tenant đã xác thực, đối chiếu vai trò và giới hạn truy vấn theo cả user lẫn center. Tài khoản platform bị từ chối ở các endpoint này và tiếp tục dùng `/platform/me/*` với policy riêng. Thành công trả `{ data: ... }`. Thay mật khẩu hoặc thu hồi phiên yêu cầu đăng nhập lại. Sai mật khẩu hiện tại là lỗi 400 trong self-service, không kích hoạt cơ chế làm mới token của client. Hai POST có giới hạn 5 lần/phút theo user và route. Audit không ghi mật khẩu hoặc hash.
+
+Feedback bài làm có thêm `studentSubmission.skipped` để phân biệt câu bỏ qua với lỗi dịch vụ AI. Giáo viên xác nhận/điều chỉnh điểm của câu bỏ qua không tạo bằng chứng năng lực; trọng số luôn bằng 0 và câu này bị loại khỏi hiệu chỉnh mức tự tin.
 
 ## 88. POST /platform/me/revoke-sessions và GET /platform/me/security
 

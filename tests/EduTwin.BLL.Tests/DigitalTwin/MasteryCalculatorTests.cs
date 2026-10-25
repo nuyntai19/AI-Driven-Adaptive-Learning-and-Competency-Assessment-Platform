@@ -617,6 +617,21 @@ public class MasteryCalculatorTests
         Assert.Equal("IsCorrect", ex.ParamName);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Calculate_ConfirmedAnswer_DoesNotInventReasoning(bool correct)
+    {
+        var result = MasteryCalculator.Calculate(Input(currentMastery: 40m, reasoningQuality: null,
+            reasoningWeight: 1m, isCorrect: correct, confidenceCalibration: null));
+        Assert.Null(result.EffectiveReasoningQuality);
+        Assert.Null(result.Breakdown.NormalizedReasoningQuality);
+        Assert.Null(result.Breakdown.ConfidenceCalibration);
+        Assert.Equal(correct, result.NewMastery > 40m);
+        Assert.DoesNotContain("70.00%", result.Explanation);
+        Assert.Contains("chưa có đánh giá chất lượng lập luận", result.Explanation);
+    }
+
     private static MasteryCalculationInput Input(
         decimal currentMastery = 0m,
         decimal? reasoningQuality = 80m,

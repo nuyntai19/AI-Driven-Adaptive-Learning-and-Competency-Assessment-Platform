@@ -11,6 +11,41 @@ namespace EduTwin.BLL.Tests.Notifications;
 
 public sealed class ActivityAndOperationsTests
 {
+    [Fact]
+    public async Task Activity_SubmissionAndAnalysisUsePersistedTimesAndOnlyOwnAcademicScope()
+    {
+        await using var f = await NotificationManualTests.Fixture.Create();
+        var student = f.User(UserRole.Student); var teacher = f.User(UserRole.Teacher);
+        var submittedAt = DateTime.UtcNow.AddMinutes(-10); var analysedAt = submittedAt.AddMinutes(1);
+        var assignmentId = Guid.NewGuid();
+        await using var db = f.Context(student);
+        db.Assignments.Add(new() { CenterId = student.CenterId, AssignmentId = assignmentId, ClassId = f.ClassId,
+            Title = "Scoped assignment", CreatedByTeacherId = teacher.UserId, CreatedAt = submittedAt, UpdatedAt = submittedAt });
+        db.Attempts.Add(new() { CenterId = student.CenterId, AttemptId = 101, StudentId = student.UserId, AssignmentId = assignmentId,
+            FinalAnswer = "PRIVATE ANSWER", ReasoningText = "PRIVATE REASONING", ReasoningLanguage = "vi", CreatedAt = submittedAt, UpdatedAt = analysedAt });
+        db.Attempts.Add(new() { CenterId = student.CenterId, AttemptId = 102, StudentId = teacher.UserId,
+            FinalAnswer = "OTHER PRIVATE ANSWER", ReasoningLanguage = "vi", CreatedAt = submittedAt, UpdatedAt = analysedAt });
+        db.StudentAssignmentProgresses.Add(new() { CenterId = student.CenterId, ProgressId = 1, AssignmentId = assignmentId,
+            StudentId = student.UserId, CompletedAt = submittedAt, CreatedAt = submittedAt, UpdatedAt = analysedAt });
+        db.ReasoningAnalyses.Add(new() { CenterId = student.CenterId, AnalysisId = 1, AttemptId = 101, SchemaVersion = "1.0",
+            Feedback = "PRIVATE FEEDBACK", MissingSteps = JsonDocument.Parse("[]"), RootCauseNodeIds = JsonDocument.Parse("[]"), CreatedAt = analysedAt, UpdatedAt = analysedAt.AddMinutes(1) });
+        await db.SaveChangesAsync();
+        var service = new ActivityService(db, f.Tenant(student));
+        var rows = (await service.ListAsync(new() { Source = "Assessment" }, default)).Data!;
+        Assert.Equal(3, rows.TotalItems);
+        Assert.Equal(analysedAt, rows.Items.Single(r => r.Action == "AIAnalysisCompleted").OccurredAt);
+        Assert.Equal(submittedAt, rows.Items.Single(r => r.Action == "AssignmentSubmitted").OccurredAt);
+        Assert.Equal(submittedAt, rows.Items.Single(r => r.Action == "AttemptSubmitted").OccurredAt);
+        Assert.All(rows.Items, r => Assert.Equal("Scoped assignment", r.TargetLabel));
+        Assert.DoesNotContain("PRIVATE", JsonSerializer.Serialize(rows));
+        Assert.Equal(ErrorCodes.ResourceNotFound, (await service.DetailAsync("Assessment", "attempt:102", default)).ErrorCode);
+        Assert.Single((await service.ListAsync(new() { Source = "Assessment", Action = "AssignmentSubmitted" }, default)).Data!.Items);
+        Assert.Equal(0, (await service.ListAsync(new() { Source = "Assessment", From = analysedAt.AddSeconds(1) }, default)).Data!.TotalItems);
+        await using var teacherDb = f.Context(teacher);
+        Assert.Equal(3, (await new ActivityService(teacherDb, f.Tenant(teacher)).ListAsync(new() { Source = "Assessment" }, default)).Data!.TotalItems);
+        var manager = f.User(UserRole.CenterManager); await using var managerDb = f.Context(manager);
+        Assert.Empty((await new ActivityService(managerDb, f.Tenant(manager)).ListAsync(new() { Source = "Assessment" }, default)).Data!.Items);
+    }
     [Theory]
     [InlineData("{\"TeacherFinalReviewStatus\":true,\"FinalReviewVersion\":\"old\"}")]
     [InlineData("{\"TeacherFinalReviewStatus\":99,\"FinalReviewVersion\":-1}")]

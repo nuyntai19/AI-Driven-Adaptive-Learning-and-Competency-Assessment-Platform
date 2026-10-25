@@ -10,6 +10,9 @@ public interface ILearningActivityExecutionService
     Task<LearningTutorFeedbackDto> GetAiFeedbackAsync(Guid centerId, Guid studentId, ulong activityRunId, CancellationToken cancellationToken = default);
     Task<MissionRunDto> GetMissionRunAsync(Guid centerId, Guid studentId, Guid missionId, ulong sessionRunId, CancellationToken cancellationToken = default);
     Task<MissionRunDto> StartMissionAsync(Guid centerId, Guid studentId, Guid missionId, CancellationToken cancellationToken = default);
+    Task<MissionRunDto> StartMissionAsync(Guid centerId, Guid studentId, Guid missionId, StartMissionRequest request, CancellationToken cancellationToken = default);
+    /// <summary>Cancels an unfinished run. Submitted answers stay as evidence; the mission can be started again.</summary>
+    Task<MissionRunDto> AbandonMissionRunAsync(Guid centerId, Guid studentId, Guid missionId, ulong sessionRunId, CancellationToken cancellationToken = default);
     Task<ActivityRunDto> GetActivityRunAsync(
         Guid centerId,
         Guid studentId,

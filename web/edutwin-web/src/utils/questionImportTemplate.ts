@@ -6,8 +6,6 @@ export const QUESTION_IMPORT_CSV_TEMPLATE =
   'Essay,3,"Trình bày ý nghĩa hình học của đạo hàm tại một điểm.","","","","","","","","","Đạo hàm tại điểm x0 là hệ số góc của tiếp tuyến với đồ thị hàm số tại điểm đó.","Học sinh nêu định nghĩa và liên hệ hệ số góc tiếp tuyến.","Hiểu bản chất hình học của đạo hàm",10,180,TRUE,Manual\n' +
   'ShortAnswer,2,"Tìm tập xác định của $y=1/(x-2)$.","","","","","","","","","\\mathbb{R}\\setminus\\{2\\}","Mẫu số khác 0 nên $x \\ne 2$.","Loại giá trị làm mẫu số bằng 0",10,120,TRUE,MathEquivalent\n';
 
-/** Compatibility template: select Legacy mode and its common topic explicitly. */
-export const QUESTION_IMPORT_LEGACY_CSV_TEMPLATE = QUESTION_IMPORT_CSV_TEMPLATE;
 export const QUESTION_IMPORT_TEMPLATE_VERSION = "1.0";
 export const QUESTION_IMPORT_V1_COLUMNS = [
   "QuestionKey", "TopicCode", "QuestionType", "GradeLevel", "Difficulty", "QuestionText",
@@ -15,6 +13,40 @@ export const QUESTION_IMPORT_V1_COLUMNS = [
   "RequiredIdeas", "CommonErrors", "ScoringNotes", "MaxScore", "EstimatedTimeSeconds",
   "ReasoningRequired", "AnswerEvaluationMode", "Visibility", "LanguageCode",
 ] as const;
+
+export const QUESTION_IMPORT_COLUMN_LABELS: Record<typeof QUESTION_IMPORT_V1_COLUMNS[number], string> = {
+  QuestionKey: "Mã câu hỏi",
+  TopicCode: "Mã chủ đề",
+  QuestionType: "Loại câu hỏi",
+  GradeLevel: "Khối",
+  Difficulty: "Độ khó",
+  QuestionText: "Nội dung câu hỏi",
+  OptionA: "Lựa chọn A",
+  MisconceptionA: "Quan niệm sai A",
+  OptionB: "Lựa chọn B",
+  MisconceptionB: "Quan niệm sai B",
+  OptionC: "Lựa chọn C",
+  MisconceptionC: "Quan niệm sai C",
+  OptionD: "Lựa chọn D",
+  MisconceptionD: "Quan niệm sai D",
+  CorrectAnswer: "Đáp án đúng",
+  Solution: "Lời giải",
+  ExpectedReasoning: "Lập luận mong đợi",
+  RequiredIdeas: "Ý bắt buộc",
+  CommonErrors: "Lỗi thường gặp",
+  ScoringNotes: "Ghi chú chấm",
+  MaxScore: "Điểm tối đa",
+  EstimatedTimeSeconds: "Thời gian (giây)",
+  ReasoningRequired: "Yêu cầu giải trình",
+  AnswerEvaluationMode: "Chế độ chấm",
+  Visibility: "Phạm vi",
+  LanguageCode: "Ngôn ngữ",
+};
+export const QUESTION_IMPORT_V1_HEADERS = QUESTION_IMPORT_V1_COLUMNS.map((column) => QUESTION_IMPORT_COLUMN_LABELS[column]);
+
+/** Compatibility template keeps its original values and layout with readable column labels. */
+export const QUESTION_IMPORT_LEGACY_CSV_TEMPLATE = QUESTION_IMPORT_CSV_TEMPLATE.replace(/^[^\n]+/, (header) =>
+  header.split(",").map((column) => QUESTION_IMPORT_COLUMN_LABELS[column as keyof typeof QUESTION_IMPORT_COLUMN_LABELS] ?? column).join(","));
 
 export interface ImportTemplateTopic { nodeCode: string; nodeName: string; nodeId: string; parentNodeId?: string | null; }
 export interface ImportTemplateSubject { subjectId: string; subjectCode: string; subjectName: string; }
@@ -33,5 +65,5 @@ export function questionImportExampleRows(topics: readonly ImportTemplateTopic[]
 
 export function createQuestionImportCsvTemplate(topics: readonly ImportTemplateTopic[]): string {
   const escape = (value: string) => `"${value.replace(/"/g, '""')}"`;
-  return [QUESTION_IMPORT_V1_COLUMNS.join(","), ...questionImportExampleRows(topics).map((row) => row.map(escape).join(","))].join("\n") + "\n";
+  return [QUESTION_IMPORT_V1_HEADERS.join(","), ...questionImportExampleRows(topics).map((row) => row.map(escape).join(","))].join("\n") + "\n";
 }

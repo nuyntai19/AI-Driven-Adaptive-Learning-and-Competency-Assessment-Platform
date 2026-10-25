@@ -16,7 +16,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EduTwin.BLL.Platform;
 
-public sealed class PlatformMeService : IPlatformMeService
+public class PlatformMeService : IPlatformMeService
 {
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
@@ -35,7 +35,7 @@ public sealed class PlatformMeService : IPlatformMeService
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
     }
 
-    private bool IsAuthorizedPlatformAdmin(out Guid callerUserId)
+    protected virtual bool IsAuthorizedAccount(out Guid callerUserId)
     {
         callerUserId = Guid.Empty;
         if (!_tenantContext.IsResolved ||
@@ -54,16 +54,16 @@ public sealed class PlatformMeService : IPlatformMeService
         string traceId,
         CancellationToken cancellationToken = default)
     {
-        if (!IsAuthorizedPlatformAdmin(out var callerUserId))
+        if (!IsAuthorizedAccount(out var callerUserId))
         {
             return PlatformResult<PlatformSecurityProfileDto>.Failure(
                 ErrorCodes.ForbiddenResource, "Chỉ quản trị viên nền tảng mới có quyền truy cập thông tin bảo mật tài khoản.");
         }
 
+        var callerRole = Enum.Parse<UserRole>(_tenantContext.Role!);
         var user = await _dbContext.Users
             .FirstOrDefaultAsync(
-                u => u.UserId == callerUserId &&
-                     u.RoleName == UserRole.PlatformAdmin,
+                u => u.UserId == callerUserId && u.CenterId == _tenantContext.CenterId && u.RoleName == callerRole,
                 cancellationToken);
 
         if (user is null)
@@ -75,7 +75,7 @@ public sealed class PlatformMeService : IPlatformMeService
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
         var activeSessionCount = await _dbContext.RefreshTokens
-            .Where(rt => rt.UserId == callerUserId &&
+            .Where(rt => rt.CenterId == _tenantContext.CenterId && rt.UserId == callerUserId &&
                          rt.RevokedAt == null &&
                          rt.ExpiresAt > now)
             .CountAsync(cancellationToken);
@@ -98,7 +98,7 @@ public sealed class PlatformMeService : IPlatformMeService
         string traceId,
         CancellationToken cancellationToken = default)
     {
-        if (!IsAuthorizedPlatformAdmin(out var callerUserId))
+        if (!IsAuthorizedAccount(out var callerUserId))
         {
             return PlatformResult<bool>.Failure(
                 ErrorCodes.ForbiddenResource, "Chỉ quản trị viên nền tảng mới có quyền đổi mật khẩu tài khoản quản trị.");
@@ -128,10 +128,10 @@ public sealed class PlatformMeService : IPlatformMeService
                 ErrorCodes.ValidationFailed, "Mật khẩu mới không được trùng với mật khẩu hiện tại.");
         }
 
+        var callerRole = Enum.Parse<UserRole>(_tenantContext.Role!);
         var user = await _dbContext.Users
             .FirstOrDefaultAsync(
-                u => u.UserId == callerUserId &&
-                     u.RoleName == UserRole.PlatformAdmin,
+                u => u.UserId == callerUserId && u.CenterId == _tenantContext.CenterId && u.RoleName == callerRole,
                 cancellationToken);
 
         if (user is null)
@@ -157,32 +157,33 @@ public sealed class PlatformMeService : IPlatformMeService
 
         // Bulk revoke active refresh tokens for the platform admin
         var activeTokens = await _dbContext.RefreshTokens
-            .Where(rt => rt.UserId == callerUserId &&
+            .Where(rt => rt.CenterId == _tenantContext.CenterId && rt.UserId == callerUserId &&
                          rt.RevokedAt == null)
             .ToListAsync(cancellationToken);
 
         foreach (var token in activeTokens)
         {
             token.RevokedAt = now;
-            token.RevokeReason = "Password changed by platform administrator.";
+            token.RevokeReason = user.RoleName == UserRole.PlatformAdmin
+                ? "Password changed by platform administrator." : "Password changed by account owner.";
         }
 
         var auditLog = new AuthorizationAuditLog
         {
-            CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
-            TargetCenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
+            CenterId = user.CenterId,
+            TargetCenterId = user.CenterId,
             ActorUserId = callerUserId,
             TargetUserId = null,
             TargetType = "User",
             TargetId = callerUserId.ToString("D"),
-            ActionType = "PlatformAdminPasswordChanged",
+            ActionType = $"{user.RoleName}PasswordChanged",
             BeforeData = null, // Strictly zero credentials logged
             AfterData = JsonSerializer.Serialize(new
             {
                 AuthVersion = user.AuthVersion,
                 RevokedTokenCount = activeTokens.Count
             }),
-            Reason = "Platform administrator changed personal account password.",
+            Reason = "Account owner changed personal account password.",
             TraceId = string.IsNullOrWhiteSpace(traceId) ? Guid.NewGuid().ToString("N") : traceId,
             CreatedAt = now,
             CreatedBy = callerUserId
@@ -216,16 +217,16 @@ public sealed class PlatformMeService : IPlatformMeService
         string traceId,
         CancellationToken cancellationToken = default)
     {
-        if (!IsAuthorizedPlatformAdmin(out var callerUserId))
+        if (!IsAuthorizedAccount(out var callerUserId))
         {
             return PlatformResult<bool>.Failure(
                 ErrorCodes.ForbiddenResource, "Chỉ quản trị viên nền tảng mới có quyền thu hồi phiên đăng nhập tài khoản quản trị.");
         }
 
+        var callerRole = Enum.Parse<UserRole>(_tenantContext.Role!);
         var user = await _dbContext.Users
             .FirstOrDefaultAsync(
-                u => u.UserId == callerUserId &&
-                     u.RoleName == UserRole.PlatformAdmin,
+                u => u.UserId == callerUserId && u.CenterId == _tenantContext.CenterId && u.RoleName == callerRole,
                 cancellationToken);
 
         if (user is null)
@@ -234,7 +235,7 @@ public sealed class PlatformMeService : IPlatformMeService
                 ErrorCodes.ResourceNotFound, "Không tìm thấy hồ sơ quản trị viên nền tảng hợp lệ.");
         }
 
-        string sanitizedReason = "Platform administrator manually revoked all active sessions.";
+        string sanitizedReason = "Account owner manually revoked all active sessions.";
         if (!string.IsNullOrWhiteSpace(request?.Reason))
         {
             if (!PlatformAuditSanitizer.ValidateAndSanitizeReason(request.Reason, out sanitizedReason, out var reasonError, minLength: 3))
@@ -252,7 +253,7 @@ public sealed class PlatformMeService : IPlatformMeService
         user.UpdatedBy = callerUserId;
 
         var activeTokens = await _dbContext.RefreshTokens
-            .Where(rt => rt.UserId == callerUserId &&
+            .Where(rt => rt.CenterId == _tenantContext.CenterId && rt.UserId == callerUserId &&
                          rt.RevokedAt == null)
             .ToListAsync(cancellationToken);
 
@@ -264,13 +265,13 @@ public sealed class PlatformMeService : IPlatformMeService
 
         var auditLog = new AuthorizationAuditLog
         {
-            CenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
-            TargetCenterId = AuthorizationBootstrapper.ReservedPlatformCenterId,
+            CenterId = user.CenterId,
+            TargetCenterId = user.CenterId,
             ActorUserId = callerUserId,
             TargetUserId = null,
             TargetType = "User",
             TargetId = callerUserId.ToString("D"),
-            ActionType = "PlatformAdminSessionsRevoked",
+            ActionType = $"{user.RoleName}SessionsRevoked",
             BeforeData = null,
             AfterData = JsonSerializer.Serialize(new
             {

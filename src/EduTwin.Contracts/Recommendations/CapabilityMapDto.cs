@@ -23,6 +23,7 @@ public class SkillCapabilityStatusDto
     public string SkillId { get; set; } = string.Empty;
     public string SkillName { get; set; } = string.Empty;
     public string TopicName { get; set; } = string.Empty;
+    public string? TopicId { get; set; }
     public string Description { get; set; } = string.Empty;
 
     // State: Unknown, Developing, Demonstrated, Confirmed, ReviewDue

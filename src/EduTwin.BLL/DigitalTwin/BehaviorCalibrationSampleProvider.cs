@@ -47,6 +47,7 @@ public sealed class BehaviorCalibrationSampleProvider : IBehaviorCalibrationSamp
             where attempt.CenterId == centerId
                 && attempt.StudentId == studentId
                 && question.SubjectId == subjectId
+                && !attempt.Skipped
             select new
             {
                 attempt.AttemptId,
@@ -78,7 +79,7 @@ public sealed class BehaviorCalibrationSampleProvider : IBehaviorCalibrationSamp
             })
             .ToList();
 
-        if (!samples.Any(item => item.AttemptId == currentAttempt.AttemptId))
+        if (!currentAttempt.Skipped && !samples.Any(item => item.AttemptId == currentAttempt.AttemptId))
         {
             samples.Add(new SubjectCalibrationSample(
                 currentAttempt.AttemptId,

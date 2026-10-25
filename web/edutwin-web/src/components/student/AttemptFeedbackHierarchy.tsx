@@ -1,3 +1,4 @@
+import { getErrorTypeLabel } from "../../utils/questionDisplay";
 import { useState, useEffect } from "react";
 import type { AttemptFeedbackDataDto } from "../../types/learning";
 import { RichMathText } from "../math/RichMathText";
@@ -34,6 +35,7 @@ interface AttemptFeedbackHierarchyProps {
   questionType?: string;
   assignmentQuestionCount?: number;
   practiceMode?: boolean;
+  isVoided?: boolean;
 }
 
 export function AttemptFeedbackHierarchy({
@@ -46,6 +48,7 @@ export function AttemptFeedbackHierarchy({
   questionType,
   assignmentQuestionCount,
   practiceMode = false,
+  isVoided = false,
 }: AttemptFeedbackHierarchyProps) {
   const {
     attemptId,
@@ -188,7 +191,8 @@ export function AttemptFeedbackHierarchy({
     }
   };
 
-  const processingNotice = getAIProcessingNotice(feedbackData, scoreAndFeedbackOnly);
+  const processingNotice = studentSubmission?.skipped ? null : getAIProcessingNotice(feedbackData, scoreAndFeedbackOnly);
+  const hasReasoningAnalysis = Boolean(analysis && !analysis.isFallback && analysis.isRawAI !== false && (studentSubmission?.reasoningText?.trim() || studentSubmission?.attachmentUrl));
   const presentation = getAttemptFeedbackPresentation(grading, analysis, feedbackData.status);
   const reviewNotice = getAttemptReviewNotice(presentation, analysis, practiceMode);
   const displayedMaxScore = normalizeQuestionScore(null, grading.maxScore, assignmentQuestionCount).maxScore;
@@ -231,7 +235,7 @@ export function AttemptFeedbackHierarchy({
       case "Poor":
         return "Chưa đạt";
       default:
-        return band || "Chưa xếp loại";
+        return "Chưa xếp loại";
     }
   };
 
@@ -320,7 +324,7 @@ export function AttemptFeedbackHierarchy({
             ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300"
             : grading.isCorrect === false ? "bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300"
             : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"}`}>
-            {formatPreliminaryResult(grading.isCorrect)}
+            {isVoided ? "Được miễn · Tính trọn điểm" : studentSubmission?.skipped ? "Đã bỏ qua" : formatPreliminaryResult(grading.isCorrect)}
           </span>
           <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-300">
             {formatAwardedScore(displayedAwardedScore, displayedMaxScore)}
@@ -347,7 +351,7 @@ export function AttemptFeedbackHierarchy({
               {presentation.isAI ? "AI Phân Tích & Chẩn Đoán Tư Duy" : "Phân tích lập luận & Nhận xét"}
             </h3>
           </div>
-          {analysis?.qualityBand && (
+          {hasReasoningAnalysis && analysis?.qualityBand && (
             <span
               className={`rounded-full px-3 py-1 text-xs font-bold ${
                 analysis.qualityBand === "Good"
@@ -377,22 +381,25 @@ export function AttemptFeedbackHierarchy({
           </div>
         )}
 
+        {studentSubmission?.skipped ? <p role="status" className="text-sm text-slate-600 dark:text-slate-300">Câu này đã bỏ qua, được chấm 0 điểm. Hệ thống không gọi AI và không dùng câu này để cập nhật mức độ thành thạo.</p> : analysis && !hasReasoningAnalysis && <p role="status" className="text-sm text-slate-600 dark:text-slate-300">{analysis.isFallback ? "Phân tích AI chưa hoàn tất. Chưa có đánh giá chất lượng lập luận từ AI." : "Chưa có nội dung lập luận để đánh giá chất lượng tư duy."}</p>}
         {analysis && (
           <div className="space-y-4">
             {!analysis.isFallback && analysis.suggestedScore != null && <section className="rounded-2xl border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 p-4 space-y-2">
               <p className="font-bold text-indigo-900 dark:text-indigo-200">AI đã chấm · Điểm đề xuất: {normalizeQuestionScore(analysis.suggestedScore, grading.maxScore).awardedScore} / 10</p>
-              <p className="text-sm text-slate-600 dark:text-slate-300">Giáo viên sẽ duyệt hoặc điều chỉnh trước khi chốt điểm cuối cùng. Chất lượng lập luận /100 là chỉ số riêng.</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">{teacherFinalEvaluation?.isApprovedAsIs || teacherFinalEvaluation?.hasTeacherOverride
+                ? "Giáo viên đã đánh giá câu này. Điểm đề xuất AI được giữ để đối chiếu; xem kết quả giáo viên bên dưới. Chất lượng lập luận /100 là chỉ số riêng."
+                : "Giáo viên sẽ duyệt hoặc điều chỉnh trước khi chốt điểm cuối cùng. Chất lượng lập luận /100 là chỉ số riêng."}</p>
               {analysis.usesAlternativeMethod && <p className="text-sm text-amber-800 dark:text-amber-200">Cách giải khác lời giải tham khảo được ghi nhận; giáo viên sẽ thẩm định, không tự trừ điểm vì khác phương pháp.</p>}
               {analysis.suggestedRubricGrade && <RubricGradeView grade={analysis.suggestedRubricGrade} />}
             </section>}
             {!scoreAndFeedbackOnly && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {analysis.methodDetected && (
+              {hasReasoningAnalysis && analysis.methodDetected && (
                 <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 border border-slate-100 dark:border-slate-700/60">
                   <p className="text-xs font-medium text-slate-400">Phương pháp nhận diện</p>
                   <p className="mt-1 text-sm font-bold text-slate-900 dark:text-white">{analysis.methodDetected}</p>
                 </div>
               )}
-              {analysis.reasoningQuality !== null && analysis.reasoningQuality !== undefined && (
+              {hasReasoningAnalysis && analysis.reasoningQuality != null && (
                 <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 p-4 border border-slate-100 dark:border-slate-700/60">
                   <p className="text-xs font-medium text-slate-400">Chỉ số chất lượng lập luận (không phải điểm bài)</p>
                   <p className="mt-1 text-sm font-black text-indigo-600 dark:text-indigo-400">
@@ -413,14 +420,14 @@ export function AttemptFeedbackHierarchy({
               </div>
             </div>
 
-            {analysis.reasoningVerdict && (
+            {hasReasoningAnalysis && analysis.reasoningVerdict && (
               <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                 Kết luận về lập luận: {analysis.reasoningVerdict === "Valid" ? "Hợp lệ" : analysis.reasoningVerdict === "Invalid" ? "Có lỗi logic cần kiểm tra" : "Chưa đủ chắc chắn"}
               </p>
             )}
 
             {presentation.hasReasoningConcerns && analysis.errorType && !["None", "NONE", "NoError"].includes(analysis.errorType) && (
-              <p className="text-sm text-rose-800 dark:text-rose-300">Loại vấn đề cần kiểm tra: {analysis.errorType}</p>
+              <p className="text-sm text-rose-800 dark:text-rose-300">Loại vấn đề cần kiểm tra: {getErrorTypeLabel(analysis.errorType)}</p>
             )}
 
             {analysis.missingSteps && analysis.missingSteps.length > 0 && (
@@ -501,7 +508,7 @@ export function AttemptFeedbackHierarchy({
                 ? "text-amber-200"
                 : "text-purple-200"
             }`}>
-              "{reviewRequest.studentComment}"
+              "{reviewRequest.studentComment?.replace(/^\[(?:DEFECTIVE_QUESTION|QUESTION)[^\]]*\]\s*/, "")}"
             </p>
             {reviewRequest.teacherNote && (
               <div className={`pt-2 border-t text-xs ${
@@ -732,7 +739,9 @@ export function AttemptFeedbackHierarchy({
 
             {teacherFinalEvaluation.isApprovedAsIs && (
               <p className="text-xs text-emerald-800 dark:text-emerald-300 leading-relaxed font-medium">
-                Thầy/cô đã kiểm tra bài làm và xác nhận các luận điểm, phân tích và số điểm do AI đề xuất là hoàn toàn chính xác.
+                {studentSubmission?.skipped
+                  ? "Thầy/cô đã xác nhận điểm cho câu bỏ trống. Câu này không có phân tích AI và không cập nhật mức độ thành thạo."
+                  : "Thầy/cô đã kiểm tra và xác nhận kết quả câu hỏi. Điểm và nhận xét được lưu bên dưới."}
               </p>
             )}
 
@@ -754,7 +763,7 @@ export function AttemptFeedbackHierarchy({
       {/* STUDENT REVIEW REQUEST MODAL */}
       {isReviewModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-2xl space-y-5">
+          <div role="dialog" aria-modal="true" aria-label="Yêu cầu xem xét kết quả" className="w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
                 <span>🙋</span> Yêu Cầu Xem Xét Kết Quả AI
@@ -826,7 +835,7 @@ export function AttemptFeedbackHierarchy({
       {/* STUDENT DISPUTE MODAL */}
       {isDisputeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-2xl space-y-5">
+          <div role="dialog" aria-modal="true" aria-label="Báo cáo đề bài bị sai sót" className="w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
                 <span>🚩</span> Báo Cáo Đề Bài Bị Sai Sót

@@ -39,6 +39,7 @@ public sealed class AttemptAIProcessingDto
 
 public sealed class AttemptFeedbackStudentSubmissionDto
 {
+    public bool Skipped { get; init; }
     public string FinalAnswer { get; set; } = string.Empty;
     public string? AnswerDisplayLatex { get; set; }
     public string? ReasoningText { get; set; }

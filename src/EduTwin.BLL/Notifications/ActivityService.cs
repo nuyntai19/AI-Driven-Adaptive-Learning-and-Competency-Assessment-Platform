@@ -13,7 +13,7 @@ namespace EduTwin.BLL.Notifications;
 
 public sealed class ActivityService(EduTwinDbContext db, ITenantContext tenant)
 {
-    private static readonly string[] Sources = ["Audit", "TeacherReview", "ReviewRequest", "Curriculum", "Business"];
+    private static readonly string[] Sources = ["Audit", "Assessment", "TeacherReview", "ReviewRequest", "Curriculum", "Business"];
     private bool Identity => tenant.IsResolved && tenant.CenterId == db.CurrentTenantId && tenant.UserId is { } id && id != Guid.Empty;
     private bool Student => tenant.Role == nameof(UserRole.Student);
     private bool Teacher => tenant.Role == nameof(UserRole.Teacher);
@@ -87,6 +87,18 @@ public sealed class ActivityService(EduTwinDbContext db, ITenantContext tenant)
             var attempts = db.Attempts.AsNoTracking();
             if (Student) attempts = attempts.Where(a => a.StudentId == user);
             else attempts = attempts.Where(a => a.AssignmentId != null && db.Assignments.Any(s => s.AssignmentId == a.AssignmentId && db.Classes.Any(c => c.ClassId == s.ClassId && c.TeacherId == user)));
+            // Submission and analysis timestamps are persisted evidence, independent of
+            // notification delivery and teacher review. Never infer them from UpdatedAt.
+            result.Add(attempts.Select(a => new Row { Source = "Assessment", Id = "attempt:" + a.AttemptId.ToString(), At = a.CreatedAt,
+                Actor = a.StudentId, Action = "AttemptSubmitted", TargetType = "Attempt", TargetId = a.AttemptId.ToString() }));
+            var submissions = db.StudentAssignmentProgresses.AsNoTracking().Where(p => p.CompletedAt != null);
+            submissions = Student ? submissions.Where(p => p.StudentId == user)
+                : submissions.Where(p => db.Assignments.Any(s => s.AssignmentId == p.AssignmentId && db.Classes.Any(c => c.ClassId == s.ClassId && c.TeacherId == user)));
+            result.Add(submissions.Select(p => new Row { Source = "Assessment", Id = "submission:" + p.ProgressId.ToString(), At = p.CompletedAt!.Value,
+                Actor = p.StudentId, Action = "AssignmentSubmitted", TargetType = "StudentAssignmentResult", TargetId = p.AssignmentId.ToString() + ":" + p.StudentId.ToString() }));
+            var analyses = db.ReasoningAnalyses.AsNoTracking().Where(r => attempts.Any(a => a.AttemptId == r.AttemptId));
+            result.Add(analyses.Select(r => new Row { Source = "Assessment", Id = "analysis:" + r.AnalysisId.ToString(), At = r.CreatedAt,
+                Action = "AIAnalysisCompleted", TargetType = "Attempt", TargetId = r.AttemptId.ToString() }));
             var histories = db.TeacherReviewHistories.AsNoTracking().Where(h => attempts.Any(a => a.AttemptId == h.AttemptId));
             result.Add(histories.Select(h => new Row { Source = "TeacherReview", Id = h.HistoryId.ToString(), At = h.CreatedAt, Actor = h.TeacherId,
                 Action = h.Decision, TargetType = "Attempt", TargetId = h.AttemptId.ToString(), Version = h.OverrideVersion.ToString(),
@@ -147,7 +159,7 @@ public sealed class ActivityService(EduTwinDbContext db, ITenantContext tenant)
             // Existing destination guards remain authoritative; no arbitrary sender-provided URL.
             var link = r.TargetType == "Class" && Guid.TryParse(r.TargetId, out var classId)
                 ? Manager && permissions.Contains("organization.classes.read") ? $"/quan-ly/lop-hoc/{classId:D}/tong-quan" : Teacher && permissions.Contains("organization.classes.read") ? "/giao-vien/lop-hoc" : Student && permissions.Contains("assignments.assignments.read") ? "/hoc-tap/bai-tap" : null
-                : r.TargetType == "Attempt" ? Teacher && (permissions.Contains("twin.reasoning.review") || permissions.Contains("twin.teacher_reviews.read")) ? "/giao-vien/cham-bai" : Student && permissions.Contains("assignments.assignments.read") ? "/hoc-tap/bai-tap" : null : null;
+                : r.TargetType is "Attempt" or "StudentAssignmentResult" ? Teacher && (permissions.Contains("twin.reasoning.review") || permissions.Contains("twin.teacher_reviews.read")) ? "/giao-vien/cham-bai" : Student && permissions.Contains("assignments.assignments.read") ? "/hoc-tap/bai-tap" : null : null;
             return new ActivityDto(r.Source, r.Id, r.At, r.Actor is { } actor ? names.GetValueOrDefault(actor) ?? "Tài khoản không còn hiển thị" : "Hệ thống / Migration",
                 r.Action, r.TargetType, r.TargetId, before, after, version, reason, link,
                 SafeLabel(r.Label ?? labels.GetValueOrDefault(r.TargetType + ":" + r.TargetId)));

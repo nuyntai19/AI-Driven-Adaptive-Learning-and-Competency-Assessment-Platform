@@ -87,8 +87,7 @@ internal static class FallbackAnalysisRecovery
             var analysis = analyses.GetValueOrDefault(a.AttemptId);
             var weight = evidence.GetValueOrDefault(a.AttemptId)?.ReasoningWeight ?? 0m;
             var correctness = analysis?.OverrideIsCorrect ?? a.IsCorrect;
-            decimal? quality = analysis is null ? null : analysis.OverrideReasoningQuality ??
-                analysis.ReasoningQuality ?? (correctness == true ? 70m : 30m);
+            decimal? quality = EduTwin.BLL.AssessmentAndReasoning.EffectiveReasoningQuality.Resolve(analysis);
             var calibration = calculator.CalculateCalibration(samples.Where(s => s.EffectiveIsCorrect.HasValue &&
                 (s.CreatedAt < a.CreatedAt || s.CreatedAt == a.CreatedAt && s.AttemptId <= a.AttemptId))
                 .Select(s => new GradedAttemptSample(s.Confidence, s.EffectiveIsCorrect!.Value)));

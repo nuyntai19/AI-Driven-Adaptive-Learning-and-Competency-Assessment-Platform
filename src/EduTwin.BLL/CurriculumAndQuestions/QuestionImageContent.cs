@@ -19,6 +19,16 @@ public static class QuestionImageContent
         try
         {
             var data = Convert.FromBase64String(dataUrl[Prefix.Length..]);
+            if (!TryValidate(data)) return false;
+            bytes = data; return true;
+        }
+        catch (FormatException) { return false; }
+    }
+
+    public static bool TryValidate(byte[] data)
+    {
+        try
+        {
             if (data.Length is < 45 or > MaxBytes || !data.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 })) return false;
             var offset = 8; var header = false; var end = false; var idatEnded = false;
             uint width = 0, height = 0; var channels = 0;
@@ -50,6 +60,7 @@ public static class QuestionImageContent
                 }
                 else
                 {
+                    if (type.SequenceEqual("acTL"u8) || type.SequenceEqual("fcTL"u8) || type.SequenceEqual("fdAT"u8)) return false;
                     // Unknown critical chunks (including a second IHDR) are invalid.
                     if ((type[0] & 32) == 0) return false;
                     if (compressed.Length > 0) idatEnded = true;
@@ -66,7 +77,7 @@ public static class QuestionImageContent
                 zlib.ReadExactly(row);
             }
             if (zlib.ReadByte() != -1) return false;
-            bytes = data; return true;
+            return true;
         }
         catch (Exception ex) when (ex is FormatException or IOException or OverflowException or ArgumentException) { return false; }
     }

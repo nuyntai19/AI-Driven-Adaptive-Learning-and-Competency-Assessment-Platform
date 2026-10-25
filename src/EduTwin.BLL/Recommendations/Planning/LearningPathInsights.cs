@@ -20,6 +20,12 @@ public static class LearningPathInsights
         var attemptIds = attempts.Select(a => a.AttemptId).ToList();
         var analyses = await db.ReasoningAnalyses.AsNoTracking().Where(a => a.CenterId == center && attemptIds.Contains(a.AttemptId)).ToListAsync(ct);
         var analysis = analyses.ToDictionary(a => a.AttemptId);
+        // Answers given after opening a hint (never in an independent check) are weaker evidence of strength.
+        var hinted = (await (from i in db.IssuedItems.AsNoTracking()
+                             join r in db.ActivityRuns.AsNoTracking() on i.ActivityRunId equals r.ActivityRunId
+                             where i.CenterId == center && i.AttemptId != null && attemptIds.Contains(i.AttemptId.Value) &&
+                                   r.AssistanceRequestedCount > 0 && r.ActivityType != "IndependentCheck"
+                             select i.AttemptId!.Value).ToListAsync(ct)).ToHashSet();
         // Latest answer to each distinct question prevents repeated failures inflating the weakness count.
         var latest = attempts.GroupBy(a => a.QuestionId).Select(g => g.OrderByDescending(a => a.CreatedAt).ThenByDescending(a => a.AttemptId).First()).ToList();
         bool? Correct(DAL.AssessmentAndReasoning.Attempt a) => analysis.GetValueOrDefault(a.AttemptId)?.OverrideIsCorrect ?? a.IsCorrect;
@@ -34,10 +40,11 @@ public static class LearningPathInsights
             var answers = latest.Where(a => a.Question.PrimaryTopicNodeId == node.NodeId).ToList();
             var known = answers.Where(a => Correct(a).HasValue).ToList();
             var wrong = known.Count(a => Correct(a) == false);
+            var hintedCorrect = known.Count(a => Correct(a) == true && hinted.Contains(a.AttemptId));
             var insight = new LearningSkillInsightDto { SkillId = node.NodeId.ToString(), SkillName = node.NodeName,
-                QuestionCount = (uint)known.Count, WrongCount = (uint)wrong, CorrectCount = (uint)(known.Count - wrong),
+                QuestionCount = (uint)known.Count, WrongCount = (uint)wrong, CorrectCount = (uint)(known.Count - wrong), HintedCorrectCount = (uint)hintedCorrect,
                 Observation = known.Count == 0 ? "Chưa đủ kết quả để chọn phần cần củng cố."
-                    : $"Câu trả lời gần nhất: đúng {known.Count - wrong}/{known.Count} câu khác nhau; {wrong} câu cần xem lại. Đây chưa phải kết luận thành thạo." };
+                    : $"Đúng {known.Count - wrong}/{known.Count} câu gần nhất{(hintedCorrect > 0 ? $" ({hintedCorrect} câu nhờ gợi ý)" : "")}; {wrong} câu cần xem lại." };
             insight.ConfirmedMisconceptions = answers.Select(a => analysis.GetValueOrDefault(a.AttemptId))
                 .Where(a => a != null && a.ReviewDecision != null && !a.IsFallback && !string.IsNullOrWhiteSpace(a.Misconception))
                 .Select(a => a!.Misconception!).Distinct().Take(2).ToList();

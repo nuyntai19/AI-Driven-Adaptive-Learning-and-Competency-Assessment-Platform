@@ -1,4 +1,7 @@
 import React from "react";
+import { useAuthStore } from "../stores/authStore";
+import { readAssignmentDraft } from "../utils/assignmentDraftStorage";
+import { getDifficultyLabel, getQuestionTypeLabel, hasDeterminedGrade } from "../utils/questionDisplay";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import { isAxiosError } from "axios";
 import { useStudentAssignment } from "../features/assignments/useStudentAssignment";
@@ -12,30 +15,6 @@ import { studentScopeUrl } from "../utils/studentAcademicNavigation";
 const getStudentDetailError = (error: unknown) => {
   if (isAxiosError(error)) return error.response?.data?.detail || error.message;
   return error instanceof Error ? error.message : "Không tìm thấy bài tập.";
-};
-
-const getDifficultyLabel = (difficulty?: number) => {
-  if (!difficulty) return "Nhận biết";
-  if (difficulty >= 4) return "Vận dụng cao";
-  if (difficulty >= 3) return "Vận dụng";
-  if (difficulty >= 2) return "Thông hiểu";
-  return "Nhận biết";
-};
-
-const getQuestionTypeLabel = (qType?: string) => {
-  switch (qType) {
-    case "MultipleChoice":
-      return "Trắc nghiệm";
-    case "ShortAnswer":
-      return "Trả lời ngắn";
-    case "Numeric":
-    case "NumericRational":
-      return "Điền số";
-    case "Essay":
-      return "Tự luận";
-    default:
-      return "Trắc nghiệm";
-  }
 };
 
 const formatTimeLimit = (minutes?: number | null) => {
@@ -57,6 +36,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
 
   const { data: assignmentData, isLoading, isError, error } = useStudentAssignment(id);
   const assignment = assignmentData?.data;
+  const user = useAuthStore(state => state.user);
 
   if (isLoading) {
     return (
@@ -92,6 +72,19 @@ export const StudentAssignmentDetailPage: React.FC = () => {
 
   const { progress, questions } = assignment;
   const isReadOnly = assignment.isReadOnly === true || searchParams.get("history") === "true";
+  const draftQuestionIds = new Set<string>();
+  if (!assignment.isSubmitted) {
+    for (const draft of assignment.draftAnswers ?? []) {
+      if (draft.finalAnswer?.trim() || draft.reasoningText?.trim() || draft.drawingUploadToken) draftQuestionIds.add(String(draft.questionId));
+    }
+    try {
+      const local = user ? JSON.parse(readAssignmentDraft({ centerId: user.centerId, userId: user.userId, assignmentId: assignment.assignmentId }) ?? "{}") : {};
+      for (const [questionId, draft] of Object.entries(local) as [string, { finalAnswer?: string; reasoningText?: string; drawingUploadToken?: string; snapshotDataUrl?: string }][]) {
+        if (draft.finalAnswer?.trim() || draft.reasoningText?.trim() || draft.drawingUploadToken || draft.snapshotDataUrl) draftQuestionIds.add(questionId);
+      }
+    } catch { /* Unavailable or malformed local draft: use server progress. */ }
+  }
+  const draftCount = questions.filter(q => !q.latestAttempt && draftQuestionIds.has(q.questionId)).length;
   const percent =
     progress.totalQuestionCount > 0
       ? Math.round((progress.completedQuestionCount / progress.totalQuestionCount) * 100)
@@ -146,6 +139,8 @@ export const StudentAssignmentDetailPage: React.FC = () => {
       );
     }
 
+    if (!attempt && draftQuestionIds.has(question.questionId)) return <StudentBadge variant="accent" size="xs">Đã lưu nháp · Chưa nộp</StudentBadge>;
+
     if (!status && !attempt) {
       return (
         <span className="text-xs font-medium text-stone-400 dark:text-stone-500">
@@ -165,7 +160,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
     if (status === "NeedsTeacherReview") {
       return (
         <StudentBadge variant="warning" size="xs">
-          Chờ giáo viên duyệt
+          {hasDeterminedGrade(question) ? "Đã có điểm · Chờ xem xét" : "Chờ giáo viên chấm"}
         </StudentBadge>
       );
     }
@@ -235,7 +230,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                 to={studentScopeUrl(`/hoc-tap/luyen-tap/${firstUnfinishedQuestion.questionId}`, searchParams, { assignmentId:assignment.assignmentId })}
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 px-5 py-2 text-xs sm:text-sm font-semibold text-white dark:text-stone-900 transition-colors cursor-pointer self-start sm:self-auto"
               >
-                <span>{progress.completedQuestionCount > 0 ? "Tiếp tục làm bài" : "Bắt đầu làm bài"}</span>
+                <span>{progress.completedQuestionCount > 0 || draftCount > 0 || assignment.startedAt ? "Tiếp tục làm bài" : "Bắt đầu làm bài"}</span>
                 <span>→</span>
               </Link>
             ) : null}
@@ -255,7 +250,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
           <div className="pt-3 border-t border-stone-100 dark:border-stone-800/80 space-y-1.5">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
               <span className="font-semibold text-stone-700 dark:text-stone-300">
-                Tiến độ: {progress.completedQuestionCount}/{progress.totalQuestionCount} câu hoàn thành ({percent}%)
+                Tiến độ: {progress.completedQuestionCount}/{progress.totalQuestionCount} câu đã nộp ({percent}%) · {draftCount} câu nháp chưa nộp
               </span>
               <div className="flex items-center gap-3 text-stone-500 dark:text-stone-400">
                 <span>
@@ -340,7 +335,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
 
               {/* Question content */}
               <div className="text-sm sm:text-base text-stone-800 dark:text-stone-200 leading-relaxed font-medium">
-                <RichMathText text={question.questionText} />
+                {isAssignmentFinished ? <RichMathText text={question.questionText} /> : <span className="text-sm text-stone-500">Nội dung câu hỏi hiển thị khi bắt đầu làm bài.</span>}
               </div>
 
               {question.isVoided && (
@@ -348,13 +343,13 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                   <span className="font-bold">Được miễn / Tính trọn điểm:</span>
                   <span>{question.voidReason || "Giáo viên đã hủy câu hỏi này do sự cố đề bài."}</span>
                   {question.voidedScore != null && (
-                    <span className="ml-auto font-bold shrink-0">+{question.voidedScore} điểm</span>
+                    <span className="ml-auto font-bold shrink-0">+{Number(question.voidedScore.toFixed(2))} điểm</span>
                   )}
                 </div>
               )}
 
               {/* Options preview if present */}
-              {question.options && question.options.length > 0 && (
+              {isAssignmentFinished && question.options && question.options.length > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                   {question.options.map((opt) => (
                     <div

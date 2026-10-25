@@ -17,15 +17,18 @@ public class GetAssignmentProgressUseCase : IGetAssignmentProgressUseCase
     private readonly EduTwinDbContext _dbContext;
     private readonly ITenantContext _tenantContext;
     private readonly TimeProvider _timeProvider;
+    private readonly IAssignmentResultCalculator _resultCalculator;
 
     public GetAssignmentProgressUseCase(
         EduTwinDbContext dbContext,
         ITenantContext tenantContext,
-        TimeProvider timeProvider)
+        TimeProvider timeProvider,
+        IAssignmentResultCalculator? resultCalculator = null)
     {
         _dbContext = dbContext;
         _tenantContext = tenantContext;
         _timeProvider = timeProvider;
+        _resultCalculator = resultCalculator ?? new AssignmentResultCalculator(dbContext);
     }
 
     public async Task<GetAssignmentProgressResult> ExecuteAsync(
@@ -91,11 +94,13 @@ public class GetAssignmentProgressUseCase : IGetAssignmentProgressUseCase
             .ToListAsync(cancellationToken);
         var attemptsByStudent = attempts.ToLookup(a => a.StudentId);
         var rubric = await AssignmentRubricReviewState.LoadAsync(_dbContext, centerId, assignmentId, null, cancellationToken);
+        var summaries = await _resultCalculator.CalculateForRosterAsync(centerId, progressRows.Select(p => p.StudentId).ToArray(), new[] { assignmentId }, cancellationToken);
         var data = progressRows
             .Select(item => new AssignmentProgressItemDto
             {
                 StudentId = item.StudentId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
                 FullName = item.FullName,
+                Summary = summaries.GetValueOrDefault((item.StudentId, assignmentId)),
                 Status = AssignmentStatusHelper
                     .GetEffectiveProgressStatus(item.Status, assignment.DueAt, utcNow)
                     .ToString(),

@@ -1,3 +1,4 @@
+import { getQuestionTypeLabel } from "../utils/questionDisplay";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, Navigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1214,7 +1215,7 @@ function CenterManagerAssignmentEditorView() {
                         <div className="flex-1 min-w-0 space-y-1">
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[var(--cm-surface)] border border-[var(--cm-border-subtle)] text-[var(--cm-text-secondary)]">
-                              {q.questionType}
+                              {getQuestionTypeLabel(q.questionType)}
                             </span>
                             <span className={`py-0.5 px-2 text-[10px] rounded border font-medium ${
                               q.gradeLevel

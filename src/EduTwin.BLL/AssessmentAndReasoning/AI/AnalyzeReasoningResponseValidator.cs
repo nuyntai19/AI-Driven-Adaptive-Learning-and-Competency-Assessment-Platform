@@ -53,7 +53,7 @@ public sealed class AnalyzeReasoningResponseValidator : IAnalyzeReasoningRespons
             throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Verdict);
         if (response.ReasoningVerdict is not null && response.ReasoningVerdict is not ("Valid" or "Invalid" or "Uncertain"))
             throw AIAnalysisValidationException.SemanticInvalid(AIResponseValidationRule.Verdict);
-        ValidateReasoningConsistency(response);
+        ValidateReasoningConsistency(request, response);
         ValidateRootCauseNodeIds(response.RootCauseNodeIds, allowedNodeIds);
         if (response.SuggestedScore.HasValue)
         {
@@ -143,8 +143,18 @@ public sealed class AnalyzeReasoningResponseValidator : IAnalyzeReasoningRespons
         }
     }
 
-    private static void ValidateReasoningConsistency(AnalyzeReasoningResponse response)
+    private static void ValidateReasoningConsistency(AnalyzeReasoningRequest request, AnalyzeReasoningResponse response)
     {
+        if (!ReasoningEvidencePolicy.HasEvidence(request))
+        {
+            if (response.ReasoningQuality != 0 || response.MethodDetected is not null
+                || response.ReasoningVerdict is not (null or "Uncertain")
+                || response.UsesAlternativeMethod || response.ReasoningIssues is { Count: > 0 })
+                throw AIAnalysisValidationException.SemanticInvalid(
+                    AIResponseValidationRule.ReasoningConsistency, "ReasoningClaimWithoutStudentEvidence");
+            // No claim to assess is different from an invalid or unverifiable student claim.
+            return;
+        }
         // Legacy checkpoints remain readable. New schemas require evidence for defects,
         // and cannot simultaneously declare the reasoning valid and identify an invalid claim.
         if (response.ReasoningIssues is not { } issues) return;

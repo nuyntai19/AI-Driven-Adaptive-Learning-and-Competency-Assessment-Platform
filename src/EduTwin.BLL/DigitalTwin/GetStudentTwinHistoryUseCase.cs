@@ -110,8 +110,11 @@ public sealed class GetStudentTwinHistoryUseCase : IGetStudentTwinHistoryUseCase
                 PreviousMastery = h.PreviousMastery,
                 NewMastery = h.NewMastery,
                 Delta = h.MasteryDelta,
-                ReasoningQuality = h.EffectiveReasoningQuality,
-                Explanation = h.Explanation,
+                ReasoningQuality = h.Analysis != null && h.Analysis.IsFallback && !h.Analysis.OverrideReasoningQuality.HasValue
+                    ? null : h.EffectiveReasoningQuality,
+                Explanation = h.Analysis != null && h.Analysis.IsFallback && !h.Analysis.OverrideReasoningQuality.HasValue
+                    ? "Bản ghi lịch sử chưa có phân tích lập luận hợp lệ. Chỉ số lập luận không khả dụng; hãy xem kết quả chấm đáp án hoặc xác nhận của giáo viên."
+                    : h.Explanation,
                 RecordedAt = h.CreatedAt
             })
             .ToListAsync(cancellationToken);

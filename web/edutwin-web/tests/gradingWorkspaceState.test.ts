@@ -104,9 +104,17 @@ test("resolveQuestionDefaultFormValues preserves question errorType rather than 
 
 test("resolveQuestionDefaultFormValues falls back to safe defaults when currentQuestion is null/undefined", () => {
   const nullValues = resolveQuestionDefaultFormValues(null);
-  assert.equal(nullValues.reasoningQuality, 80);
+  assert.equal(nullValues.reasoningQuality, null);
   assert.equal(nullValues.errorTypeVal, "None");
   assert.equal(nullValues.isCorrectVal, null);
   assert.equal(nullValues.feedbackVal, "");
   assert.equal(nullValues.overrideReasonVal, "");
+});
+
+test("fallback grade never prefills fabricated reasoning, and explicit teacher zero is preserved", () => {
+  const q = { isCorrect: true, awardedScore: 10, maxScore: 10, isFallback: true,
+    reasoningQuality: 70, hasTeacherOverride: false } as TeacherReviewQueueItemDto;
+  assert.equal(resolveQuestionDefaultFormValues(q).awardedScore, 10);
+  assert.equal(resolveQuestionDefaultFormValues(q).reasoningQuality, null);
+  assert.equal(resolveQuestionDefaultFormValues({ ...q, hasTeacherOverride: true, reasoningQuality: 0 }).reasoningQuality, 0);
 });

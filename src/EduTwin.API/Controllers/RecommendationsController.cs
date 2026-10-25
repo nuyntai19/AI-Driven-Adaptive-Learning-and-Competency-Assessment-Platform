@@ -822,6 +822,39 @@ public sealed class RecommendationsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("path-proposals/{proposalId:guid}/customize")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(PathProposalDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CustomizePathProposal([FromRoute] Guid proposalId, [FromBody] CustomizePathProposalRequest request, CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_v4Planner is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _v4Planner.CustomizePathProposalAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, proposalId, request, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>Adds 5-question checks for more parts to the active route without replacing it.</summary>
+    [HttpPost("learning-paths/extend-check")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(ExtendPathCheckResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ExtendPathWithCheck([FromBody] ExtendPathCheckRequest request, CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_v4Planner is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _v4Planner.ExtendPathWithCheckAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, request, cancellationToken);
+        return Ok(result);
+    }
+
     [HttpPost("path-proposals/{proposalId:guid}/accept")]
     [Authorize(Policy = "recommendations.student.read_own")]
     [V4LearningExceptionFilter]
@@ -874,11 +907,25 @@ public sealed class RecommendationsController : ControllerBase
     [Authorize(Policy = "recommendations.student.read_own")]
     [V4LearningExceptionFilter]
     [Authorize(Policy = "learning.attempts.submit")]
-    public async Task<IActionResult> StartMission([FromRoute] Guid missionId, CancellationToken cancellationToken)
+    public async Task<IActionResult> StartMission([FromRoute] Guid missionId, CancellationToken cancellationToken,
+        [FromQuery] bool retry = false, [FromQuery] uint? questionCount = null)
     {
         if (_activityExecutionService == null || _tenantContext?.IsResolved != true || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
             return Forbid();
-        return Ok(await _activityExecutionService.StartMissionAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, missionId, cancellationToken));
+        return Ok(await _activityExecutionService.StartMissionAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, missionId,
+            new StartMissionRequest { Retry = retry, QuestionCount = questionCount }, cancellationToken));
+    }
+
+    [HttpPost("missions/{missionId:guid}/runs/{sessionRunId:long}/abandon")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [Authorize(Policy = "learning.attempts.submit")]
+    [ProducesResponseType(typeof(MissionRunDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> AbandonMissionRun([FromRoute] Guid missionId, [FromRoute] ulong sessionRunId, CancellationToken cancellationToken)
+    {
+        if (_activityExecutionService == null || _tenantContext?.IsResolved != true || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+            return Forbid();
+        return Ok(await _activityExecutionService.AbandonMissionRunAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, missionId, sessionRunId, cancellationToken));
     }
 
     [HttpGet("activity-runs/{activityRunId:long}")]

@@ -238,6 +238,7 @@ export interface EvaluateSessionResponse {
 
 // --- V4 Personalized Learning Path Interfaces ---
 export interface LearningGoalDto {
+  selfReportedPrerequisiteSkillIds?: string[];
   goalId: string;
   studentId: string;
   subjectId: string;
@@ -257,6 +258,9 @@ export interface LearningGoalDto {
 }
 
 export interface CreateLearningGoalRequest {
+  selfReportedPrerequisiteSkillIds?: string[];
+  /** Parts left out of the placement check (self-assessed as mastered). */
+  selfAssessedSkillIds?: string[];
   subjectId: string;
   classId?: string;
   goalType?: string;
@@ -271,7 +275,10 @@ export interface CreateLearningGoalRequest {
 }
 
 export interface ProposedMissionDto {
+  isSelfAssessedCheck?: boolean;
   difficultyFloor?: number | null;
+  isProbe?: boolean;
+  estimatedSets?: number;
   questionCount: number;
   availableFrom?: string | null;
   contentVersionId?: string | null;
@@ -286,6 +293,7 @@ export interface ProposedMissionDto {
 }
 
 export interface ProposedMilestoneDto {
+  isSelfAssessedCheck?: boolean;
   order: number;
   title: string;
   outcomeDescription: string;
@@ -295,6 +303,16 @@ export interface ProposedMilestoneDto {
 }
 
 export interface PathProposalDto {
+  selfReportedPrerequisiteSkillIds?: string[];
+  selfAssessedSkillIds?: string[];
+  isPlacement?: boolean;
+  goalType?: string;
+  requestedSkillIds?: string[];
+  practiceQuestionsPerSet?: number;
+  practiceQuestionsBySkill?: Record<string, number>;
+  availableMinutesPerDay?: number;
+  availableDaysPerWeek?: number;
+  deadlineDate?: string | null;
   proposalId: string;
   goalId: string;
   subjectId: string;
@@ -328,6 +346,7 @@ export interface AcceptPathProposalResponse {
 }
 
 export interface SkillCapabilityStatusDto {
+  topicId?: string | null;
   skillId: string;
   skillName: string;
   topicName: string;
@@ -354,6 +373,7 @@ export interface CapabilityMapDto {
 }
 
 export interface AgendaItemDto {
+  isSelfAssessedCheck?: boolean;
   latestRunId?: number | null;
   reviewOnly?: boolean;
   questionCount: number;
@@ -371,9 +391,68 @@ export interface AgendaItemDto {
   canStart: boolean;
   status: string;
   activeRunId?: number | null;
+  /** Client-only: open a new run of a finished mission instead of reviewing it. */
+  retry?: boolean;
+  defaultQuestionCount?: number;
+  weaknessLevel?: 'Weak' | 'Developing' | 'Strong' | string | null;
+  canRetry?: boolean;
+  retryLabel?: string | null;
+  retryBlockedReason?: string | null;
+  runs?: MissionRunSummaryDto[];
+  plannedSets?: number;
+  setNumber?: number;
+  estimatedSets?: number;
+  advice?: string | null;
+}
+
+export interface GoalProgressDto {
+  totalSkills: number;
+  confirmedSkills: number;
+  readyForCheckSkills: number;
+  remainingMinutes: number;
+  estimatedFinishDate?: string | null;
+  streakDays: number;
+  studiedToday: boolean;
+}
+
+export interface MissionRunSummaryDto {
+  sessionRunId: number;
+  runNumber: number;
+  status: string;
+  outcome: string;
+  startedAt: string;
+  completedAt?: string | null;
+  totalQuestions: number;
+  answeredQuestions: number;
+  correctAnswers: number;
+}
+
+export interface PathHistoryItemDto {
+  learningPathId: string;
+  version: number;
+  goalTitle: string;
+  status: string;
+  createdAt: string;
+  endedAt?: string | null;
+  totalMissions: number;
+  completedMissions: number;
+  answeredQuestions: number;
 }
 
 export interface LearningAgendaDto {
+  availableTodayMinutes?: number;
+  primaryReason?: string | null;
+  selfReportedPrerequisiteSkillIds?: string[];
+  selfAssessedSkillIds?: string[];
+  isPlacement?: boolean;
+  goalType?: string;
+  deadlineDate?: string | null;
+  targetSkillIds?: string[];
+  availableMinutesPerDay?: number;
+  availableDaysPerWeek?: number;
+  placementReport?: PlacementReportDto | null;
+  canAdvance?: boolean;
+  nextSkillIds?: string[];
   insights: LearningInsightsDto;
   recentChanges: string[];
   learningPathId?: string | null;
@@ -386,6 +465,26 @@ export interface LearningAgendaDto {
   alternativeOptions: AgendaItemDto[];
   ongoingRuns: AgendaItemDto[];
   reviewDueTasks: AgendaItemDto[];
+  todayPlan?: AgendaItemDto[];
+  plannedMinutes?: number;
+  plannedQuestionCount?: number;
+  pacingNote?: string | null;
+  pathHistory?: PathHistoryItemDto[];
+  planOutdated?: boolean;
+  progress?: GoalProgressDto | null;
+}
+
+export interface PlacementReportDto {
+  totalSkills: number;
+  assessedSkills: number;
+  isComplete: boolean;
+  scoreOutOfTen?: number | null;
+  skills: {
+    skillId: string; skillName: string; topicName: string;
+    answeredQuestions: number; correctAnswers: number; scoreOutOfTen?: number | null;
+    earnedScore: number; possibleScore: number;
+    status: string; recommendation: string; estimatedPracticeSets: number;
+  }[];
 }
 
 export interface LearningInsightsDto {
@@ -466,6 +565,10 @@ export interface AssistanceResponseDto {
   fallbackUsed: boolean;
   isBlocked: boolean;
   policyNotice: string;
+  hintLevel?: number;
+  totalHints?: number;
+  hasMoreHints?: boolean;
+  hintTitle?: string | null;
 }
 
 export interface SubmitActivityRequest {
@@ -514,4 +617,19 @@ export interface V4SessionEvaluationResultDto {
   nextActions: ProposedMissionDto[];
   hasPendingReview: boolean;
   evaluatedAt: string;
+  practiceAccuracy?: number | null;
+  isProvisional?: boolean;
+  nextStep?: string | null;
 }
+
+export interface CustomizePathProposalRequest {
+  availableMinutesPerDay: number;
+  availableDaysPerWeek: number;
+  deadlineDate: string | null;
+  practiceQuestionsPerSet: number;
+  practiceQuestionsBySkill: Record<string, number>;
+  targetSkillIds: string[];
+}
+
+export interface ExtendPathCheckRequest { subjectId: string; classId?: string; skillIds: string[] }
+export interface ExtendPathCheckResponse { missionIds: string[]; unavailableSkillIds: string[] }

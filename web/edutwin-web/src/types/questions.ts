@@ -132,6 +132,16 @@ export interface QuestionImportOptionInput {
 }
 
 export interface QuestionImportItemDto {
+  candidateId?: string;
+  sourceProfile?: QuestionImportV2SourceProfile;
+  sourceFormat?: string;
+  sourceLocation?: QuestionImportSourceLocation | null;
+  hasImage?: boolean;
+  imageAssetId?: string | null;
+  imageSha256?: string | null;
+  imageWidth?: number | null;
+  imageHeight?: number | null;
+  imageBytes?: number | null;
   questionKey: string;
   sheetName: string;
   rowIndex: number;
@@ -159,6 +169,8 @@ export interface QuestionImportItemDto {
 }
 
 export interface QuestionImportRowErrorDto {
+  candidateId?: string | null;
+  sourceLocation?: QuestionImportSourceLocation | null;
   code: string;
   sheetName: string;
   columnName?: string | null;
@@ -170,6 +182,8 @@ export interface QuestionImportRowErrorDto {
 }
 
 export interface QuestionImportPreviewDataDto {
+  sourceProfile?: QuestionImportV2SourceProfile;
+  sourceFormat?: string;
   previewToken: string;
   revision: number;
   subjectId: string;
@@ -212,6 +226,22 @@ export interface QuestionImportPreviewRequest {
   visibility: MaterialVisibility;
   languageCode: string;
   shortAnswerEvaluationMode: QuestionAnswerEvaluationMode;
+}
+
+export type QuestionImportV2SourceProfile = "docx-1.0" | "media-1.0";
+export interface QuestionImportV2PreviewRequest extends Omit<QuestionImportPreviewRequest, "templateVersion" | "legacyMode" | "defaultTopicNodeId"> {
+  templateVersion: "2.0";
+  sourceProfile: QuestionImportV2SourceProfile;
+}
+export interface QuestionImportSourceLocation {
+  partPath?: string | null;
+  questionIndex?: number | null;
+  tableIndex?: number | null;
+  tableRowIndex?: number | null;
+  cellIndex?: number | null;
+  paragraphIndex?: number | null;
+  field?: string | null;
+  relationshipId?: string | null;
 }
 
 export interface QuestionImportConfirmDataDto {

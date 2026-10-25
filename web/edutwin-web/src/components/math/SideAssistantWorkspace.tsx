@@ -7,6 +7,7 @@ import { AttemptScratchpadAttachment } from "../student/AttemptScratchpadAttachm
 export type AssistantToolTab = "casio" | "scratchpad" | "graph";
 
 export interface SideAssistantWorkspaceProps {
+  mathToolsEnabled?: boolean;
   activeTab: AssistantToolTab;
   onChangeTab: (tab: AssistantToolTab) => void;
   onClose: () => void;
@@ -23,6 +24,7 @@ export interface SideAssistantWorkspaceProps {
 }
 
 export const SideAssistantWorkspace: React.FC<SideAssistantWorkspaceProps> = ({
+  mathToolsEnabled = true,
   activeTab,
   onChangeTab,
   onClose,
@@ -45,7 +47,7 @@ export const SideAssistantWorkspace: React.FC<SideAssistantWorkspaceProps> = ({
       {/* Top Header with Tab Switchers & Close Button */}
       <header className="flex items-center justify-between px-2.5 sm:px-3.5 py-2.5 bg-slate-950/85 border-b border-slate-800 shrink-0 gap-2">
         <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto no-scrollbar" role="tablist" aria-label="Công cụ trợ lý">
-          <button
+          {mathToolsEnabled && <button
             type="button"
             role="tab"
             aria-selected={activeTab === "casio"}
@@ -58,7 +60,7 @@ export const SideAssistantWorkspace: React.FC<SideAssistantWorkspaceProps> = ({
           >
             <span>🖩</span>
             <span>Casio fx-580</span>
-          </button>
+          </button>}
 
           <button
             type="button"
@@ -78,7 +80,7 @@ export const SideAssistantWorkspace: React.FC<SideAssistantWorkspaceProps> = ({
             )}
           </button>
 
-          <button
+          {mathToolsEnabled && <button
             type="button"
             role="tab"
             aria-selected={activeTab === "graph"}
@@ -91,7 +93,7 @@ export const SideAssistantWorkspace: React.FC<SideAssistantWorkspaceProps> = ({
           >
             <span>📈</span>
             <span>Vẽ đồ thị</span>
-          </button>
+          </button>}
         </div>
 
         <button

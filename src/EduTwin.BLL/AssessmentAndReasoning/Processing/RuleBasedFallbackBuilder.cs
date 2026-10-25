@@ -21,20 +21,13 @@ public sealed class RuleBasedFallbackBuilder : IRuleBasedFallbackBuilder
 
         var feedback = BuildVietnameseFeedback(input.IsCorrect, input.Skipped);
 
-        decimal? reasoningQuality = input.Skipped ? null : input.IsCorrect switch
-        {
-            true => 70m,
-            false => 30m,
-            null => null
-        };
-
         return new ReasoningAnalysis
         {
             CenterId = input.CenterId,
             AttemptId = input.AttemptId,
             SchemaVersion = "ai-analysis-v1",
             MethodDetected = null,
-            ReasoningQuality = reasoningQuality,
+            ReasoningQuality = null,
             ErrorType = ErrorType.Unknown,
             Misconception = null,
             MissingSteps = JsonDocument.Parse("[]"),

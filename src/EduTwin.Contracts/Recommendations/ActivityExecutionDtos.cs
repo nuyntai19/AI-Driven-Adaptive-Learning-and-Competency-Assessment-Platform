@@ -86,6 +86,19 @@ public class AssistanceResponseDto
     public bool FallbackUsed { get; set; }
     public bool IsBlocked { get; set; }
     public string PolicyNotice { get; set; } = string.Empty;
+    /// <summary>1-based level of the hint returned; hints are revealed one step at a time.</summary>
+    public uint HintLevel { get; set; }
+    public uint TotalHints { get; set; }
+    public bool HasMoreHints { get; set; }
+    public string? HintTitle { get; set; }
+}
+
+public class StartMissionRequest
+{
+    /// <summary>Start a new run of a finished mission. History of earlier runs is kept.</summary>
+    public bool Retry { get; set; }
+    /// <summary>Practice/review set size chosen by today's time budget; ignored for independent checks.</summary>
+    public uint? QuestionCount { get; set; }
 }
 
 public class SubmitActivityRequest
@@ -143,6 +156,11 @@ public class V4SessionEvaluationResultDto
 
     public bool HasPendingReview { get; set; }
     public DateTime EvaluatedAt { get; set; }
+    /// <summary>Practice/review score: correct answers (hinted ones count half) over graded answers.</summary>
+    public decimal? PracticeAccuracy { get; set; }
+    /// <summary>Passed, but some evidence still waits for a teacher.</summary>
+    public bool IsProvisional { get; set; }
+    public string? NextStep { get; set; }
 }
 
 public class MissionRunDto

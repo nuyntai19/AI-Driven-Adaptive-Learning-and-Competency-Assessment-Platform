@@ -97,6 +97,7 @@ export interface AttemptFeedbackRecommendationDto {
 }
 
 export interface AttemptFeedbackStudentSubmissionDto {
+  skipped?: boolean;
   finalAnswer: string;
   answerDisplayLatex?: string | null;
   reasoningText?: string | null;

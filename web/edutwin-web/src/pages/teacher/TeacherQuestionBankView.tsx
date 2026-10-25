@@ -246,7 +246,7 @@ export function TeacherQuestionBankView() {
                 onClick={() => setIsImportOpen(true)}
                 className="th-button-secondary text-xs py-2 px-3.5 flex items-center gap-1.5 shadow-sm"
               >
-                <span>📥</span> Nhập từ Excel / CSV
+                <span>📥</span> Nhập từ file
               </button>
             )}
             {canCreate && (

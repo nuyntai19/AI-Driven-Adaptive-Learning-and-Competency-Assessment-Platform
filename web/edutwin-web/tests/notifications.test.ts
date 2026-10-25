@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { notificationAccess, notificationBadge, notificationPollInterval, notificationRoutes, notificationSendAccess, notificationPopoverPosition, notificationDateInput, notificationDateBoundary, notificationContentError } from "../src/utils/notificationHelpers.ts";
 import { notificationPreviewStorageKey, notificationPreviewVisible, notificationPreviewWatermark, notificationPreviewActions } from "../src/utils/notificationHelpers.ts";
-import { activityTitle, activityDescription, activityStatus, activityTargetLabel } from "../src/utils/activityPresentation.ts";
+import { activitySourceLabels, activityTitle, activityDescription, activityStatus, activityTargetLabel } from "../src/utils/activityPresentation.ts";
 
 test("routes isolate four actor workspaces", () => {
   assert.equal(notificationRoutes.Student, "/hoc-tap/thong-bao");
@@ -157,6 +157,11 @@ test("platform sidebar and larger typography stay permission-scoped without brow
   }
 });
 test("activity labels never fall back to raw technical action or status on primary UI", () => {
+  assert.equal(activitySourceLabels.Assessment, "Nộp bài và phân tích");
+  assert.equal(activitySourceLabels.TeacherReview, "Giáo viên đánh giá");
+  assert.equal(activityTitle("AttemptSubmitted"), "Nộp câu trả lời");
+  assert.equal(activityTitle("AssignmentAiReady"), "AI đã xử lý toàn bài");
+  assert.match(activityDescription("AIAnalysisCompleted"), /chưa phải xác nhận điểm cuối/);
   assert.equal(activityTitle("NotificationReplyReceived"), "Nhận phản hồi riêng cho thông báo");
   assert.match(activityDescription("NotificationReplyReceived"), /không công khai/);
   assert.equal(activityTitle("NewInternalCode"), "Cập nhật được ghi nhận");

@@ -195,6 +195,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
         // 1. Student Submission
         var studentSubmissionDto = new AttemptFeedbackStudentSubmissionDto
         {
+            Skipped = attempt.Skipped,
             FinalAnswer = finalAnswerDisplay,
             AnswerDisplayLatex = answerDisplayLatex,
             ReasoningText = attempt.ReasoningText,
@@ -279,7 +280,12 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                 }
             }
 
-            int? aiReasoningQualityInt = analysis.ReasoningQuality.HasValue
+            var hasReasoningEvidence = ReasoningEvidencePolicy.HasEvidence(attempt.ReasoningText,
+                studentSubmissionDto.AttachmentUrl != null,
+                attempt.Question?.QuestionType ?? EduTwin.Contracts.CurriculumAndQuestions.QuestionType.ShortAnswer, attempt.FinalAnswer);
+            var suppressUnsupportedReasoning = !analysis.IsFallback && !hasReasoningEvidence;
+            var hasReasoningAnalysis = !analysis.IsFallback && hasReasoningEvidence;
+            int? aiReasoningQualityInt = hasReasoningAnalysis && analysis.ReasoningQuality.HasValue
                 ? (int)Math.Round(analysis.ReasoningQuality.Value, MidpointRounding.AwayFromZero)
                 : null;
 
@@ -287,32 +293,33 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             {
                 AnalysisId = analysis.AnalysisId.ToString(CultureInfo.InvariantCulture),
                 SchemaVersion = analysis.SchemaVersion,
-                MethodDetected = analysis.MethodDetected,
+                MethodDetected = hasReasoningAnalysis ? analysis.MethodDetected : null,
                 ReasoningQuality = aiReasoningQualityInt,
-                QualityBand = GetQualityBand(analysis.ReasoningQuality),
-                ErrorType = analysis.ErrorType.ToString(),
-                Misconception = analysis.Misconception,
-                MissingSteps = missingSteps,
-                RootCauseNodes = rootCauseNodes,
-                Confidence = analysis.AnalysisConfidence.HasValue
+                QualityBand = hasReasoningAnalysis ? GetQualityBand(analysis.ReasoningQuality) : null,
+                ErrorType = suppressUnsupportedReasoning ? "None" : analysis.ErrorType.ToString(),
+                Misconception = suppressUnsupportedReasoning ? null : analysis.Misconception,
+                MissingSteps = suppressUnsupportedReasoning ? [] : missingSteps,
+                RootCauseNodes = suppressUnsupportedReasoning ? [] : rootCauseNodes,
+                Confidence = hasReasoningAnalysis && analysis.AnalysisConfidence.HasValue
                     ? (int)Math.Round(analysis.AnalysisConfidence.Value, MidpointRounding.AwayFromZero)
                     : null,
                 // Legacy builder substituted canned correctness messages for AI
                 // feedback. Do not surface a stale wrong statement after a regrade.
-                Feedback = AnalysisFeedbackPresentation.Resolve(analysis.FeedbackOrigin, analysis.Feedback, effectiveCorrectness),
+                Feedback = suppressUnsupportedReasoning ? ReasoningEvidencePolicy.MissingFeedback
+                    : AnalysisFeedbackPresentation.Resolve(analysis.FeedbackOrigin, analysis.Feedback, effectiveCorrectness),
                 IsFallback = analysis.IsFallback,
                 NeedsTeacherReview = analysis.NeedsTeacherReview,
                 HasTeacherOverride = analysis.OverrideVersion > 0,
-                IsRawAI = analysis.FeedbackOrigin is "Gemini" or "Groq",
-                FeedbackOrigin = analysis.FeedbackOrigin,
+                IsRawAI = !suppressUnsupportedReasoning && analysis.FeedbackOrigin is ("Gemini" or "Groq"),
+                FeedbackOrigin = suppressUnsupportedReasoning ? "RuleBased" : analysis.FeedbackOrigin,
                 AnswerAssessment = analysis.AnswerAssessment,
-                ReasoningVerdict = analysis.ReasoningVerdict,
+                ReasoningVerdict = hasReasoningAnalysis ? analysis.ReasoningVerdict : null,
                 Model = analysis.ModelName ?? "Gemini AI",
-                SolutionType = analysis.SolutionType,
+                SolutionType = suppressUnsupportedReasoning && analysis.AiSolution != null ? "MODEL_ANSWER" : analysis.SolutionType,
                 AiSolution = analysis.AiSolution,
                 SuggestedScore = analysis.SuggestedScore,
                 SuggestedRubricGrade = RubricGrade.Deserialize(analysis.SuggestedRubricGradeJson),
-                UsesAlternativeMethod = analysis.UsesAlternativeMethod
+                UsesAlternativeMethod = hasReasoningAnalysis && analysis.UsesAlternativeMethod
             };
         }
 
@@ -322,7 +329,10 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
         {
             var reviewer = analysis.ReviewedByUser ?? analysis.OverriddenByUser;
             var teacherName = reviewer?.DisplayName ?? reviewer?.Username ?? "Giáo viên";
-            var isApprovedAsIs = string.Equals(analysis.ReviewDecision, "Approved", StringComparison.OrdinalIgnoreCase) && analysis.OverrideVersion == 0;
+            // Approval also advances OverrideVersion when materializing the AI
+            // proposal. The explicit decision, not that version, distinguishes it
+            // from a teacher adjustment.
+            var isApprovedAsIs = string.Equals(analysis.ReviewDecision, "Approved", StringComparison.OrdinalIgnoreCase);
             int? teacherReasoningQualityInt = analysis.OverrideReasoningQuality.HasValue
                 ? (int)Math.Round(analysis.OverrideReasoningQuality.Value, MidpointRounding.AwayFromZero)
                 : null;
@@ -333,7 +343,7 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
                     .Where(h => h.CenterId == centerId && h.AnalysisId == analysis.AnalysisId)
                     .OrderByDescending(h => h.OverrideVersion).ThenByDescending(h => h.HistoryId)
                     .Select(h => h.RubricResultJson).FirstOrDefaultAsync(cancellationToken)),
-                HasTeacherOverride = analysis.OverrideVersion > 0,
+                HasTeacherOverride = !isApprovedAsIs && analysis.OverrideVersion > 0,
                 IsApprovedAsIs = isApprovedAsIs,
                 ReviewDecision = analysis.ReviewDecision,
                 TeacherReviewNote = analysis.TeacherReviewNote,

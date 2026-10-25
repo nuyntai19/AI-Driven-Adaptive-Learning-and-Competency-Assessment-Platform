@@ -2,27 +2,34 @@ import type { QuestionImportConfirmRequest, QuestionImportItemDto, QuestionImpor
 import { validateAnswerMathFormulas, validateTextMathFormulas } from "../pages/centerManagerQuestionEditorHelpers.ts";
 import { validateQuestionImportModes } from "./questionEvaluationModes.ts";
 
-/** The V1 profile preserves the inline representation serialized by both editors. */
-export function validateImportMathProfile(value: string): string | null {
+/** V1 stays inline-only; the V2 profiles preserve canonical display formulas too. */
+export function validateImportMathProfile(value: string, allowDisplay = false): string | null {
   if (value.length > 20_000) return "Nội dung vượt quá 20.000 ký tự.";
-  if (/\$\$|\\[()[\]]/.test(value)) return "Mẫu V1 chỉ hỗ trợ $...$ cho công thức inline. Chuyển delimiter và kiểm tra lại; công thức block chưa được hỗ trợ.";
+  if ((!allowDisplay && value.includes("$$")) || /\\[()[\]]/.test(value)) return allowDisplay
+    ? "Dùng $...$ cho công thức cùng dòng hoặc $$...$$ cho công thức khối."
+    : "Mẫu V1 chỉ hỗ trợ $...$ cho công thức inline. Chuyển delimiter và kiểm tra lại; công thức block chưa được hỗ trợ.";
   if (/\\(?:href|url|includegraphics|html\w*|def|gdef|edef|xdef|newcommand|renewcommand|providecommand|let|futurelet|input|include|write|csname)\b/.test(value)) return "Công thức chứa lệnh liên kết, HTML hoặc macro không thuộc phạm vi V1.";
-  const formulas: string[] = [];
-  let start: number | null = null;
+  let start = -1, width = 0, slashes = 0;
   for (let index = 0; index < value.length; index++) {
-    if (value[index] !== "$") continue;
-    let precedingSlashes = 0;
-    for (let cursor = index - 1; cursor >= 0 && value[cursor] === "\\"; cursor--) precedingSlashes++;
-    if (precedingSlashes % 2) continue;
-    if (start === null) start = index;
-    else { formulas.push(value.slice(start, index + 1)); start = null; }
+    const escaped = slashes % 2 === 1;
+    slashes = value[index] === "\\" ? slashes + 1 : 0;
+    if (value[index] !== "$" || escaped) continue;
+    const currentWidth = start >= 0 && width === 1 ? 1 : value[index + 1] === "$" ? 2 : 1;
+    if (start < 0) { start = index + currentWidth; width = currentWidth; index += currentWidth - 1; continue; }
+    if (currentWidth !== width) return "Dấu phân cách công thức không khớp ($ hoặc $$).";
+    const formula = value.slice(start, index);
+    if (!formula.trim()) return "Công thức không được rỗng.";
+    if (formula.length > 2_000) return "Một công thức vượt quá 2.000 ký tự.";
+    if (width === 1 && /[\r\n]/.test(formula)) return "Công thức inline phải nằm trên một dòng; đặt xuống dòng ngoài $...$.";
+    start = -1;
+    index += currentWidth - 1;
   }
-  if (formulas.some((formula) => formula.length - 2 > 2_000)) return "Một công thức vượt quá 2.000 ký tự.";
-  if (formulas.some((formula) => /[\r\n]/.test(formula))) return "Công thức inline phải nằm trên một dòng; đặt xuống dòng ngoài $...$.";
+  if (start >= 0) return "Công thức có dấu $ hoặc $$ chưa đóng.";
   return null;
 }
 
 export function validateImportQuestionMath(question: QuestionImportItemDto): QuestionImportRowErrorDto[] {
+  const allowDisplay = question.sourceProfile === "docx-1.0" || question.sourceProfile === "media-1.0";
   const fields: Array<[string, string, boolean?]> = [
     ["QuestionText", question.questionText], ["CorrectAnswer", question.correctAnswer, true],
     ["Solution", question.solution], ["ExpectedReasoning", question.expectedReasoning ?? ""],
@@ -35,11 +42,12 @@ export function validateImportQuestionMath(question: QuestionImportItemDto): Que
   ];
   const error = (field: string, message: string, rawValue?: string): QuestionImportRowErrorDto => ({
     rowIndex: question.rowIndex, sheetName: question.sheetName, questionKey: question.questionKey,
+    candidateId: question.candidateId, sourceLocation: question.sourceLocation ? { ...question.sourceLocation, field } : undefined,
     field, columnName: field, code: "CLIENT_MATH_INVALID", errorMessage: message, rawValue,
   });
   const errors = validateQuestionImportModes([question]).map((message) => error("AnswerEvaluationMode", message));
   for (const [field, value, isAnswer] of fields) {
-    const profileError = validateImportMathProfile(value);
+    const profileError = validateImportMathProfile(value, allowDisplay);
     // Bare MathEquivalent answers are formula source, so enforce the same formula limit.
     const answerLimit = isAnswer && question.answerEvaluationMode === "MathEquivalent" && value.length > 2_000;
     if (profileError || answerLimit) {
