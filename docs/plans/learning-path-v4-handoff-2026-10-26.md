@@ -45,8 +45,7 @@ Bản sửa trên commit a6200ec. Chưa build C# (máy sửa không có dotnet);
 - **Điểm mục tiêu đặt ngưỡng thành thạo theo kỹ năng.** `RequiredCorrectRate = .8m` đang cố định.
 - **Cảnh báo "dưới tiến độ" theo thời gian.**
 - **PreferredPace** phải thay đổi số buổi trong ngày, không chỉ số câu mỗi bộ.
-- **Nhiệm vụ trải nhiều ngày** bị Skip và nhân bản sai ở ngày thứ 2 (`LearningPathScheduling.cs:143`).
-- **Hôm nay không phải ngày học** thì vẫn phải cho học (`LearningPathV4Planner.cs` `options.Clear()`).
+- (Đã sửa ở commit sau: nhiệm vụ nhiều ngày bị Skip sai; ngày nghỉ không học được.)
 - **Khi xếp lại lịch do trễ,** phải cắt phần có ưu tiên thấp.
 
 ### 4. Kiểm tra đầu vào

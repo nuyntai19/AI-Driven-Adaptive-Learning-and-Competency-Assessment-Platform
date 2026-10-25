@@ -41,7 +41,8 @@ public sealed partial class LearningPathV4Planner
         {
             var session = path.Sessions.FirstOrDefault(s => s.SessionId.ToString() == mission.MissionId);
             if (session == null || session.Status != LearningPathSessionStatus.NotStarted || !mission.PlannedDate.HasValue ||
-                mission.PlannedDate >= today || mission.IsMilestoneExam || openRuns.Any(r => r.SessionId == session.SessionId)) continue;
+                (mission.StudySlots.Count > 0 ? mission.StudySlots.Max(s => s.Date) : mission.PlannedDate.Value) >= today ||  // a multi-day mission is overdue only after its last slot
+                mission.IsMilestoneExam || openRuns.Any(r => r.SessionId == session.SessionId)) continue;
             var successor = JsonSerializer.Deserialize<ProposedMissionDto>(JsonSerializer.Serialize(mission, LearningPathV4Data.Json), LearningPathV4Data.Json)!;
             successor.MissionId = Guid.NewGuid().ToString(); successor.PlannedDate = null; successor.StudySlots.Clear(); successor.SkipReason = null;
             session.Status = LearningPathSessionStatus.Skipped; session.UpdatedAt = Now; session.RowVersion++;

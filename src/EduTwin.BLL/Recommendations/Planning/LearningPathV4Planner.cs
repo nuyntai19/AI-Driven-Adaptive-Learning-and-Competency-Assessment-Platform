@@ -642,7 +642,9 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         if (!plan.IsPlacement)
         {
             var scheduledToday = LearningPathCalendar.LocalDate(Now, plan.Schedule.TimeZoneId);
-            if (!LearningPathCalendar.Days(scheduledToday, scheduledToday, plan.Schedule, plan.AvailableDaysPerWeek).Any()) options.Clear();
+            // Rest days are not blocked: a student who opens the app may still study; the calendar just does not plan new load for that day.
+            if (!LearningPathCalendar.Days(scheduledToday, scheduledToday, plan.Schedule, plan.AvailableDaysPerWeek).Any())
+                result.AvailableMinutes = Math.Min(result.AvailableMinutes, plan.AvailableMinutesPerDay);
         }
         BuildTodayPlan(result, options, weaknessBySkill, setsToday);
         // Capacity: what the largest budget would plan today. Sets are created one after another, so more time adds nothing beyond it.
