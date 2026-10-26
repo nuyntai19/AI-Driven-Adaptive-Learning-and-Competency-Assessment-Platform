@@ -112,7 +112,12 @@ public sealed partial class LearningPathV4Planner
             mission.SelectionReason = "Tạm hoãn kiến thức mới trọng số thấp trong giai đoạn thi thử; giữ các nền tảng cần cho nội dung trọng số cao.";
         }
         var count = (int)Math.Min(4, plan.AvailableMinutesPerDay / 10);
-        var selected = ordered.Where(s => questions.Count(q => q.PrimaryTopicNodeId.ToString() == s.SkillId && !used.Contains(q.QuestionId)) >= 5)
+        // Same small-bank trap as the per-skill checks: requiring 5 *unused* questions
+        // per skill meant no mock exam was ever generated on a small bank (placement
+        // alone consumes the pool). The execution service now serves milestone exams
+        // from the tiered pool, so select skills by their total usable questions with
+        // the same floor of 3 per skill.
+        var selected = ordered.Where(s => questions.Count(q => q.PrimaryTopicNodeId.ToString() == s.SkillId) >= LearningAssessmentPolicy.MinimumPlacementQuestions)
             .Take(count).Select(s => s.SkillId).ToList();
         if (selected.Count == 0) return;
         var mock = new ProposedMissionDto { MissionId = Guid.NewGuid().ToString(), SkillId = selected[0], AssessedSkillIds = selected,

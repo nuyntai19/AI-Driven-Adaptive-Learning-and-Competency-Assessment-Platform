@@ -109,6 +109,7 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         var assessedNodes = definition.AssessedSkillIds.Count > 0 ? definition.AssessedSkillIds.Select(ulong.Parse).ToArray() : new[] { node.NodeId };
         var pool = await LearningPathV4Data.QuestionsAsync(db, centerId, studentId, session.LearningPath.SubjectId, assessedNodes, session.ClassId, cancellationToken);
         var independent = definition.Purpose == "IndependentCheck";
+        int? effectiveCheckMinimum = null;
         if (independent)
         {
             var prerequisitesReady = definition.IsExternalPrerequisiteAssessment
@@ -123,11 +124,41 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
             var reserved = await db.IssuedItems.Where(i => i.CenterId == centerId && i.ActivityRun.SessionRun.StudentId == studentId &&
                 i.QuestionId != null && i.ActivityRun.SessionRun.Status == SessionRunStatus.InProgress)
                 .Select(i => i.QuestionId!.Value).Distinct().ToListAsync(cancellationToken);
-            pool = pool.Where(q => !answered.Contains(q.QuestionId) && !exposed.Contains(q.QuestionId) && !reserved.Contains(q.QuestionId)).ToList();
-            var minimum = definition.IsMilestoneExam ? 5 * Math.Max(1, definition.AssessedSkillIds.Count) : plan.IsPlacement || definition.IsProbe ? LearningAssessmentPolicy.MinimumPlacementQuestions : LearningAssessmentPolicy.DesiredQuestions;
-            if (pool.Count < minimum) throw new InvalidOperationException($"Có {pool.Count}/{minimum} câu mới đủ điều kiện. Phần này chưa đủ dữ liệu; vẫn có thể học các phần khác hoặc lập lộ trình từ dữ liệu hiện có.");
-            if (definition.IsMilestoneExam && assessedNodes.Any(id => pool.Count(q => q.PrimaryTopicNodeId == id) < 5))
-                throw new InvalidOperationException("Một phần thi thử chưa đủ 5 câu mới. Hãy làm các phần khác hoặc cập nhật phạm vi thi thử.");
+            // Tiered eligibility for checks. Tier 1: never answered, never shown as a worked
+            // example. If tier 1 alone cannot fill the desired set, fall back to questions the
+            // student answered before (tier 2), then to worked-example questions (tier 3).
+            // The old rule (tier 1 only, hard minimum 5) made every check unreachable on a
+            // small bank: placement alone "uses up" the whole topic, so the route could
+            // never confirm a skill. Placement/probe runs keep the strict tier-1 rule.
+            var freshPool = pool.Where(q => !answered.Contains(q.QuestionId) && !exposed.Contains(q.QuestionId) && !reserved.Contains(q.QuestionId)).ToList();
+            var desired = definition.IsMilestoneExam ? 5 * Math.Max(1, definition.AssessedSkillIds.Count) : LearningAssessmentPolicy.DesiredQuestions;
+            int minimum;
+            if (plan.IsPlacement || definition.IsProbe)
+            {
+                pool = freshPool;
+                minimum = LearningAssessmentPolicy.MinimumPlacementQuestions;
+            }
+            else if (definition.IsMilestoneExam)
+            {
+                pool = freshPool
+                    .Concat(pool.Where(q => answered.Contains(q.QuestionId) && !exposed.Contains(q.QuestionId) && !reserved.Contains(q.QuestionId)))
+                    .Concat(pool.Where(q => exposed.Contains(q.QuestionId) && !reserved.Contains(q.QuestionId))).ToList();
+                minimum = Math.Min(desired, LearningAssessmentPolicy.MinimumPlacementQuestions * Math.Max(1, assessedNodes.Length));
+                if (assessedNodes.Any(id => pool.Count(q => q.PrimaryTopicNodeId == id) < LearningAssessmentPolicy.MinimumPlacementQuestions))
+                    throw new InvalidOperationException("Một phần thi thử chưa đủ 3 câu (kể cả câu đã học). Hãy làm các phần khác hoặc cập nhật phạm vi thi thử.");
+            }
+            else
+            {
+                pool = freshPool.Count >= desired ? freshPool : freshPool
+                    .Concat(pool.Where(q => answered.Contains(q.QuestionId) && !exposed.Contains(q.QuestionId) && !reserved.Contains(q.QuestionId)))
+                    .Concat(pool.Where(q => exposed.Contains(q.QuestionId) && !reserved.Contains(q.QuestionId)))
+                    .Take(desired).ToList();
+                // Fewer than the desired questions is allowed (classification policy already
+                // flags small samples as low-confidence), but never below the absolute floor.
+                minimum = Math.Min(desired, Math.Max(LearningAssessmentPolicy.MinimumPlacementQuestions, Math.Min(freshPool.Count, desired)));
+                effectiveCheckMinimum = minimum;
+            }
+            if (pool.Count < minimum) throw new InvalidOperationException($"Có {freshPool.Count} câu mới và {pool.Count - freshPool.Count} câu đã học có thể dùng lại (tổng {pool.Count}/{minimum}) đủ điều kiện. Phần này chưa đủ dữ liệu; vẫn có thể học các phần khác hoặc lập lộ trình từ dữ liệu hiện có.");
         }
         if (!independent && !definition.ContentVersionId.HasValue && definition.Purpose != "Study")
         {
@@ -153,7 +184,7 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
             CenterId = centerId, StudentId = studentId, SessionId = missionId, Session = session, RunNumber = number,
             Status = SessionRunStatus.InProgress, Outcome = SessionRunOutcome.None, StartedAt = Now, LastActivityAt = Now,
             CreatedAt = Now, UpdatedAt = Now, RowVersion = 1,
-            PolicySnapshot = JsonSerializer.SerializeToDocument(new { minimumIndependentQuestions = !definition.IsMilestoneExam && (plan.IsPlacement || definition.IsProbe) ? 3 : 5,
+            PolicySnapshot = JsonSerializer.SerializeToDocument(new { minimumIndependentQuestions = !definition.IsMilestoneExam && (plan.IsPlacement || definition.IsProbe) ? 3 : effectiveCheckMinimum ?? 5,
                 isPlacement = plan.IsPlacement, classificationPolicy = LearningAssessmentPolicy.Version,
                 isMilestoneExam = definition.IsMilestoneExam, timeLimitMinutes = definition.TimeLimitMinutes,
                 requiredCorrectRate = .8m, type = definition.Purpose, version = LearningPathV4Data.Policy })

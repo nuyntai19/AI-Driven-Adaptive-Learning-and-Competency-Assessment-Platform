@@ -237,7 +237,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                         if (fallback.Count > 0)
                         {
                             first.AssessedSkillIds = fallback.Select(q => q.PrimaryTopicNodeId.ToString()).Distinct().ToList();
-                            first.Title = "Luyện tổng quát trong môn học"; first.CanStart = true;
+                            var relatedNames = nodes.Where(n => related.Contains(n.NodeId)).Select(n => n.NodeName).Take(3).ToList();
+                            first.Title = relatedNames.Count > 0 ? $"Luyện tổng quát: {string.Join(", ", relatedNames)}" : "Luyện tổng quát trong môn học"; first.CanStart = true;
                             first.QuestionCount = Math.Min(LearningAssessmentPolicy.PracticeSize(goal.PreferredPace), (uint)fallback.Count);
                             first.EstimatedMinutes = first.QuestionCount * 2;
                             first.SelectionReason = $"Phần {node.NodeName} chưa đủ câu luyện. Tạm luyện phần liên quan cùng môn/giáo trình; kết quả chỉ ghi nhận kỹ năng thực sự được hỏi, không xác nhận thay cho phần đang thiếu.";
@@ -583,16 +584,26 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 var prerequisitesReady = m.IsExternalPrerequisiteAssessment
                     ? LearningGoalScope.PrerequisitesSatisfied(skill, map, vouched) || LearningGoalScope.CanAssessTargetDirectly(skill, map, vouched)
                     : plan.IsPlacement || m.IsProbe || LearningGoalScope.PrerequisitesSatisfied(skill, map, vouched);
-                var minimum = m.IsMilestoneExam ? 5 * Math.Max(1, m.AssessedSkillIds.Count) : plan.IsPlacement || m.IsProbe ? 3 : 5;
-                item.QuestionCount = m.IsMilestoneExam ? m.QuestionCount : (uint)Math.Min(5, fresh);
-                item.CanStart = fresh >= minimum && prerequisitesReady && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped &&
+                // Mirror the execution service's tiered eligibility: fresh questions first,
+                // previously answered / worked-example questions as fallback so a small bank
+                // cannot make the check permanently unreachable. Placement/probe stays strict.
+                var allForMission = subjectQuestions.Where(q => (m.IsMilestoneExam && m.AssessedSkillIds.Count > 0 ? m.AssessedSkillIds.Contains(q.PrimaryTopicNodeId.ToString()) : q.PrimaryTopicNodeId.ToString() == m.SkillId)).ToList();
+                var strict = plan.IsPlacement || m.IsProbe;
+                var available = strict ? fresh : allForMission.Count;
+                var minimum = m.IsMilestoneExam
+                    ? Math.Min(5 * Math.Max(1, m.AssessedSkillIds.Count), 3 * Math.Max(1, m.AssessedSkillIds.Count))
+                    : strict ? 3 : Math.Min(5, Math.Max(3, Math.Min(fresh, 5)));
+                item.QuestionCount = m.IsMilestoneExam ? m.QuestionCount : (uint)Math.Min(5, Math.Max(fresh, Math.Min(5, available)));
+                item.CanStart = available >= minimum && prerequisitesReady && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped &&
                     !(plan.IsPlacement && latest?.Status == SessionRunStatus.Completed);
-                if (m.IsMilestoneExam && m.AssessedSkillIds.Any(id => freshQuestions.Count(q => q.PrimaryTopicNodeId.ToString() == id) < 5)) item.CanStart = false;
+                if (m.IsMilestoneExam && m.AssessedSkillIds.Any(id => allForMission.Count(q => q.PrimaryTopicNodeId.ToString() == id) < 3)) item.CanStart = false;
                 if (m.IsMilestoneExam && !m.IsProbe && skill.State != "Confirmed" && !milestone.ReadyForCheck && milestone.Missions.Any(x => x.Purpose is "Study" or "Practice" && x.CanStart && path.Sessions.Any(s => s.SessionId.ToString() == x.MissionId && s.Status is not (LearningPathSessionStatus.Completed or LearningPathSessionStatus.Skipped))))
                 { item.CanStart = false; item.RecommendationReason = "Hoàn thành phần học/luyện trong chặng trước khi làm mốc kiểm tra."; }
-                if (fresh < minimum) { item.CanStart = false; item.RecommendationReason = $"Có {fresh}/{minimum} câu mới đủ điều kiện. Phần này chưa đủ dữ liệu; vẫn có thể lập tuyến học và làm các phần khác."; }
+                if (available < minimum) { item.CanStart = false; item.RecommendationReason = $"Có {fresh} câu mới và {available - fresh} câu đã học (tổng {available}/{minimum}) đủ điều kiện. Phần này chưa đủ dữ liệu; vẫn có thể lập tuyến học và làm các phần khác."; }
                 else item.RecommendationReason = m.IsExternalPrerequisiteAssessment ? LearningGoalScope.ExternalAssessmentReason
-                    : $"Có {fresh} câu mới đủ điều kiện; sẽ chọn {item.QuestionCount} câu để tự kiểm tra{(item.QuestionCount < 5 ? " (mẫu ít, độ tin cậy thấp)" : "")}. Lời giải và nhận xét chỉ mở sau khi nộp cả bộ.";
+                    : fresh >= 5
+                        ? $"Có {fresh} câu mới đủ điều kiện; sẽ chọn {item.QuestionCount} câu để tự kiểm tra. Lời giải và nhận xét chỉ mở sau khi nộp cả bộ."
+                        : $"Có {fresh} câu mới và {available - fresh} câu đã học có thể dùng lại; sẽ chọn {item.QuestionCount} câu để tự kiểm tra (mẫu ít/có câu lặp, độ tin cậy thấp). Lời giải và nhận xét chỉ mở sau khi nộp cả bộ.";
             }
             if (m.Purpose is "Practice" or "Review")
             {
