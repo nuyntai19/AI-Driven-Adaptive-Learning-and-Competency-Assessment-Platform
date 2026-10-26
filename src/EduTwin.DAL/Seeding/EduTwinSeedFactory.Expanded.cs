@@ -102,6 +102,9 @@ public partial class EduTwinSeedFactory
                 ClassGradeAtStart = grade, CurriculumGradeAtStart = grade });
             var oldApplication = data.CurriculumApplications.Single(a => a.ApplicationId == classId);
             oldApplication.EndedAt = sampleTransition;
+            // ck_class_curriculum_application_dates requires EndedBy whenever EndedAt is set;
+            // without it the whole seed transaction rolls back and the API cannot start on a fresh DB.
+            oldApplication.EndedBy = teacher;
         }
 
         var criteria = new GradingCriteria { SchemaVersion = "1.0", RequiredIdeas = ["Đáp án đúng"],
