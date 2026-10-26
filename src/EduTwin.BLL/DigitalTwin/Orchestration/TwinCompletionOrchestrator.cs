@@ -94,7 +94,8 @@ public sealed class TwinCompletionOrchestrator : ITwinCompletionOrchestrator
             AnalysisConfidence: analysis.AnalysisConfidence,
             AnalysisOverrideVersion: analysis.OverrideVersion,
             DiagnosticReasonCodes: consistency.ReasonCodes,
-            IsPostFeedback: attempt.IsPostFeedback);
+            IsPostFeedback: attempt.IsPostFeedback,
+            CorrectnessIsDeterministic: question.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual);
 
         var isVoidedQuestion = false;
         if (attempt.AssignmentId.HasValue)

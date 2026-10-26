@@ -88,6 +88,43 @@ public sealed class EvidenceGateTests
         Assert.True(result.RequiresTeacherReview);
     }
 
+    [Fact]
+    public void Evaluate_RuleFallback_WithDeterministicCorrectness_IsFullTrust()
+    {
+        // The score came from exact auto-grading, so it must not sit at the
+        // provisional 0.3 weight until a teacher approves: approving would
+        // otherwise triple the evidence weight without changing any grade.
+        var result = CreateGate().Evaluate(ValidAI(100m) with
+        {
+            SourceType = EvidenceSourceType.RuleFallback,
+            EffectiveIsCorrect = true,
+            CorrectnessIsDeterministic = true
+        });
+
+        Assert.Equal(EvidenceTrustLevel.Trusted, result.TrustLevel);
+        Assert.Equal(EvidenceDecisionMode.DeterministicOnly, result.DecisionMode);
+        Assert.Equal(1m, result.ReasoningWeight);
+        Assert.Equal(
+            [EvidenceReasonCodes.SourceRuleFallback, EvidenceReasonCodes.DeterministicCorrectness],
+            result.ReasonCodes);
+        Assert.True(result.RequiresTeacherReview);
+    }
+
+    [Fact]
+    public void Evaluate_RuleFallback_WithDeterministicCorrectnessAndNoCorrectness_IsReviewOnly()
+    {
+        var result = CreateGate().Evaluate(ValidAI(100m) with
+        {
+            SourceType = EvidenceSourceType.RuleFallback,
+            EffectiveIsCorrect = null,
+            CorrectnessIsDeterministic = true
+        });
+
+        Assert.Equal(EvidenceTrustLevel.ReviewOnly, result.TrustLevel);
+        Assert.Equal(0m, result.ReasoningWeight);
+        Assert.True(result.RequiresTeacherReview);
+    }
+
     [Theory]
     [InlineData(false, true, false, false, true, EvidenceReasonCodes.StructuralValidationFailed)]
     [InlineData(true, false, false, false, true, EvidenceReasonCodes.SemanticValidationFailed)]

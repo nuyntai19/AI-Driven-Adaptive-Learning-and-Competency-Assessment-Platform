@@ -3,6 +3,7 @@ namespace EduTwin.BLL.AssessmentAndReasoning.Evidence;
 public static class EvidenceReasonCodes
 {
     public const string SourceRuleFallback = "SOURCE_RULE_FALLBACK";
+    public const string DeterministicCorrectness = "DETERMINISTIC_CORRECTNESS";
     public const string SourceTypeUnsupported = "SOURCE_TYPE_UNSUPPORTED";
     public const string PreliminaryCorrectnessPending = "PRELIMINARY_CORRECTNESS_PENDING";
     public const string StructuralValidationFailed = "STRUCTURAL_VALIDATION_FAILED";
