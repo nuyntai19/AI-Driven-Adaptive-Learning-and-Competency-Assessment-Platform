@@ -586,9 +586,10 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                     : plan.IsPlacement || m.IsProbe || LearningGoalScope.PrerequisitesSatisfied(skill, map, vouched);
                 // Mirror the execution service's tiered eligibility: fresh questions first,
                 // previously answered / worked-example questions as fallback so a small bank
-                // cannot make the check permanently unreachable. Placement/probe stays strict.
+                // cannot make the check permanently unreachable. Only placement stays strict;
+                // the timed mock exam (IsProbe) reuses like the other milestone exams.
                 var allForMission = subjectQuestions.Where(q => (m.IsMilestoneExam && m.AssessedSkillIds.Count > 0 ? m.AssessedSkillIds.Contains(q.PrimaryTopicNodeId.ToString()) : q.PrimaryTopicNodeId.ToString() == m.SkillId)).ToList();
-                var strict = plan.IsPlacement || m.IsProbe;
+                var strict = plan.IsPlacement;
                 var available = strict ? fresh : allForMission.Count;
                 var minimum = m.IsMilestoneExam
                     ? Math.Min(5 * Math.Max(1, m.AssessedSkillIds.Count), 3 * Math.Max(1, m.AssessedSkillIds.Count))

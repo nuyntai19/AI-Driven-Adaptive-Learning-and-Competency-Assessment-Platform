@@ -129,11 +129,12 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
             // student answered before (tier 2), then to worked-example questions (tier 3).
             // The old rule (tier 1 only, hard minimum 5) made every check unreachable on a
             // small bank: placement alone "uses up" the whole topic, so the route could
-            // never confirm a skill. Placement/probe runs keep the strict tier-1 rule.
+            // never confirm a skill. Placement runs keep the strict tier-1 rule; the timed
+            // mock exam uses the milestone-exam tiered branch below.
             var freshPool = pool.Where(q => !answered.Contains(q.QuestionId) && !exposed.Contains(q.QuestionId) && !reserved.Contains(q.QuestionId)).ToList();
             var desired = definition.IsMilestoneExam ? 5 * Math.Max(1, definition.AssessedSkillIds.Count) : LearningAssessmentPolicy.DesiredQuestions;
             int minimum;
-            if (plan.IsPlacement || definition.IsProbe)
+            if (plan.IsPlacement)
             {
                 pool = freshPool;
                 minimum = LearningAssessmentPolicy.MinimumPlacementQuestions;
@@ -144,6 +145,7 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
                     .Concat(pool.Where(q => answered.Contains(q.QuestionId) && !exposed.Contains(q.QuestionId) && !reserved.Contains(q.QuestionId)))
                     .Concat(pool.Where(q => exposed.Contains(q.QuestionId) && !reserved.Contains(q.QuestionId))).ToList();
                 minimum = Math.Min(desired, LearningAssessmentPolicy.MinimumPlacementQuestions * Math.Max(1, assessedNodes.Length));
+                effectiveCheckMinimum = minimum;
                 if (assessedNodes.Any(id => pool.Count(q => q.PrimaryTopicNodeId == id) < LearningAssessmentPolicy.MinimumPlacementQuestions))
                     throw new InvalidOperationException("Một phần thi thử chưa đủ 3 câu (kể cả câu đã học). Hãy làm các phần khác hoặc cập nhật phạm vi thi thử.");
             }
