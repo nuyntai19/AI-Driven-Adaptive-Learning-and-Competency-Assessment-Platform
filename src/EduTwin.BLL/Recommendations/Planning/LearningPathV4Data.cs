@@ -138,15 +138,24 @@ public static class LearningPathV4Data
                 nodes.Where(n => topology.Under(n.NodeId, e.Edge.SourceNodeId, e.SourceGraphVersionId)).Select(n => n.NodeId.ToString())
                     .DefaultIfEmpty(e.Edge.SourceNodeId.ToString())).Where(id => id != node.NodeId.ToString()).Distinct().ToList();
             var related = attempts.Where(a => a.Question.PrimaryTopicNodeId == node.NodeId).ToList();
+            // Learning-path attempts have no teacher review surface (the review queue is
+            // assignment-scoped), so requiring teacher approval here would make Confirmed
+            // unreachable from the path itself. The evaluator's auto-approve policy treats
+            // path evidence as provisionally valid; mirror that: a session-run attempt is
+            // usable when its latest evidence is not ReviewOnly, approval or not.
+            // Assignment attempts keep the strict rule - a teacher can approve those.
             var usable = related.Where(a => !a.IsPostFeedback && a.SolutionExposedAt == null &&
                 a.CreatedAt >= now.AddDays(-30) && latest.TryGetValue(a.AttemptId, out var e) &&
-                !e.RequiresTeacherReview && e.TrustLevel != EvidenceTrustLevel.ReviewOnly)
+                (!e.RequiresTeacherReview || a.SessionRunId != null) && e.TrustLevel != EvidenceTrustLevel.ReviewOnly)
                 .GroupBy(a => a.QuestionId).Select(g => g.OrderByDescending(a => a.CreatedAt).ThenByDescending(a => a.AttemptId).First())
                 .OrderByDescending(a => a.CreatedAt).ThenByDescending(a => a.AttemptId).Take(5).ToList();
             bool Correct(DAL.AssessmentAndReasoning.Attempt a) => overrides.GetValueOrDefault(a.AttemptId) ?? a.IsCorrect ?? false;
             // Recent independent evidence can demonstrate recovery; old baseline errors must not permanently dilute a new check.
             var guessable = usable.Count(a => a.Question.QuestionType == QuestionType.MultipleChoice) * 2 > usable.Count;
-            var confirmed = usable.Count >= 5 && usable.Count(Correct) >= (guessable ? usable.Count : Math.Ceiling(usable.Count * .8m));
+            // Floor aligned with LearningAssessmentPolicy.MinimumPlacementQuestions (3):
+            // a hard floor of 5 made Confirmed impossible on any bank with fewer than 5
+            // usable questions per skill, however well the student answered them.
+            var confirmed = usable.Count >= LearningAssessmentPolicy.MinimumPlacementQuestions && usable.Count(Correct) >= (guessable ? usable.Count : Math.Ceiling(usable.Count * .8m));
             var state = confirmed ? "Confirmed" : usable.Count > 0
                 ? (usable.Count(Correct) < usable.Count ? "Developing" : "Demonstrated") : "Unknown";
             var hasContent = content.Any(c => Matches(c, node)) || questions.Any(q => q.PrimaryTopicNodeId == node.NodeId) ||

@@ -105,14 +105,20 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
                 var required = guessable && !baseline ? valid.Count : (int)Math.Ceiling(valid.Count * .8m);
                 var classification = baseline ? LearningAssessmentPolicy.ClassifyPlacement(valid.Count, correct)
                     : LearningAssessmentPolicy.Classify(valid.Count, correct, guessable);
+                // A run whose policy floor is 3 (small bank: the snapshot records the
+                // effective minimum) may conclude on 3-4 valid answers - the agenda
+                // already promises a low-confidence conclusion for such samples.
+                // Without this, a skill whose bank holds fewer than 5 check-eligible
+                // questions could never be confirmed and the route could never close.
                 result.Outcome = baseline ? classification == "Strong" ? "Passed" : classification == "NeedsSupport" ? "NeedsSupport" : "Inconclusive"
-                    : valid.Count < 5 ? "Inconclusive" : correct >= required ? "Passed" : "NeedsSupport";
-                if (!baseline && valid.Count < 5)
+                    : valid.Count < 5 && !shortProbe ? "Inconclusive" : correct >= required ? "Passed" : "NeedsSupport";
+                if (!baseline && valid.Count < 5 && !shortProbe)
                 {
                     var accumulated = await LearningPathV4Data.MapAsync(db, centerId, studentId, run.Session.LearningPath.SubjectId, run.Session.ClassId, now, cancellationToken);
                     if (accumulated.Skills.Any(s => s.SkillId == run.Session.TopicNodeId.ToString() && s.State == "Confirmed")) result.Outcome = "Passed";
                 }
                 reason = $"Tự kiểm tra: đúng {correct}/{valid.Count} câu, cần {required}/{valid.Count}{(guessable && !baseline ? " vì phần lớn là trắc nghiệm" : "")}.";
+                if (!baseline && shortProbe && valid.Count < 5) reason += $" Mẫu nhỏ ({valid.Count} câu) nên kết luận có độ tin cậy thấp.";
                 if (!types.Any(t => t.Difficulty >= 3)) reason += " Bộ này chưa có câu mức vừa/khó nên chỉ xác nhận mức cơ bản.";
                 // Auto-approved AI evidence keeps the route moving, but the result stays provisional until a teacher confirms it.
                 result.IsProvisional = result.Outcome == "Passed" && valid.Any(i => latest[i.Attempt!.AttemptId].RequiresTeacherReview);
