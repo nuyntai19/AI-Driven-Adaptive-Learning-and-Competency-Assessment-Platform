@@ -1504,6 +1504,22 @@ export function TeacherAssignmentEditorView() {
                     {effectiveTimeLimitMinutes ? `⏱ ${effectiveTimeLimitMinutes} phút` : "Không giới hạn"}
                   </p>
                 </div>
+                <div>
+                  <span className="text-[var(--th-text-muted)] uppercase tracking-wider text-[10px] font-semibold block mb-1">
+                    Phân loại bài:
+                  </span>
+                  <p className="font-semibold text-[var(--th-text)]">
+                    {kind === "Midterm" ? "Thi giữa kỳ" : kind === "Final" ? "Thi cuối kỳ" : kind === "MockExam" ? "Thi thử" : "Bài tập thường"}
+                  </p>
+                </div>
+                {kind !== "Regular" && examAt && (
+                  <div>
+                    <span className="text-[var(--th-text-muted)] uppercase tracking-wider text-[10px] font-semibold block mb-1">
+                      Ngày giờ thi:
+                    </span>
+                    <p className="font-semibold text-[var(--th-text)]">{new Date(examAt).toLocaleString("vi-VN")}</p>
+                  </div>
+                )}
                 {dueAt && (
                   <div>
                     <span className="text-[var(--th-text-muted)] uppercase tracking-wider text-[10px] font-semibold block mb-1">

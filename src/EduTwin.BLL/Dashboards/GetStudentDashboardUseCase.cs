@@ -78,35 +78,62 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
                 .Where(p => p.CenterId == centerId && p.StudentId == studentId && !p.IsDeleted)
                 .ToListAsync(cancellationToken);
 
+            // The all-subjects view must see the same goals as the single-subject view
+            // and the learning path: an active V4 LearningGoal counts even when the
+            // legacy StudentSubjectGoal was never created (it previously reported
+            // "no goal" while the route page showed an active goal).
+            var canonicalGoals = await _dbContext.LearningGoals.AsNoTracking()
+                .Where(g => g.CenterId == centerId && g.StudentId == studentId && g.Status == "Active" && !g.IsDeleted)
+                .OrderByDescending(g => g.CreatedAt)
+                .ToListAsync(cancellationToken);
+
+            var forecastBySubject = new Dictionary<Guid, decimal?>();
+            foreach (var cg in canonicalGoals)
+            {
+                if (forecastBySubject.ContainsKey(cg.SubjectId)) continue;
+                var f = await Recommendations.Planning.LearningGoalForecast.ReadAsync(_dbContext, centerId, studentId, cg.SubjectId,
+                    cg.ClassId, _timeProvider.GetUtcNow().UtcDateTime, Recommendations.Planning.LearningGoalScope.Read(cg.TargetSkillIds).TargetSkillIds, cancellationToken);
+                forecastBySubject[cg.SubjectId] = f?.Score;
+            }
+
             var targets = activeSubjects
                 .Select(subject =>
                 {
                     var preference = learningPathPreferences.FirstOrDefault(p => p.SubjectId == subject.SubjectId);
                     var governedGoal = goals.FirstOrDefault(g => g.SubjectId == subject.SubjectId);
-                    var hasTarget = preference is not null || governedGoal is not null;
-                    var targetScore = preference is not null
+                    var canonicalGoal = canonicalGoals.FirstOrDefault(g => g.SubjectId == subject.SubjectId);
+                    var hasTarget = preference is not null || governedGoal is not null || canonicalGoal is not null;
+                    var targetScore = canonicalGoal?.TargetScore ?? (preference is not null
                         ? Math.Round(preference.TargetMastery / 10m, 1, MidpointRounding.AwayFromZero)
-                        : governedGoal?.TargetScore ?? 0m;
-                    var remainingDays = preference is not null
+                        : governedGoal?.TargetScore ?? 0m);
+                    var remainingDays = canonicalGoal is not null
+                        ? Recommendations.Planning.LearningGoalBridge.RemainingDays(canonicalGoal, _timeProvider.GetUtcNow().UtcDateTime)
+                        : preference is not null
                         ? checked((uint)preference.TargetWeeks * 7u)
                         : governedGoal?.RemainingDays ?? 0u;
-                    var predictedScore = governedGoal?.CurrentPredictedScore ?? 0m;
+                    var forecastScore = forecastBySubject.TryGetValue(subject.SubjectId, out var fs) ? fs : null;
+                    var predictedScore = forecastScore ?? governedGoal?.CurrentPredictedScore ?? 0m;
+                    var hasPrediction = forecastScore.HasValue || governedGoal is not null;
                     var riskScore = hasTarget
                         ? (preference is not null
                             ? StudentSubjectGoalRiskCalculator.CalculateRisk(targetScore, predictedScore, checked((int)remainingDays))
                             : governedGoal?.RiskScore ?? 0m)
                         : 0m;
-                    return new { HasTarget = hasTarget, TargetScore = targetScore, RemainingDays = remainingDays, PredictedScore = predictedScore, RiskScore = riskScore };
+                    return new { HasTarget = hasTarget, TargetScore = targetScore, RemainingDays = remainingDays, PredictedScore = predictedScore, RiskScore = riskScore, HasPrediction = hasPrediction };
                 })
                 .Where(target => target.HasTarget)
                 .ToList();
 
+            var predictedTargets = targets.Where(t => t.HasPrediction).ToList();
             var goalDto = new StudentGoalSummaryDto
             {
                 HasGoal = targets.Count > 0,
+                HasPrediction = predictedTargets.Count > 0,
                 TargetScore = targets.Count > 0 ? Math.Round(targets.Average(g => g.TargetScore), 1, MidpointRounding.AwayFromZero) : 0m,
                 RemainingDays = targets.Count > 0 ? targets.Min(g => g.RemainingDays) : 0u,
-                CurrentPredictedScore = targets.Count > 0 ? Math.Round(targets.Average(g => g.PredictedScore), 1, MidpointRounding.AwayFromZero) : 0m,
+                // Average only over subjects that actually produced a prediction;
+                // folding in a placeholder 0 presented "0.0/10" as a forecast.
+                CurrentPredictedScore = predictedTargets.Count > 0 ? Math.Round(predictedTargets.Average(g => g.PredictedScore), 1, MidpointRounding.AwayFromZero) : 0m,
                 RiskScore = targets.Count > 0 ? Math.Round(targets.Max(g => g.RiskScore), 1, MidpointRounding.AwayFromZero) : 0m
             };
 
@@ -281,7 +308,7 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
             HasPrediction = forecast == null ? null : forecast.Score.HasValue,
             HasDeadline = canonicalGoal?.DeadlineDate.HasValue,
             ForecastMessage = forecast?.Message,
-            HasGoal = canonicalGoal != null ? canonicalGoal.TargetScore.HasValue : learningPathPreference is not null || goalEntity is not null,
+            HasGoal = canonicalGoal != null || learningPathPreference is not null || goalEntity is not null,
             TargetScore = targetScore,
             RemainingDays = remainingDays,
             CurrentPredictedScore = currentPredictedScore,

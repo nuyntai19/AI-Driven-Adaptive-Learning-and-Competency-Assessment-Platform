@@ -132,7 +132,9 @@ export const StudentDashboardPage: React.FC = () => {
     groupName: item.groupName,
   }));
 
-  const goalDiff = goal.hasGoal ? goalGapLabel(goal.targetScore, goal.currentPredictedScore) : "—";
+  const goalDiff = goal.hasGoal && goal.hasPrediction !== false ? goalGapLabel(goal.targetScore, goal.currentPredictedScore) : "—";
+  const currentMonth = new Date().getMonth() + 1;
+  const currentSemester = currentMonth >= 8 || currentMonth === 1 ? "Học kỳ I" : "Học kỳ II";
   const pathLink = studentScopeUrl("/hoc-tap/lo-trinh-hoc-tap", searchParams);
   const practiceLink = urgentAssignment
     ? studentScopeUrl(`/hoc-tap/bai-tap/${urgentAssignment.assignmentId}`, searchParams)
@@ -161,7 +163,7 @@ export const StudentDashboardPage: React.FC = () => {
             </span>
           </div>
           <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
-            Học kỳ II · Lộ trình cá nhân hóa định hướng năng lực mục tiêu
+            {currentSemester} · Lộ trình cá nhân hóa định hướng năng lực mục tiêu
           </p>
         </div>
 
@@ -359,7 +361,7 @@ export const StudentDashboardPage: React.FC = () => {
 
           <div className="pt-4 mt-4 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between text-xs">
             <span className="text-stone-500 dark:text-stone-400">
-              {goal.hasGoal ? <>Mục tiêu: <strong className="text-stone-800 dark:text-stone-200">{goal.targetScore} điểm</strong></> : "Mục tiêu do học sinh tự đặt"}
+              {goal.hasGoal && goal.targetScore > 0 ? <>Mục tiêu: <strong className="text-stone-800 dark:text-stone-200">{goal.targetScore} điểm</strong></> : goal.hasGoal ? "Mục tiêu lộ trình đang hoạt động" : "Mục tiêu do học sinh tự đặt"}
             </span>
             <Link
               to={studentScopeUrl("/hoc-tap/ho-so-nang-luc", searchParams)}
@@ -378,7 +380,7 @@ export const StudentDashboardPage: React.FC = () => {
             Điểm dự đoán
           </span>
           <span className="text-xl font-bold font-mono text-stone-900 dark:text-stone-100">
-            {goal.currentPredictedScore.toFixed(1)} / 10
+            {goal.hasPrediction === false ? "Chưa đủ dữ liệu" : `${goal.currentPredictedScore.toFixed(1)} / 10`}
           </span>
         </div>
         <div className="py-2.5 px-3 border-l-2 border-stone-300 dark:border-stone-700">
@@ -386,7 +388,7 @@ export const StudentDashboardPage: React.FC = () => {
             Mục tiêu kỳ thi
           </span>
           <span className="text-xl font-bold font-mono text-stone-900 dark:text-stone-100">
-            {goal.hasGoal ? `${goal.targetScore.toFixed(1)} / 10` : "Chưa đặt"}
+            {goal.hasGoal && goal.targetScore > 0 ? `${goal.targetScore.toFixed(1)} / 10` : "Chưa đặt"}
           </span>
         </div>
         <div className="py-2.5 px-3 border-l-2 border-stone-300 dark:border-stone-700">
