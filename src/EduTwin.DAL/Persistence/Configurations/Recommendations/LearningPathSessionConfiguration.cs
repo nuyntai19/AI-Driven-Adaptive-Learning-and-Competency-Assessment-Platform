@@ -10,7 +10,12 @@ public class LearningPathSessionConfiguration : IEntityTypeConfiguration<Learnin
     public void Configure(EntityTypeBuilder<LearningPathSession> builder)
     {
         builder.ToTable("learning_path_sessions");
-        builder.Property(s => s.PlannedDate).HasColumnName("planned_date").HasColumnType("date");
+        builder.Property(s => s.PlannedDate)
+            .HasColumnName("planned_date")
+            .HasColumnType("date")
+            .HasConversion(
+                d => d.HasValue ? d.Value.ToDateTime(TimeOnly.MinValue) : (DateTime?)null,
+                d => d.HasValue ? DateOnly.FromDateTime(d.Value) : (DateOnly?)null);
 
         builder.HasKey(s => s.SessionId).HasName("pk_learning_path_sessions");
 
