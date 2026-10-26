@@ -36,7 +36,8 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
   const [deadline, setDeadline] = useState(() => {
     if (!initialDeadline) return "";
     const date = new Date(initialDeadline);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    return iso >= todayIso() ? iso : "";
   });
   const [targets, setTargets] = useState<string[]>(suggestedSkillIds.length ? suggestedSkillIds : entryMode
     ? groupLearningSkills(skills).flatMap(g => g.skills.map(s => s.skillId)) : automatic ? recommendation.targetSkillIds : []);
