@@ -285,7 +285,7 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("varchar(36)")
                         .HasColumnName("client_submission_id");
 
-                    b.Property<decimal>("Confidence")
+                    b.Property<decimal?>("Confidence")
                         .HasColumnType("decimal(5,2)")
                         .HasColumnName("confidence");
 
@@ -6040,7 +6040,7 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("VARCHAR(64)")
-                        .HasDefaultValue("Asia/Bangkok")
+                        .HasDefaultValue("Asia/Ho_Chi_Minh")
                         .HasColumnName("timezone");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -7418,7 +7418,7 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("int unsigned")
                         .HasColumnName("phase_number");
 
-                    b.Property<DateOnly?>("PlannedDate")
+                    b.Property<DateTime?>("PlannedDate")
                         .HasColumnType("date")
                         .HasColumnName("planned_date");
 

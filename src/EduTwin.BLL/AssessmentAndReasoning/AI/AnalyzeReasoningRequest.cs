@@ -92,7 +92,7 @@ public sealed record AnalyzeReasoningStudentSubmission
 
     public uint TimeSpentSeconds { get; init; }
 
-    public decimal Confidence { get; init; }
+    public decimal? Confidence { get; init; }
 
     public uint AnswerChanges { get; init; }
 

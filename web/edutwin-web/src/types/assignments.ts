@@ -166,7 +166,7 @@ export interface AssignmentDraftAnswerItemDto {
   answerDisplayLatex?: string;
   reasoningText?: string;
   timeSpentSeconds?: number;
-  confidence?: number;
+  confidence?: number | null;
   answerChanges?: number;
   drawingUploadToken?: string;
 }

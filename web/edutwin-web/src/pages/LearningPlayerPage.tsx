@@ -88,7 +88,7 @@ interface StoredAnswer {
   finalAnswer: string;
   answerDisplayLatex: string;
   reasoningText: string;
-  confidence: number;
+  confidence: number | null;
   timeSpentSeconds: number;
   answerChanges: number;
   snapshotDataUrl?: string | null;
@@ -118,7 +118,7 @@ function loadStoredAssignmentAnswers(scope: AssignmentDraftScope | null): Record
             ? stored.answerDisplayLatex
             : (typeof stored.finalAnswer === "string" ? stored.finalAnswer : ""),
         reasoningText: typeof stored.reasoningText === "string" ? stored.reasoningText : "",
-        confidence: typeof stored.confidence === "number" ? stored.confidence : 80,
+        confidence: typeof stored.confidence === "number" ? stored.confidence : null,
         timeSpentSeconds: typeof stored.timeSpentSeconds === "number" ? stored.timeSpentSeconds : 0,
         answerChanges: typeof stored.answerChanges === "number" ? stored.answerChanges : 0,
         snapshotDataUrl: typeof stored.snapshotDataUrl === "string" ? stored.snapshotDataUrl : null,
@@ -237,7 +237,7 @@ const PracticePlayerPage = () => {
   const [finalAnswer, setFinalAnswer] = useState<string>("");
   const [answerDisplayLatex, setAnswerDisplayLatex] = useState<string>("");
   const [reasoningText, setReasoningText] = useState<string>("");
-  const [confidence, setConfidence] = useState<number>(80);
+  const [confidence, setConfidence] = useState<number | null>(null);
   const [answerChanges, setAnswerChanges] = useState<number>(0);
   const answerChangesRef = useRef<number>(0);
   const [timeSpentSeconds, setTimeSpentSeconds] = useState<number>(0);
@@ -294,7 +294,7 @@ const PracticePlayerPage = () => {
     finalAnswer: string;
     answerDisplayLatex?: string;
     reasoningText?: string;
-    confidence: number;
+    confidence: number | null;
     timeSpentSeconds: number;
     answerChanges: number;
     drawingUploadToken?: string;
@@ -723,7 +723,7 @@ const PracticePlayerPage = () => {
         finalAnswer: da.finalAnswer ?? "",
         answerDisplayLatex: da.answerDisplayLatex ?? "",
         reasoningText: da.reasoningText ?? "",
-        confidence: da.confidence ?? 80,
+        confidence: da.confidence ?? null,
         timeSpentSeconds: da.timeSpentSeconds ?? 0,
         answerChanges: da.answerChanges ?? 0,
         drawingUploadToken: da.drawingUploadToken ?? null,
@@ -906,7 +906,7 @@ const PracticePlayerPage = () => {
           finalAnswer: da.finalAnswer || "",
           answerDisplayLatex: da.answerDisplayLatex || "",
           reasoningText: da.reasoningText || "",
-          confidence: da.confidence ?? 80,
+          confidence: da.confidence ?? null,
           timeSpentSeconds: da.timeSpentSeconds ?? 0,
           answerChanges: da.answerChanges ?? 0,
           drawingUploadToken: da.drawingUploadToken || null,
@@ -926,7 +926,7 @@ const PracticePlayerPage = () => {
         setFinalAnswer(activeAnswer.finalAnswer || "");
         setAnswerDisplayLatex(assignmentQuestion?.questionType === "MultipleChoice" ? "" : (activeAnswer.answerDisplayLatex || ""));
         setReasoningText(activeAnswer.reasoningText || "");
-        setConfidence(activeAnswer.confidence ?? 80);
+        setConfidence(activeAnswer.confidence ?? null);
         setTimeSpentSeconds(activeAnswer.timeSpentSeconds ?? 0);
         const initialChanges = activeAnswer.answerChanges ?? 0;
         answerChangesRef.current = initialChanges;
@@ -1235,7 +1235,7 @@ const PracticePlayerPage = () => {
       setFinalAnswer(effectiveSubmittedAnswer || "");
       setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (effectiveSubmittedAnswerDisplayLatex || ""));
       setReasoningText(effectiveSubmittedReasoning || "");
-      setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? saved?.confidence ?? 80);
+      setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? saved?.confidence ?? null);
       setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? saved?.timeSpentSeconds ?? 0);
       const initialChanges = assignmentQuestion?.latestAttempt?.answerChanges ?? saved?.answerChanges ?? 0;
       answerChangesRef.current = initialChanges;
@@ -1248,7 +1248,7 @@ const PracticePlayerPage = () => {
       setFinalAnswer(saved.finalAnswer || "");
       setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (saved.answerDisplayLatex || ""));
       setReasoningText(saved.reasoningText || "");
-      setConfidence(saved.confidence ?? 80);
+      setConfidence(saved.confidence ?? null);
       setTimeSpentSeconds(saved.timeSpentSeconds ?? 0);
       const initialChanges = saved.answerChanges ?? 0;
       answerChangesRef.current = initialChanges;
@@ -1260,7 +1260,7 @@ const PracticePlayerPage = () => {
       setFinalAnswer(effectiveSubmittedAnswer || "");
       setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (effectiveSubmittedAnswerDisplayLatex || ""));
       setReasoningText(effectiveSubmittedReasoning || "");
-      setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? 80);
+      setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? null);
       setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? 0);
       const initialChanges = assignmentQuestion?.latestAttempt?.answerChanges ?? 0;
       answerChangesRef.current = initialChanges;
@@ -1301,7 +1301,7 @@ const PracticePlayerPage = () => {
     (
       newFinalAnswer?: string,
       newReasoning?: string,
-      newConf?: number,
+      newConf?: number | null,
       newAnswerDisplayLatex?: string,
       newAnswerChanges?: number
     ) => {
@@ -1844,7 +1844,7 @@ const PracticePlayerPage = () => {
             finalAnswer: string;
             answerDisplayLatex?: string;
             reasoningText?: string;
-            confidence: number;
+            confidence: number | null;
             timeSpentSeconds: number;
             answerChanges: number;
             drawingUploadToken?: string;
@@ -1858,7 +1858,7 @@ const PracticePlayerPage = () => {
               finalAnswer: answerTrimmed,
               answerDisplayLatex: src?.answerDisplayLatex?.trim() || undefined,
               reasoningText: reasoningTrimmed,
-              confidence: src?.confidence ?? 80,
+              confidence: src?.confidence ?? null,
               timeSpentSeconds: src?.timeSpentSeconds ?? 0,
               answerChanges: src?.answerChanges ?? 0,
               drawingUploadToken: src?.drawingUploadToken || (q.questionId === currentQId ? currentToken || undefined : undefined),
@@ -1901,7 +1901,7 @@ const PracticePlayerPage = () => {
               skipped: isSkipped,
               answerDisplayLatex: qAnswer?.answerDisplayLatex?.trim() || undefined,
               reasoningText: rawAnswer ? (qAnswer?.reasoningText?.trim() || undefined) : undefined,
-              confidence: qAnswer?.confidence ?? 80,
+              confidence: qAnswer?.confidence ?? null,
               timeSpentSeconds: qAnswer?.timeSpentSeconds ?? 0,
               answerChanges: qAnswer?.answerChanges ?? 0,
               drawingUploadToken: qAnswer?.drawingUploadToken || undefined,
@@ -3583,7 +3583,7 @@ const PracticePlayerPage = () => {
                     Mức độ tự tin với câu trả lời
                   </span>
                   <span className="text-sm font-extrabold text-indigo-600 dark:text-indigo-400">
-                    {confidence}%
+                    {confidence === null ? "Chưa chọn" : `${confidence}%`}
                   </span>
                 </div>
 
@@ -3593,16 +3593,19 @@ const PracticePlayerPage = () => {
                     min={10}
                     max={100}
                     step={5}
-                    value={confidence}
+                    value={confidence ?? 50}
                     onChange={(e) => {
                       if (!isReadOnly) handleConfidenceChange(Number(e.target.value));
                     }}
                     disabled={isReadOnly}
                     className={`w-full h-2 rounded-lg bg-slate-200 dark:bg-slate-700 appearance-none accent-indigo-600 focus:outline-none ${
                       isReadOnly ? "cursor-default opacity-80" : "cursor-pointer"
-                    }`}
+                    } ${confidence === null ? "opacity-50" : ""}`}
                   />
                 </div>
+                {confidence === null && !isReadOnly && (
+                  <p className="mt-1.5 text-[11px] text-slate-400">Kéo thanh trượt nếu em muốn ghi lại mức tự tin của mình — để nguyên thì hệ thống không ghi nhận mức tự tin cho câu này.</p>
+                )}
               </div>
 
               {/* Bottom Actions for Question */}

@@ -9,7 +9,7 @@ namespace EduTwin.BLL.DigitalTwin;
 public readonly record struct SubjectCalibrationSample(
     ulong AttemptId,
     DateTime CreatedAt,
-    decimal Confidence,
+    decimal? Confidence,
     bool? EffectiveIsCorrect);
 
 public interface IBehaviorCalibrationSampleProvider

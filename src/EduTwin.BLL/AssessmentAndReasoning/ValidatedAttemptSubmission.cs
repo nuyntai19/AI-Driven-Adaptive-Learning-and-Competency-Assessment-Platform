@@ -15,7 +15,7 @@ public sealed class ValidatedAttemptSubmission
     public string FinalAnswer { get; init; } = string.Empty;
     public string? ReasoningText { get; init; }
     public uint TimeSpentSeconds { get; init; }
-    public decimal Confidence { get; init; }
+    public decimal? Confidence { get; init; }
     public uint AnswerChanges { get; init; }
     public bool Skipped { get; init; }
     public string ReasoningLanguage { get; init; } = string.Empty;
