@@ -255,11 +255,21 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
         var answeredSet = (await _dbContext.Attempts.AsNoTracking()
             .Where(a => a.CenterId == centerId && a.StudentId == studentId)
             .Select(a => a.QuestionId).Distinct().ToListAsync(ct)).ToHashSet();
+        var lastAnsweredId = await _dbContext.Attempts.AsNoTracking()
+            .Where(a => a.CenterId == centerId && a.StudentId == studentId)
+            .OrderByDescending(a => a.CreatedAt).ThenByDescending(a => a.AttemptId)
+            .Select(a => (ulong?)a.QuestionId).FirstOrDefaultAsync(ct);
 
+        // Pass 1 respects the reuse delay. If every usable question is cooling down
+        // (an active student on a small bank), pass 2 ignores the delay - free
+        // practice must not dead-end - but never serves the very last question again.
+        foreach (var pass in new[] { 1, 2 })
         foreach (var nodeId in orderedNodes)
         {
             var pool = await LearningPathV4Data.QuestionsAsync(_dbContext, centerId, studentId, subjectId, new[] { nodeId }, classId, ct);
-            var usable = pool.Where(q => !cooling.Contains(q.QuestionId)).ToList();
+            var usable = pass == 1
+                ? pool.Where(q => !cooling.Contains(q.QuestionId)).ToList()
+                : pool.Where(q => q.QuestionId != lastAnsweredId).ToList();
             if (usable.Count == 0) continue;
             var picked = usable
                 .OrderBy(q => answeredSet.Contains(q.QuestionId) ? 1 : 0)
@@ -286,3 +296,4 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
         return null;
     }
 }
+
