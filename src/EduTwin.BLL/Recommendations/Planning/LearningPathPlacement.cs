@@ -41,7 +41,8 @@ public sealed partial class LearningPathV4Planner
             var confirmed = skill.State == "Confirmed";
             var result = new PlacementSkillResultDto
             {
-                Classification = !assessed ? "Inconclusive" : LearningAssessmentPolicy.ClassifyPlacement(answers.Count, correct),
+                Classification = !assessed || issued.Any(i => i.SessionRunId == run?.SessionRunId && i.PrimaryTopicNodeId.ToString() == id && i.Skipped)
+                    ? "Inconclusive" : LearningAssessmentPolicy.ClassifyPlacement(answers.Count, correct),
                 Confidence = !assessed || answers.Count < 3 ? "Insufficient" : answers.Count < 5 ? "Low" : "Standard",
                 SkillId = id, SkillName = skill.SkillName, TopicName = skill.TopicName,
                 AnsweredQuestions = (uint)answers.Count, CorrectAnswers = (uint)correct,

@@ -240,10 +240,10 @@ function Activity({ activity: a, onSubmitted, paused }: { activity: ActivityRunD
     onSuccess: (res, draft) => { if (res.hasConflict) { setConflict(true); setNotice("Bản nháp đã thay đổi ở thiết bị khác. Giữ nội dung hiện tại và mở lại nhiệm vụ để xem bản đã lưu; không tự ghi đè."); }
       else { setRevision(res.draftRevision); setLastSaved(draft); setNotice("Đã lưu bản nháp trên server."); } },
     onError: e => setNotice(`Chưa đồng bộ bản nháp: ${e.message}. Nội dung vẫn ở màn hình; hãy lưu lại trước khi đóng.`) });
-  const submit = useMutation({ mutationFn: () => submitActivity(a.activityRunId, { clientSubmissionId: submissionId,
-    questionId: q ? q.questionId : undefined, finalAnswer: answer, reasoningText: reasoning || undefined,
+  const submit = useMutation({ mutationFn: (skipped: boolean) => submitActivity(a.activityRunId, { clientSubmissionId: submissionId,
+    questionId: q ? q.questionId : undefined, finalAnswer: skipped ? "SKIPPED" : answer, skipped, reasoningText: reasoning || undefined,
     selectedErrorStep: errorStep || undefined, timeSpentSeconds: elapsedSeconds() }),
-    onSuccess: res => onSubmitted(res, answer) });
+    onSuccess: (res, skipped) => onSubmitted(res, skipped ? "Đã bỏ qua câu này" : answer) });
   const [hints, setHints] = useState<AssistanceResponseDto[]>([]);
   const addHints = (list: AssistanceResponseDto[]) => setHints(h => [...h, ...list].filter((x, i, all) => all.findIndex(y => y.hintLevel === x.hintLevel) === i)
     .sort((x, y) => (x.hintLevel ?? 0) - (y.hintLevel ?? 0)));
@@ -270,7 +270,7 @@ function Activity({ activity: a, onSubmitted, paused }: { activity: ActivityRunD
   const lastHint = hints[hints.length - 1];
   const moreHints = !lastHint || !!lastHint.hasMoreHints;
   const field = "mt-2 w-full rounded-lg border border-slate-300 bg-white p-3 dark:bg-slate-900";
-  return <form className="space-y-5" onSubmit={e => { e.preventDefault(); submit.mutate(); }}>
+  return <form className="space-y-5" onSubmit={e => { e.preventDefault(); submit.mutate(false); }}>
     <div><p className="text-sm font-semibold text-indigo-600">{a.stage || activityNames[a.activityType] || a.activityType} · Câu / hoạt động {a.activityOrder}</p>
       {independent && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Tự làm, không có gợi ý hoặc lời giải trước khi nộp. Kết quả còn qua chấm và kiểm duyệt bằng chứng.</p>}</div>
     {a.content && <article className="space-y-3 rounded-xl bg-slate-50 p-4 dark:bg-slate-800"><h3 className="text-lg font-semibold">{a.content.title}</h3>
@@ -298,6 +298,7 @@ function Activity({ activity: a, onSubmitted, paused }: { activity: ActivityRunD
     {(submit.error || assist.error) && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{(submit.error ?? assist.error)?.message}</p>}
     <div className="flex flex-wrap gap-3"><button disabled={submit.isPending || save.isPending || conflict} type="submit" className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white disabled:opacity-40">{submit.isPending ? "Đang lưu bài…" : q ? "Nộp câu trả lời" : "Hoàn thành hoạt động"}</button>
       <button type="button" disabled={save.isPending || conflict} className="rounded-xl border px-4 py-3" onClick={() => save.mutate(currentDraft)}>Lưu bản nháp</button>
+      {q && <button type="button" disabled={submit.isPending || save.isPending || conflict} className="rounded-xl border px-4 py-3" onClick={() => submit.mutate(true)}>Bỏ qua câu này</button>}
       {!independent && <button type="button" disabled={assist.isPending || !moreHints} className="rounded-xl border border-amber-300 px-4 py-3 text-amber-900 disabled:opacity-50"
         onClick={() => assist.mutate(hints.length)}>{assist.isPending ? "Đang mở gợi ý…" : hints.length === 0 ? "Gợi ý" : moreHints ? `Gợi ý tiếp (${hints.length + 1}/${lastHint?.totalHints ?? "?"})` : "Đã mở hết gợi ý"}</button>}
     </div>

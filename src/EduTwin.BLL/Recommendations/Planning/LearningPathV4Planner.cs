@@ -110,6 +110,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         var map = await LearningPathV4Data.MapAsync(db, center, student, goal.SubjectId, goal.ClassId, Now, ct);
         var nodes = await LearningPathV4Data.NodesAsync(db, center, student, goal.SubjectId, goal.ClassId, ct);
         var insights = await LearningPathInsights.ReadAsync(db, center, student, goal.SubjectId, goal.ClassId, Now, ct);
+        var baseline = goal.StartWithPlacement ? new Dictionary<string, string>()
+            : await LearningPathPlacementBaseline.ReadAsync(db, center, student, goal.SubjectId, goal.ClassId, ct);
         var scope = LearningGoalScope.Read(goal.TargetSkillIds);
         var wanted = scope.TargetSkillIds.ToHashSet();
         if (wanted.Count == 0) wanted.UnionWith(map.Skills.Select(s => s.SkillId));
@@ -137,7 +139,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         while (selected.Count > 0)
         {
             var ready = selected.Where(s => !s.PrerequisiteSkillIds.Any(p => selected.Any(x => x.SkillId == p)))
-                .OrderByDescending(s => goal.GoalType == "ExamPrep"
+                .OrderByDescending(s => baseline.GetValueOrDefault(s.SkillId) == "NeedsSupport")
+                .ThenByDescending(s => goal.GoalType == "ExamPrep"
                     ? (1m - Math.Clamp((s.MasteryScore ?? 50m) / 100m, 0, 1)) * examPriority[s.SkillId]
                     : insights.SuggestedSkillIds.Contains(s.SkillId) ? 2m : s.State == "Developing" ? 1m : 0m)
                 .ThenBy(s => nodes.FindIndex(n => n.NodeId.ToString() == s.SkillId)).FirstOrDefault();
@@ -149,6 +152,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             c.SubjectId == goal.SubjectId && c.Status == "Published").OrderByDescending(c => c.Version).ToListAsync(ct);
         var usedQuestionIds = await db.Attempts.AsNoTracking().Where(a => a.CenterId == center && a.StudentId == student &&
             a.Question.SubjectId == goal.SubjectId).Select(a => a.QuestionId).Distinct().ToListAsync(ct);
+        var cooling = await LearningPathV4Data.RecentQuestionIdsAsync(db, center, student, Now, LearningAssessmentPolicy.Settings(goal.ScheduleSettings).QuestionReuseDelayDays, ct);
         var exposedQuestionIds = await db.IssuedItems.AsNoTracking().Where(i => i.CenterId == center &&
             i.ActivityRun.SessionRun.StudentId == student && i.SolutionExposedAt != null && i.QuestionId != null)
             .Select(i => i.QuestionId!.Value).Distinct().ToListAsync(ct);
@@ -188,7 +192,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             if (!goal.StartWithPlacement && (skill.State != "Confirmed" || goal.GoalType == "Advanced"))
             {
                 var authored = content.Where(c => LearningPathV4Data.Matches(c, node)).GroupBy(c => c.ActivityType).Select(g => g.First()).ToList();
-                foreach (var lesson in authored.Where(c => (skill.State != "Confirmed" || goal.GoalType != "Advanced") && c.ActivityType is "WorkedExample" or "FindError" or "Explore" or "CompleteSolution" or "Explain"))
+                foreach (var lesson in authored.Where(c => baseline.GetValueOrDefault(skill.SkillId) != "Strong" && (skill.State != "Confirmed" || goal.GoalType != "Advanced") && c.ActivityType is "WorkedExample" or "FindError" or "Explore" or "CompleteSolution" or "Explain"))
                     Add(lesson.ActivityType, lesson.Title, lesson.EstimatedDurationMinutes, true,
                         $"Nội dung đã xuất bản cho {node.NodeName}. {skill.Rationale}", lesson.ContentVersionId);
                 var insight = insights.Skills.FirstOrDefault(s => s.SkillId == skill.SkillId);
@@ -197,11 +201,12 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 var levelLabel = LearningPathPacing.LevelLabel(weakness);
                 var practicePool = LearningPathInsights.PracticePool(questions.Where(q => q.PrimaryTopicNodeId == node.NodeId).ToList(), usedQuestionIds.ToHashSet());
                 if (goal.GoalType == "Advanced") practicePool = questions.Where(q => q.PrimaryTopicNodeId == node.NodeId && q.Difficulty >= 4).ToList();
+                practicePool = practicePool.Where(q => !cooling.Contains(q.QuestionId)).ToList();
                 var estimatedSets = LearningPathPacing.EstimatedSetsFor(weakness);
                 // No answers yet: try a few questions first instead of making a student who may already know it read theory.
                 var probeFirst = insight is not { QuestionCount: > 0 } && skill.State == "Unknown" && goal.GoalType is not ("Foundation" or "Advanced") && practicePool.Count >= 3;
                 // Strong recent answers skip re-reading theory (it stays available from review); weak skills restart from the concept.
-                var skipStudy = level == "Strong" && insight is { QuestionCount: >= 3 } && goal.GoalType != "Foundation";
+                var skipStudy = baseline.GetValueOrDefault(skill.SkillId) == "Strong" || level == "Strong" && insight is { QuestionCount: >= 3 } && goal.GoalType != "Foundation";
                 if (probeFirst)
                 {
                     var probeSize = (int)Math.Min(LearningPathPacing.ProbeSize, (uint)practicePool.Count);
@@ -228,6 +233,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                         var related = nodes.Where(n => n.NodeId != node.NodeId && (n.ParentNodeId == node.ParentNodeId || skill.PrerequisiteSkillIds.Contains(n.NodeId.ToString())))
                             .Select(n => n.NodeId).ToHashSet();
                         var fallback = LearningPathInsights.PracticePool(questions.Where(q => related.Contains(q.PrimaryTopicNodeId)).ToList(), usedQuestionIds.ToHashSet());
+                        fallback = fallback.Where(q => !cooling.Contains(q.QuestionId)).ToList();
                         if (fallback.Count > 0)
                         {
                             first.AssessedSkillIds = fallback.Select(q => q.PrimaryTopicNodeId.ToString()).Distinct().ToList();
@@ -269,6 +275,15 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 missions.Insert(0, probe);
             }
             }
+            if (baseline.GetValueOrDefault(skill.SkillId) == "Inconclusive" && !goal.StartWithPlacement)
+            {
+                var recheck = missions.FirstOrDefault(m => m.Purpose == "IndependentCheck");
+                if (recheck != null)
+                {
+                    recheck.IsProbe = true; recheck.AvailableFrom = Now.AddDays(2);
+                    recheck.SelectionReason = "Đầu vào chưa kết luận: tiếp tục học và hẹn kiểm tra thêm sau vài buổi; chưa coi là hổng kiến thức.";
+                }
+            }
             var vouchedPrerequisites = LearningGoalScope.Vouched(scope.SelfReportedPrerequisiteSkillIds, scope.SelfAssessedSkillIds);
             if (!goal.StartWithPlacement && LearningGoalScope.NeedsExternalAssessment(skill, map, vouchedPrerequisites))
             {
@@ -306,6 +321,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 var skill = map.Skills.FirstOrDefault(s => s.SkillId == node.NodeId.ToString());
                 if (skill == null || skill.State == "Confirmed") continue;
                 var pool = LearningPathInsights.PracticePool(questions.Where(q => q.PrimaryTopicNodeId == node.NodeId).ToList(), usedQuestionIds.ToHashSet());
+                pool = pool.Where(q => !cooling.Contains(q.QuestionId)).ToList();
                 var size = (uint)Math.Min(LearningPathPacing.ConfirmationSize, pool.Count);
                 milestones.Add(new ProposedMilestoneDto
                 {
@@ -443,7 +459,9 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
     public async Task<LearningAgendaDto> GetLearningAgendaAsync(Guid centerId, Guid studentId, Guid subjectId, uint availableMinutes = 15,
         CancellationToken cancellationToken = default, Guid? classId = null)
     {
+        await Services.LearningPathRunExpiry.CloseAsync(db, clock, centerId, studentId, subjectId, cancellationToken);
         var map = await GetCapabilityMapAsync(centerId, studentId, subjectId, classId, cancellationToken);
+        await ReconcileClassExamEnrollmentAsync(centerId, studentId, subjectId, classId, cancellationToken);
         await RefreshScheduleAsync(centerId, studentId, subjectId, classId, cancellationToken);
         var path = await db.LearningPaths.AsNoTracking().Include(p => p.Sessions).Where(p => p.CenterId == centerId && p.StudentId == studentId &&
             p.SubjectId == subjectId && p.PlanSchemaVersion == "4.0" && p.Status == LearningPathStatus.Active).OrderByDescending(p => p.Version).FirstOrDefaultAsync(cancellationToken);
@@ -505,6 +523,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         var subjectQuestions = await LearningPathV4Data.QuestionsAsync(db, centerId, studentId, subjectId, map.Skills.Select(s => ulong.Parse(s.SkillId)).ToList(), classId, cancellationToken);
         var usedIds = await db.Attempts.AsNoTracking().Where(a => a.CenterId == centerId && a.StudentId == studentId &&
             a.Question.SubjectId == subjectId).Select(a => a.QuestionId).Distinct().ToListAsync(cancellationToken);
+        var cooling = await LearningPathV4Data.RecentQuestionIdsAsync(db, centerId, studentId, Now, plan.Schedule.QuestionReuseDelayDays, cancellationToken);
         var exposedIds = await db.IssuedItems.AsNoTracking().Where(i => i.CenterId == centerId && i.ActivityRun.SessionRun.StudentId == studentId &&
             i.SolutionExposedAt != null && i.QuestionId != null).Select(i => i.QuestionId!.Value).Distinct().ToListAsync(cancellationToken);
         var options = new List<AgendaItemDto>();
@@ -525,6 +544,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             var latest = sessionRuns.FirstOrDefault(r => r.Status != SessionRunStatus.Abandoned);
             var item = new AgendaItemDto
             {
+                MilestoneOrder = milestone.Order, MilestoneTitle = milestone.Title,
                 PlannedDate = m.PlannedDate, Deferred = m.Deferred, SkipReason = m.SkipReason,
                 RemainingUnscheduledMinutes = m.RemainingUnscheduledMinutes,
                 IsMilestoneExam = m.IsMilestoneExam, TimeLimitMinutes = m.TimeLimitMinutes,
@@ -577,6 +597,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             if (m.Purpose is "Practice" or "Review")
             {
                 var relevantQuestions = subjectQuestions.Where(q => m.AssessedSkillIds.Count > 0 ? m.AssessedSkillIds.Contains(q.PrimaryTopicNodeId.ToString()) : q.PrimaryTopicNodeId.ToString() == m.SkillId).ToList();
+                relevantQuestions = relevantQuestions.Where(q => !cooling.Contains(q.QuestionId)).ToList();
                 var pool = m.DifficultyFloor.HasValue ? relevantQuestions.Count(q => q.Difficulty >= m.DifficultyFloor)
                     : LearningPathInsights.PracticePool(relevantQuestions, usedIds.ToHashSet()).Count;
                 poolSizes[m.MissionId] = pool;
@@ -586,6 +607,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 item.DefaultQuestionCount = item.QuestionCount;
                 item.CanStart = item.QuestionCount > 0 && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped && (!m.AvailableFrom.HasValue || m.AvailableFrom <= Now);
                 item.EstimatedDurationMinutes = Math.Max(1u, item.QuestionCount) * LearningPathPacing.MinutesPerQuestion;
+                if (pool == 0 && cooling.Count > 0) item.RecommendationReason = $"Câu đã dùng cần chờ {plan.Schedule.QuestionReuseDelayDays} ngày trước khi luyện hoặc ôn lại. Có thể học phần khác trong thời gian chờ; câu đã lộ đáp án không trở thành câu kiểm tra mới.";
             }
             ApplyRetryRule(item, m, session, latest, active, runs, path, fresh, poolSizes.GetValueOrDefault(m.MissionId));
             if (m.Purpose is "Practice" or "Review" && LearningGoalScope.NeedsExternalAssessment(skill, map, vouched))
@@ -603,10 +625,17 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 item.RetryBlockedReason = null;
                 if (latest?.Status == SessionRunStatus.Completed) item.Status = "Completed";
             }
+            if (!plan.IsPlacement && skill.BlockedByStageGate && active == null)
+            {
+                item.CanStart = item.CanRetry = false;
+                item.RecommendationReason = "Mốc kiểm tra nền tảng chưa đạt: rèn lại và kiểm tra lại trước khi mở phần phụ thuộc. Các phần độc lập vẫn học được.";
+            }
+            if (m.AvailableFrom > Now && active == null) item.CanStart = item.CanRetry = false;
             result.Missions.Add(item);
             if (m.Purpose == "Review" && !m.IsSelfAssessedCheck && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped) result.ReviewDueTasks.Add(item);
             if (active != null) { result.OngoingRuns.Add(item); continue; }
             if (item.Status == "Completed" || session.Status == LearningPathSessionStatus.Completed || !item.CanStart || item.Deferred) continue;
+            if (item.IsMockExam && item.PlannedDate > LearningPathCalendar.LocalDate(Now, plan.Schedule.TimeZoneId)) continue;
             // New confirmed evidence (including assignments) skips redundant future guided work.
             if (skill.State == "Confirmed" && m.Purpose != "Review" && !m.DifficultyFloor.HasValue && !m.IsRepair && !m.IsMilestoneExam) continue;
             // The check is recommended after two passing sets in a row; it stays available on the route for confident students.
@@ -631,7 +660,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         var lastSkill = todaySkills.FirstOrDefault();
         var streakToday = lastSkill == null ? 0 : todaySkills.TakeWhile(x => x == lastSkill).Count();
         options = options.OrderBy(m => plan.ScheduleSummary?.Phase == "MockExam" && m.IsMockExam ? -1 : m.Purpose == "Review" || m.Title.StartsWith("Rèn lại") ? 0 : 1)
-            .ThenBy(m => m.SkillId == lastSkill && m.Purpose == "Practice" && streakToday >= LearningPathPacing.MaxSetsPerSkillPerDay && options.Any(o => o.SkillId != lastSkill) ? 1 : 0).ToList();
+            .ThenBy(m => m.SkillId == lastSkill && m.Purpose == "Practice" && streakToday >= LearningAssessmentPolicy.DailySetsPerSkill(result.PreferredPace) && options.Any(o => o.SkillId != lastSkill) ? 1 : 0).ToList();
         var definitions = plan.Milestones.SelectMany(m => m.Missions).ToDictionary(m => m.MissionId);
         result.StudiedMinutesToday = (uint)runs.Where(r => r.Status == SessionRunStatus.Completed && r.CompletedAt.HasValue && LearningPathCalendar.LocalDate(r.CompletedAt.Value, plan.Schedule.TimeZoneId) == LearningPathCalendar.LocalDate(Now, plan.Schedule.TimeZoneId))
             .Sum(r => (long)(definitions.GetValueOrDefault(r.SessionId.ToString())?.EstimatedMinutes ?? 0));
@@ -648,7 +677,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         }
         BuildTodayPlan(result, options, weaknessBySkill, setsToday);
         // Capacity: what the largest budget would plan today. Sets are created one after another, so more time adds nothing beyond it.
-        var capacity = new LearningAgendaDto { AvailableMinutes = remainingToday, OngoingRuns = result.OngoingRuns };
+        var capacity = new LearningAgendaDto { AvailableMinutes = remainingToday, OngoingRuns = result.OngoingRuns, PreferredPace = result.PreferredPace };
         BuildTodayPlan(capacity, options, weaknessBySkill, setsToday);
         result.AvailableTodayMinutes = capacity.PlannedMinutes;
         var first = result.TodayPlan.FirstOrDefault();
@@ -658,9 +687,20 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 : first.Purpose == "Review" ? "Đến hạn ôn: ôn đúng lúc giúp nhớ lâu hơn."
                 : first.Title.StartsWith("Rèn lại") ? "Bộ rèn lại sau kết quả chưa đạt: ưu tiên trước khi học phần mới."
                 : first.Purpose == "IndependentCheck" && first.Title.StartsWith("Kiểm tra thêm") ? "Phần em vừa chọn kiểm tra thêm."
-                : $"{first.SkillName} đứng trước trong lộ trình (phần nền hoặc phần yếu hơn). Phần này giữ vị trí đầu đến khi đạt {LearningPathPacing.ReadyStreak} bộ liên tiếp từ 80% và tự kiểm tra; sau {LearningPathPacing.MaxSetsPerSkillPerDay} bộ trong ngày, phần khác được đưa lên trước.";
+                : $"{first.SkillName} đứng trước trong lộ trình (phần nền hoặc phần yếu hơn). Phần này giữ vị trí đầu đến khi đạt {LearningPathPacing.ReadyStreak} bộ liên tiếp từ 80% và tự kiểm tra; sau {LearningAssessmentPolicy.DailySetsPerSkill(result.PreferredPace)} bộ trong ngày, phần khác được đưa lên trước.";
         result.PlanOutdated = plan.PacingVersion < 2;
         result.Progress = await ProgressAsync(centerId, studentId, subjectId, plan, map, result.Missions, cancellationToken);
+        if (!plan.IsPlacement && plan.DeadlineDate.HasValue && result.Progress.TotalSkills > 0)
+        {
+            var start = LearningPathCalendar.LocalDate(path.CreatedAt, plan.Schedule.TimeZoneId);
+            var end = LearningPathCalendar.LocalDate(plan.DeadlineDate.Value, plan.Schedule.TimeZoneId);
+            var today = LearningPathCalendar.LocalDate(Now, plan.Schedule.TimeZoneId);
+            var studyDays = LearningPathCalendar.Days(start, end, plan.Schedule, plan.AvailableDaysPerWeek);
+            var elapsed = studyDays.Count(d => d < today);
+            var expected = studyDays.Count == 0 ? 0 : (int)Math.Floor(result.Progress.TotalSkills * elapsed / (decimal)studyDays.Count);
+            if (expected > result.Progress.ConfirmedSkills)
+                result.ForecastMessage += $" Dưới tiến độ dự kiến theo thời gian: đã qua {elapsed}/{studyDays.Count} ngày học, hiện {result.Progress.ConfirmedSkills}/{result.Progress.TotalSkills} kỹ năng được xác nhận (mốc tham khảo {expected}). Đây là đối chiếu lịch học, chưa phải kết luận điểm thi.";
+        }
         if (plan.IsPlacement)
             result.PlacementReport = await PlacementReportAsync(centerId, studentId, path, plan, map, runs, result.Missions, cancellationToken);
         var scopedSkills = plan.Milestones.Where(m => !m.IsSelfAssessedCheck).SelectMany(m => m.SkillIds).Distinct().ToHashSet();
@@ -701,6 +741,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         }
         foreach (var option in options)
         {
+            if (option.Purpose == "Practice" && setsToday.GetValueOrDefault(option.SkillId) >= LearningAssessmentPolicy.DailySetsPerSkill(result.PreferredPace)) continue;
             var item = Clone(option); item.PlannedSets = 1;
             var cost = Minutes(item);
             if (item.Purpose == "Review" && reviewUsed + cost > reviewLimit)
@@ -727,7 +768,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         while (true)
         {
             var grow = plan.Where(i => i.ActiveRunId == null && i.Purpose == "Practice" && i.QuestionCount > 0 &&
-                    i.PlannedSets + setsToday.GetValueOrDefault(i.SkillId) < LearningPathPacing.MaxSetsPerSkillPerDay &&
+                    i.PlannedSets + setsToday.GetValueOrDefault(i.SkillId) < LearningAssessmentPolicy.DailySetsPerSkill(result.PreferredPace) &&
                     (i.EstimatedSets == 0 || i.PlannedSets < Math.Max(1, (int)i.EstimatedSets - (int)Math.Max(0, (int)i.SetNumber - 1))) &&
                     used + i.QuestionCount * LearningPathPacing.MinutesPerQuestion <= budget)
                 .OrderByDescending(i => weakness.GetValueOrDefault(i.SkillId)).ThenBy(i => i.PlannedSets).FirstOrDefault();
@@ -788,6 +829,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
 
     private static AgendaItemDto Clone(AgendaItemDto i) => new()
     {
+        MilestoneOrder = i.MilestoneOrder, MilestoneTitle = i.MilestoneTitle,
         AvailableFrom = i.AvailableFrom, QuestionCount = i.QuestionCount, DefaultQuestionCount = i.DefaultQuestionCount, MissionId = i.MissionId,
         LegacySessionId = i.LegacySessionId, Title = i.Title, Objective = i.Objective, Purpose = i.Purpose, SkillId = i.SkillId, SkillName = i.SkillName,
         EstimatedDurationMinutes = i.EstimatedDurationMinutes, ActivityTypes = i.ActivityTypes, RecommendationReason = i.RecommendationReason,

@@ -103,6 +103,7 @@ public class StartMissionRequest
 
 public class SubmitActivityRequest
 {
+    public bool Skipped { get; set; }
     public Guid ClientSubmissionId { get; set; }
     [System.Text.Json.Serialization.JsonNumberHandling(System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString)]
     public ulong? QuestionId { get; set; }

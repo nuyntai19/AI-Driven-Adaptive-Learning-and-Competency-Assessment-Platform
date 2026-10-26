@@ -79,7 +79,8 @@ internal sealed class LearningPathV4Fixture : IDisposable
     public async Task<PathProposalDto> Proposal(params string[] skills)
     {
         var goal = await Planner.CreateOrUpdateGoalAsync(Center, Student, new CreateLearningGoalRequest { SubjectId = English,
-            Title = "Mục tiêu tiếng Anh", TargetSkillIds = skills.ToList(), AvailableMinutesPerDay = 15, AvailableDaysPerWeek = 5 });
+            Title = "Mục tiêu tiếng Anh", TargetSkillIds = skills.ToList(), AvailableMinutesPerDay = 15, AvailableDaysPerWeek = 5,
+            Schedule = new() { QuestionReuseDelayDays = 0 } });
         return await Planner.GeneratePathProposalAsync(Center, Student, new GeneratePathProposalRequest { GoalId = goal.GoalId, SubjectId = English });
     }
     public async Task<ProposedMissionDto> Activate(string type, params string[] skills)

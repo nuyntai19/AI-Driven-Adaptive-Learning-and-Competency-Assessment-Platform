@@ -11,6 +11,7 @@ import { MissionPlayerModal } from "../components/learningPathV4/MissionPlayerMo
 import { TimeBudgetSlider } from "../components/learningPathV4/TimeBudgetSlider";
 import { formatStudyMinutes, splitReason } from "../utils/studyTime";
 import type { AgendaItemDto, LearningAgendaDto, MissionRunSummaryDto } from "../types/learningPath";
+import { learningPathTimeline } from "../utils/learningPathTimeline";
 import { missionAction } from "../utils/learningMission";
 import { PlacementReport } from "../components/learningPathV4/PlacementReport";
 import { ExtendCheckModal } from "../components/learningPathV4/ExtendCheckModal";
@@ -156,7 +157,7 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
       {agenda.data.targetScore != null && <p className="mt-3 text-sm font-medium">Mục tiêu {agenda.data.targetScore}/10{agenda.data.predictedScore != null ? ` · Ước lượng sơ bộ ${agenda.data.predictedScore}/10` : ""}</p>}
       {agenda.data.forecastMessage && <p className="mt-1 text-xs text-slate-500">{agenda.data.forecastMessage}</p>}
     </section>}
-    {!!agenda.data?.exams?.length && <section className={panel} aria-label="Lịch thi của lớp"><h2 className="text-xl font-semibold">Mốc thi của lớp</h2><div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-3">{agenda.data.exams.map(exam => <article key={exam.assignmentId} className="rounded-xl border border-slate-200 p-4 dark:border-slate-700"><h3 className="font-semibold">{exam.title}</h3><p className="mt-2 text-sm">{new Date(exam.examAt).toLocaleString("vi-VN")} · {exam.timeLimitMinutes} phút</p><p className="mt-1 text-sm text-slate-500">{({Scheduled:"Theo lịch giáo viên",Missed:"Đã qua giờ thi · cần xem chính sách của lớp",PendingGrading:"Đã nộp · đang hoàn tất chấm",Completed:"Đã có kết quả"} as Record<string,string>)[exam.status] ?? exam.status}</p><Link className="mt-3 inline-block text-sm font-semibold text-indigo-600" to={`/hoc-tap/bai-tap/${exam.assignmentId}?subjectId=${subjectId}&classId=${exam.classId}`}>Xem bài thi</Link></article>)}</div></section>}
+
     {(map.error || agenda.error) && <div role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-800">
       Không thể tải lộ trình. {((map.error ?? agenda.error) as any)?.response?.data?.detail ?? (map.error ?? agenda.error)?.message}
       <button className="ml-3 underline" onClick={() => { void map.refetch(); void agenda.refetch(); }}>Thử lại</button>
@@ -249,10 +250,21 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
     </section>}
     <section className="space-y-4"><div><h2 className="text-xl font-semibold">{agenda.data?.isPlacement ? "Các phần kiểm tra đầu vào" : "Các chặng trong tuyến của bạn"}</h2><p className="mt-1 text-sm text-slate-500">{agenda.data?.isPlacement ? "Kiểm tra theo từng kỹ năng. Hoàn thành phần đang làm rồi chuyển sang phần tiếp theo; có thể lưu và quay lại sau." : "Mỗi chặng gắn với một kỹ năng. Phần đã có bằng chứng sẽ được giảm luyện lặp; nội dung còn thiếu được nêu rõ."}</p></div>
       {missions.length === 0 && <p className={panel}>{agenda.data?.isPlacement ? "Các phần đã chọn đã có bằng chứng hợp lệ. Xem đánh giá đầu vào để chọn tuyến học tiếp theo." : "Chọn phần muốn học và tìm điểm xuất phát ở trên để bắt đầu. Các bài làm và tuyến trước được giữ trong lịch sử."}</p>}
-      {[...new Set(missions.map(m => m.skillId))].map((id, index) => {
-        const group = missions.filter(m => m.skillId === id); const skill = map.data?.skills.find(s => s.skillId === id);
-        return <article className={panel} key={id}><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 font-semibold text-indigo-800">{index + 1}</span>
-          <div><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-semibold">{group[0].skillName}</h3>
+      {learningPathTimeline(missions, agenda.data?.exams ?? [], agenda.data?.schedule?.timeZoneId ?? "Asia/Ho_Chi_Minh").map((entry, index) => {
+        if (entry.kind === "exam") {
+          const exam = entry.exam;
+          return <article key={entry.key} className={`${panel} border-amber-200`} aria-label="Mốc thi của lớp">
+            <p className="text-xs font-semibold text-amber-700">Mốc {index + 1} · {({Midterm: "Thi giữa kỳ", Final: "Thi cuối kỳ", MockExam: "Thi thử"} as Record<string, string>)[exam.kind] ?? "Bài thi của lớp"}</p>
+            <h3 className="mt-2 text-lg font-semibold">{exam.title}</h3>
+            <p className="mt-2 text-sm">{new Date(exam.examAt).toLocaleString("vi-VN", { timeZone: agenda.data?.schedule?.timeZoneId })} · {exam.timeLimitMinutes} phút</p>
+            <p className="mt-1 text-sm text-slate-500">{({Scheduled: "Theo lịch giáo viên", Cancelled: "Giáo viên đã hủy lịch thi", Missed: "Đã qua giờ thi · xem chính sách của lớp", PendingGrading: "Đã nộp · đang hoàn tất chấm", Completed: "Đã có kết quả"} as Record<string,string>)[exam.status] ?? exam.status}</p>
+            <p className="mt-2 text-xs text-slate-500">Phạm vi và cách chấm theo bài giáo viên công bố; kết quả dùng để điều chỉnh phần cần rèn trong tuyến.</p>
+            {exam.status !== "Cancelled" && <Link className="mt-3 inline-block text-sm font-semibold text-indigo-600" to={`/hoc-tap/bai-tap/${exam.assignmentId}?subjectId=${subjectId}&classId=${exam.classId}`}>Xem bài thi</Link>}
+          </article>;
+        }
+        const group = entry.missions; const id = group[0].skillId; const skill = map.data?.skills.find(s => s.skillId === id);
+        return <article className={panel} key={entry.key}><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 font-semibold text-indigo-800">{index + 1}</span>
+          <div><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-semibold">{group[0].milestoneTitle || group[0].skillName}</h3>
             {group.every(m => m.isSelfAssessedCheck) && <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">Tự đánh giá đã vững · ôn xác nhận</span>}
             {group[0].weaknessLevel && weaknessLabels[group[0].weaknessLevel] && <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${weaknessLabels[group[0].weaknessLevel][1]}`}>{weaknessLabels[group[0].weaknessLevel][0]}</span>}</div><p className="mt-1 text-sm text-slate-500">{skill?.description || "Học và tự thực hiện các nhiệm vụ thuộc kỹ năng này."}</p>
             <p className="mt-2 text-xs font-semibold text-indigo-600">{stateLabels[skill?.state ?? "Unknown"]} · {skill?.evidenceCount ?? 0} câu có bằng chứng hợp lệ</p></div></div>

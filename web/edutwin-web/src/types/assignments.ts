@@ -88,12 +88,12 @@ export interface CreateAssignmentRequest {
 export interface UpdateAssignmentRequest {
   kind?: string;
   examAt?: string | null;
-  title: string;
+  title?: string;
   instructions?: string | null;
   dueAt?: string | null;
   timeLimitMinutes?: number | null;
-  questionIds: string[];
-  targetMode: TargetMode;
+  questionIds?: string[];
+  targetMode?: TargetMode;
   studentIds?: string[];
   allowGradeMismatch?: boolean;
   gradeMismatchReason?: string | null;

@@ -64,6 +64,11 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
         // Learning path auto-approve: teacher review evidence is treated as provisionally valid.
         // Evidence metadata (RequiresTeacherReview, NeedsTeacherReview) is preserved for audit,
         // but the student's learning path is not blocked waiting for teacher action.
+        else if (independent.Any(i => i.Attempt?.Skipped == true))
+        {
+            result.Outcome = "Inconclusive";
+            reason = "Có câu đã bỏ qua nên phần này chưa đủ bằng chứng để kết luận đạt. Các câu đã nộp được giữ; tiếp tục học và kiểm tra bổ sung bằng câu khác.";
+        }
         else if (independent.Count == 0)
         {
             result.Outcome = "ActivityOnlyCompleted";
@@ -97,8 +102,9 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
                     .Select(q => new { q.QuestionId, q.PrimaryTopicNodeId, q.QuestionType, q.Difficulty }).ToListAsync(cancellationToken);
                 // Multiple choice can be guessed: when most items are multiple choice, every answer must be correct.
                 var guessable = types.Count(t => t.QuestionType == Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice) * 2 > valid.Count;
-                var required = guessable ? valid.Count : (int)Math.Ceiling(valid.Count * .8m);
-                var classification = LearningAssessmentPolicy.Classify(valid.Count, correct, guessable);
+                var required = guessable && !baseline ? valid.Count : (int)Math.Ceiling(valid.Count * .8m);
+                var classification = baseline ? LearningAssessmentPolicy.ClassifyPlacement(valid.Count, correct)
+                    : LearningAssessmentPolicy.Classify(valid.Count, correct, guessable);
                 result.Outcome = baseline ? classification == "Strong" ? "Passed" : classification == "NeedsSupport" ? "NeedsSupport" : "Inconclusive"
                     : valid.Count < 5 ? "Inconclusive" : correct >= required ? "Passed" : "NeedsSupport";
                 if (!baseline && valid.Count < 5)
@@ -106,7 +112,7 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
                     var accumulated = await LearningPathV4Data.MapAsync(db, centerId, studentId, run.Session.LearningPath.SubjectId, run.Session.ClassId, now, cancellationToken);
                     if (accumulated.Skills.Any(s => s.SkillId == run.Session.TopicNodeId.ToString() && s.State == "Confirmed")) result.Outcome = "Passed";
                 }
-                reason = $"Tự kiểm tra: đúng {correct}/{valid.Count} câu, cần {required}/{valid.Count}{(guessable ? " vì phần lớn là trắc nghiệm" : "")}.";
+                reason = $"Tự kiểm tra: đúng {correct}/{valid.Count} câu, cần {required}/{valid.Count}{(guessable && !baseline ? " vì phần lớn là trắc nghiệm" : "")}.";
                 if (!types.Any(t => t.Difficulty >= 3)) reason += " Bộ này chưa có câu mức vừa/khó nên chỉ xác nhận mức cơ bản.";
                 // Auto-approved AI evidence keeps the route moving, but the result stays provisional until a teacher confirms it.
                 result.IsProvisional = result.Outcome == "Passed" && valid.Any(i => latest[i.Attempt!.AttemptId].RequiresTeacherReview);

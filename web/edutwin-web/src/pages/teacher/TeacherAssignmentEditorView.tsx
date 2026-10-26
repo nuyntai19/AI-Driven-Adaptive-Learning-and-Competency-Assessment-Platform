@@ -416,6 +416,20 @@ export function TeacherAssignmentEditorView() {
   }, [selectedClass?.gradeLevel, questionIds, cachedQuestions]);
 
   const isReadOnly = isEditing ? (assignment?.status !== "Draft" || !canUpdate) : !canCreate;
+  const canRescheduleExam = canUpdate && assignment?.status === "Published" && assignment.kind !== "Regular" &&
+    !!assignment.examAt && Date.parse(assignment.examAt) > Date.now();
+  const [scheduleNotice, setScheduleNotice] = useState("");
+  const saveExamSchedule = () => {
+    if (!canRescheduleExam || !id || !assignment) return;
+    const instant = Date.parse(examAt);
+    if (!Number.isFinite(instant) || instant <= Date.now() || !effectiveTimeLimitMinutes || effectiveTimeLimitMinutes <= 0) {
+      setScheduleNotice("Chọn giờ thi trong tương lai và thời lượng lớn hơn 0 phút."); return;
+    }
+    updateMutation.mutate({ id, request: { examAt: new Date(instant).toISOString(), timeLimitMinutes: effectiveTimeLimitMinutes, rowVersion: assignment.rowVersion } }, {
+      onSuccess: () => setScheduleNotice("Đã cập nhật lịch thi. Lộ trình học sinh sẽ dùng giờ thi mới."),
+      onError: error => setScheduleNotice(mapSafeOperationalError(error, "Chưa thể cập nhật lịch thi. Hãy tải lại bài để kiểm tra phiên bản mới nhất.")),
+    });
+  };
 
   const toggleQuestion = (q: Question) => {
     if (isReadOnly) return;
@@ -755,6 +769,16 @@ export function TeacherAssignmentEditorView() {
       />
 
       {!isEditing && !canCreate && <p role="status" className="text-xs">Bạn không có quyền tạo bài tập.</p>}
+      {canRescheduleExam && <section className="th-surface space-y-3 p-4" aria-label="Điều chỉnh lịch thi đã công bố">
+        <h2 className="font-semibold">Điều chỉnh lịch thi đã công bố</h2>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm">Ngày giờ thi<input type="datetime-local" className="th-input mt-1 block" min={minDateTime} value={examAt} onChange={e => setExamAt(e.target.value)} /></label>
+          <label className="text-sm">Thời lượng (phút)<input type="number" min={1} className="th-input mt-1 block" value={effectiveTimeLimitMinutes ?? ""} onChange={e => handleTimeLimitChange(e.target.value, "minutes")} /></label>
+          <button type="button" disabled={updateMutation.isPending} className="th-primary-button" onClick={saveExamSchedule}>{updateMutation.isPending ? "Đang cập nhật…" : "Lưu lịch thi"}</button>
+        </div>
+        <p className="text-xs text-[var(--th-text-muted)]">Hạn nộp sẽ theo giờ kết thúc bài thi mới.</p>
+        {scheduleNotice && <p role="status" className="text-sm">{scheduleNotice}</p>}
+      </section>}
       {topicValidation.status !== "none" && (
         <div role="status" className="th-surface p-3 text-xs space-y-2">
           <p>{subjectMismatch

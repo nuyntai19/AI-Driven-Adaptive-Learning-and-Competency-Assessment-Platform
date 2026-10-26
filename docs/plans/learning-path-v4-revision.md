@@ -1,6 +1,6 @@
 # Lộ trình học tập V4 — Bản yêu cầu cập nhật
 
-Ngày cập nhật: 25/10/2026.
+Ngày cập nhật: 26/10/2026.
 
 Đây là bản nghiệp vụ thay cho danh sách thay đổi ban đầu, đã được triển khai trong mã nguồn V4. Trạng thái kiểm chứng và các giới hạn vận hành được ghi tại [báo cáo triển khai](learning-path-v4-implementation.md). Cần áp dụng migration trước khi chạy phiên bản mới trên cơ sở dữ liệu hiện hữu.
 
@@ -55,9 +55,10 @@ Ngày cập nhật: 25/10/2026.
 - Mốc kiểm tra chặng được mở sau khi học đủ nội dung cần thiết. Bài thi thử cá nhân được lên lịch theo mục tiêu và ngân sách.
 - Kết quả đã hoàn tất chấm đưa vào follow-up để cập nhật năng lực, nhiệm vụ rèn lại và dự báo. Xử lý lại cùng kết quả không tạo nhiệm vụ trùng.
 - Chỉ khóa kỹ năng tiếp theo thực sự phụ thuộc vào nền tảng chưa đạt; phần độc lập vẫn học được. Không mặc định khóa cả lộ trình vì trượt một phần.
-- Kỳ thi lớp ghi nhận kết quả và điều chỉnh kế hoạch; không mặc định là cửa khóa chặng cá nhân. Chính sách đạt/thi lại cần tách theo loại bài.
+- Kiểm tra cuối chặng cá nhân là cổng bấm giờ của phần phụ thuộc: chưa đạt thì rèn lại rồi kiểm tra lại; không khóa phần độc lập. Thi thử tổng hợp là probe, không làm cổng. Mục tiêu ôn thi có cổng theo tiến độ kể cả chưa chọn ngày thi.
+- Kỳ thi lớp ghi nhận kết quả và điều chỉnh kế hoạch; không mặc định là cửa khóa chặng cá nhân. Midterm và Final hiện cùng pipeline chấm/follow-up, khác nhãn và phạm vi đề do giáo viên chọn; tên Final không tự tạo cổng chặng cá nhân.
 - Khi chưa đạt, luyện phần thiếu rồi kiểm tra lại bằng bằng chứng phù hợp; giới hạn vòng lặp và đề nghị hỗ trợ giáo viên nếu không tiến bộ.
-- Không dùng ngưỡng 80% chung cho mọi bài thi, mục tiêu và cỡ mẫu. Ngưỡng/chính sách phải được cấu hình và giải thích theo loại đánh giá.
+- Mốc thi bấm giờ dùng sàn 80%, tăng khi điểm mục tiêu cao hơn 8/10. Phân loại đầu vào dùng chính sách mẫu 3–5 câu riêng; điểm mục tiêu không trực tiếp thay thế ngưỡng bằng chứng thành thạo của từng kỹ năng khi chưa có mô hình hiệu chuẩn.
 
 ## 6. Điều chỉnh khi bỏ buổi, quá hạn hoặc nợ ôn
 
@@ -87,7 +88,7 @@ Ngày cập nhật: 25/10/2026.
 ## 8. Ngân hàng câu hỏi và phương án dự phòng
 
 - Ưu tiên phân bổ câu chưa lộ đáp án cho kiểm tra đầu vào và tự kiểm tra độc lập trước bài luyện; quy tắc cấp câu cần tránh phát cùng câu cho hai lượt đang mở.
-- Câu đã lộ được tái sử dụng cho luyện/ôn sau khoảng thời gian cấu hình. Thời gian trôi qua không tự biến câu đã lộ thành bằng chứng độc lập mới.
+- Câu đã làm/lộ được tái sử dụng cho luyện/ôn sau khoảng thời gian cấu hình (mặc định 2 ngày; có thể đổi trong mục tiêu). Thời gian trôi qua không tự biến câu đã lộ thành bằng chứng độc lập mới.
 - Khi thiếu câu kiểm tra độc lập, ghi rõ chưa đủ bằng chứng; không hạ điều kiện âm thầm để xác nhận vững.
 - Khi một kỹ năng thiếu nội dung, cung cấp nhiệm vụ ôn nền/tổng quát cùng môn và phạm vi phù hợp nếu có nội dung hợp lệ. Kết quả chỉ cập nhật các kỹ năng thực sự được câu hỏi đánh giá.
 - Nếu không có nội dung dự phòng hợp lệ, vẫn cho học các phần khả dụng và báo thiếu nội dung cụ thể; không dùng câu môn khác, bịa câu hoặc gán kết quả đại cương cho kỹ năng chưa được kiểm tra.

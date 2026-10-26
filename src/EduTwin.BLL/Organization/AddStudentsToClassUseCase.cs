@@ -234,6 +234,7 @@ public class AddStudentsToClassUseCase : IAddStudentsToClassUseCase
 
             try
             {
+                await Assignments.ClassExamEnrollment.StageAsync(_context, centerId, classId, requestedStudentIds, currentUtc, cancellationToken, currentUserId);
                 await _context.SaveChangesAsync(cancellationToken);
             }
             catch (DbUpdateConcurrencyException ex)

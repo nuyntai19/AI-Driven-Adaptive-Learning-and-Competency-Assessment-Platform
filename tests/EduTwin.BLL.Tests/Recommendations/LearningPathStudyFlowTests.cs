@@ -15,7 +15,7 @@ public sealed class LearningPathStudyFlowTests
     private static async Task<PathProposalDto> ActivateWithBudget(LearningPathV4Fixture f, uint minutes, params string[] skills)
     {
         var goal = await f.Planner.CreateOrUpdateGoalAsync(f.Center, f.Student, new() { SubjectId = f.English,
-            GoalType = "Foundation", TargetSkillIds = skills.ToList(), AvailableMinutesPerDay = minutes });
+            GoalType = "Foundation", TargetSkillIds = skills.ToList(), AvailableMinutesPerDay = minutes, Schedule = new() { QuestionReuseDelayDays = 0 } });
         var proposal = await f.Planner.GeneratePathProposalAsync(f.Center, f.Student, new() { SubjectId = f.English, GoalId = goal.GoalId });
         await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId); return proposal;
     }
@@ -322,14 +322,15 @@ public sealed class LearningPathStudyFlowTests
     public async Task IndependentCheck_MixesDifficulty_WhenTheBankAllows()
     {
         using var f = new LearningPathV4Fixture();
-        foreach (var q in await f.Db.Questions.Where(q => q.QuestionId == 10311 || q.QuestionId == 10312).ToListAsync()) q.Difficulty = 4;
+        foreach (var q in await f.Db.Questions.Where(q => q.PrimaryTopicNodeId == 103).ToListAsync())
+            q.Difficulty = q.QuestionId % 100 <= 4 ? (byte)1 : q.QuestionId % 100 <= 8 ? (byte)3 : (byte)4;
         await f.Db.SaveChangesAsync();
         var mission = await f.Activate("IndependentCheck", "103");
         var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId));
         var ids = run.Activities.Select(a => a.Question!.Question!.QuestionId).ToList();
         Assert.Equal(5, ids.Count);
-        Assert.Contains(10311ul, ids); Assert.Contains(10312ul, ids);
-        Assert.Equal(new ulong[] { 10311, 10312 }, ids.TakeLast(2)); // easy to hard
+        var levels = await f.Db.Questions.Where(q => ids.Contains(q.QuestionId)).ToDictionaryAsync(q => q.QuestionId, q => q.Difficulty);
+        Assert.Equal(new byte[] { 1, 1, 3, 3, 4 }, ids.Select(id => levels[id]));
     }
 
     [Fact]

@@ -20,7 +20,7 @@ public static class LearningPathCalendar
         if (settings == null || settings.StudyDays == null || settings.ExcludedDates == null ||
             settings.StudyDays.Distinct().Count() != settings.StudyDays.Count || settings.StudyDays.Any(d => d is < 0 or > 6) ||
             settings.StudyDays.Count > 0 && settings.StudyDays.Count != days || settings.ExcludedDates.Count > 366 ||
-            settings.ReviewReservePercent > 40 || settings.ShortCheckDays > 365 || settings.MockExamDays > settings.ShortCheckDays)
+            settings.ReviewReservePercent > 40 || settings.ShortCheckDays > 365 || settings.MockExamDays > settings.ShortCheckDays || settings.QuestionReuseDelayDays > 365)
             throw new ArgumentException("Ngày học, dự phòng ôn hoặc mốc kiểm tra không hợp lệ.");
         Zone(settings.TimeZoneId);
     }
@@ -42,13 +42,17 @@ public static class LearningPathCalendar
     /// <summary>Concrete options instead of a generic warning: minutes/day needed at the current study days, or the earliest workable deadline.</summary>
     private static string InsufficientTimeAdvice(PathProposalDto plan, int studyDays, uint required, uint reserve, DateOnly today)
     {
-        var need = required + reserve;
+        var mockMinutes = (uint)plan.Milestones.SelectMany(m => m.Missions).Where(m => m.IsMilestoneExam && m.IsProbe && m.CanStart)
+            .Sum(m => (long)m.EstimatedMinutes);
+        var need = required + reserve - Math.Min(reserve, mockMinutes);
         var perDay = studyDays > 0 ? (uint)Math.Ceiling(need / (decimal)studyDays) : need;
         var days = Math.Max(1u, plan.AvailableDaysPerWeek);
-        var weeks = (int)Math.Ceiling(need / (decimal)Math.Max(1u, plan.AvailableMinutesPerDay * days));
+        var futureDays = Days(today, today.AddDays(3650), plan.Schedule, days);
+        var neededDays = (int)Math.Ceiling(need / (decimal)Math.Max(1u, plan.AvailableMinutesPerDay));
+        var earliest = futureDays.Count >= neededDays && neededDays > 0 ? futureDays[neededDays - 1] : (DateOnly?)null;
         var options = new List<string>();
-        if (perDay <= 300) options.Add($"tăng lên khoảng {perDay} phút/ngày với {studyDays} buổi học còn lại");
-        options.Add($"dời ngày đích tới khoảng {today.AddDays(weeks * 7):dd/MM/yyyy} nếu giữ {plan.AvailableMinutesPerDay} phút/ngày, {days} ngày/tuần");
+        if (studyDays > 0 && perDay <= 300) options.Add($"tăng lên khoảng {perDay} phút/ngày với {studyDays} buổi học còn lại");
+        if (earliest.HasValue) options.Add($"dời ngày đích tới khoảng {earliest:dd/MM/yyyy} nếu giữ {plan.AvailableMinutesPerDay} phút/ngày, {days} ngày/tuần và các ngày nghỉ đã chọn");
         options.Add("hoặc bỏ bớt kỹ năng trọng số thấp khỏi phạm vi");
         return "Có thể " + string.Join(", ", options) + ".";
     }
@@ -92,7 +96,12 @@ public static class LearningPathCalendar
             if (available == 0 || mission.IsMilestoneExam && available < cost) return null;
             if (mission.IsMilestoneExam)
             {
-                var examDay = eligible.FirstOrDefault(d => room.GetValueOrDefault(d) >= cost);
+                // Reserve mocks backwards from the target, leaving two calendar days for repair when possible.
+                // Stage checks still follow their prerequisite work in forward order.
+                var candidates = mission.IsProbe && deadline.HasValue
+                    ? eligible.OrderByDescending(d => d <= deadline.Value.AddDays(-2)).ThenByDescending(d => d)
+                    : eligible.AsEnumerable();
+                var examDay = candidates.FirstOrDefault(d => room.GetValueOrDefault(d) >= cost);
                 if (examDay == default) return null;
                 mission.StudySlots.Add(new() { Date = examDay, Minutes = cost }); room[examDay] -= cost;
                 return examDay;
@@ -118,8 +127,7 @@ public static class LearningPathCalendar
         foreach (var mock in all.Where(m => m.IsMilestoneExam && m.IsProbe && m.CanStart))
         {
             var cost = Cost(mock);
-            // Spend the mock portion of the reserve early enough to leave time for repair. Release the same amount at the end;
-            // this swaps capacity rather than charging the reserve twice.
+            // Swap reserved capacity into the mock, so the exam is not charged twice.
             var release = Math.Min(cost, (uint)finalDays.Values.Sum(v => (long)v));
             foreach (var day in days.AsEnumerable().Reverse())
             {
@@ -166,7 +174,7 @@ public static class LearningPathCalendar
         }
         summary.DeferredSkillIds = deferred.Union(partial).Union(phaseDeferred).ToList();
         summary.Message = summary.MissingMinutes > 0
-            ? $"Không đủ thời gian tới ngày đích: còn thiếu {summary.MissingMinutes} phút, {deferred.Count} kỹ năng có phần bị hoãn. {InsufficientTimeAdvice(plan, days.Count, required, reserve, today)} Đã dành {reserve} phút cho ôn/thi thử."
+            ? $"Vượt ngân sách học theo ước tính hiện tại: còn thiếu {summary.MissingMinutes} phút, {deferred.Count} kỹ năng có phần bị hoãn. {InsufficientTimeAdvice(plan, days.Count, required, reserve, today)} Đã dành {reserve} phút cho ôn/thi thử."
             : $"Đã xếp theo ngày học thực tế, tối đa {plan.AvailableMinutesPerDay} phút/ngày; dành {reserve} phút cho ôn/thi thử. Thời lượng là ước tính và sẽ cập nhật sau bài làm.";
         plan.ScheduleSummary = summary;
         if (phaseDeferred.Count > 0) summary.Message += $" Đã tạm hoãn phần học mới của {phaseDeferred.Count} kỹ năng trọng số thấp để ưu tiên thi thử và vá lỗ hổng; nền tảng thiết yếu được giữ.";

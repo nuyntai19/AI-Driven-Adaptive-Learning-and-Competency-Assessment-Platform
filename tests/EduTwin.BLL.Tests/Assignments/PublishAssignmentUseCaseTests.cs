@@ -350,6 +350,26 @@ public class PublishAssignmentUseCaseTests
         });
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Publishing_exam_requires_a_future_start_and_preserves_exam_metadata(bool future)
+    {
+        var center = Guid.NewGuid(); var teacher = Guid.NewGuid();
+        SetupTenant(center, teacher, nameof(UserRole.Teacher));
+        using var ctx = CreateContext(center);
+        var (_, _, _, _, cls, question) = await SeedBaseAsync(ctx, center, teacher);
+        await AddStudentToClassAsync(ctx, center, cls.ClassId);
+        var exam = await SeedDraftAssignmentAsync(ctx, center, teacher, cls.ClassId, question.QuestionId);
+        exam.Kind = AssignmentKind.Midterm; exam.TimeLimitMinutes = 30;
+        exam.ExamAt = _fixedUtcNow.UtcDateTime.AddDays(future ? 1 : -1); exam.DueAt = exam.ExamAt.Value.AddMinutes(30);
+        await ctx.SaveChangesAsync();
+        var result = await CreateSut(ctx).ExecuteAsync(exam.AssignmentId, new PublishAssignmentRequest { RowVersion = exam.RowVersion.ToString(CultureInfo.InvariantCulture) });
+        Assert.Equal(future, result.IsSuccess);
+        if (future) { Assert.Equal("Midterm", result.Data!.Kind); Assert.Equal(exam.ExamAt, result.Data.ExamAt); }
+        else Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // TC-02: Publish subset SelectedStudents — Happy path
     // ─────────────────────────────────────────────────────────────────────────

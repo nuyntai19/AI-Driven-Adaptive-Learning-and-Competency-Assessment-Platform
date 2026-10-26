@@ -17,6 +17,7 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
 
     public async Task<MissionRunDto> GetMissionRunAsync(Guid centerId, Guid studentId, Guid missionId, ulong sessionRunId, CancellationToken cancellationToken = default)
     {
+        await LearningPathRunExpiry.CloseAsync(db, clock, centerId, studentId, null, cancellationToken);
         await LearningPathV4Data.SessionAsync(db, centerId, studentId, missionId, cancellationToken);
         var run = await db.LearningPathSessionRuns.Include(r => r.Session).SingleOrDefaultAsync(r => r.CenterId == centerId &&
             r.StudentId == studentId && r.SessionId == missionId && r.SessionRunId == sessionRunId, cancellationToken)
@@ -29,6 +30,7 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
 
     public async Task<MissionRunDto> StartMissionAsync(Guid centerId, Guid studentId, Guid missionId, StartMissionRequest request, CancellationToken cancellationToken = default)
     {
+        await LearningPathRunExpiry.CloseAsync(db, clock, centerId, studentId, null, cancellationToken);
         await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
         await StudentLockHelper.AcquireStudentLockAsync(db, centerId, studentId, cancellationToken);
         var session = await LearningPathV4Data.SessionAsync(db, centerId, studentId, missionId, cancellationToken);
@@ -80,6 +82,8 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         if (definition.AvailableFrom > Now) throw new InvalidOperationException("Chưa tới ngày ôn của nhiệm vụ này. Bạn có thể tiếp tục các phần khác trong tuyến.");
         var capabilityMap = await LearningPathV4Data.MapAsync(db, centerId, studentId, session.LearningPath.SubjectId, session.ClassId, Now, cancellationToken);
         var capability = capabilityMap.Skills.Single(s => s.SkillId == node.NodeId.ToString());
+        if (!plan!.IsPlacement && capability.BlockedByStageGate)
+            throw new InvalidOperationException("Mốc kiểm tra nền tảng chưa đạt. Hãy hoàn thành rèn lại và kiểm tra lại nền tảng trước khi mở phần phụ thuộc.");
         if (definition.IsMilestoneExam && !definition.IsProbe)
         {
             var milestone = plan!.Milestones.First(m => m.Missions.Any(x => x.MissionId == definition.MissionId));
@@ -124,6 +128,24 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
             if (pool.Count < minimum) throw new InvalidOperationException($"Có {pool.Count}/{minimum} câu mới đủ điều kiện. Phần này chưa đủ dữ liệu; vẫn có thể học các phần khác hoặc lập lộ trình từ dữ liệu hiện có.");
             if (definition.IsMilestoneExam && assessedNodes.Any(id => pool.Count(q => q.PrimaryTopicNodeId == id) < 5))
                 throw new InvalidOperationException("Một phần thi thử chưa đủ 5 câu mới. Hãy làm các phần khác hoặc cập nhật phạm vi thi thử.");
+        }
+        if (!independent && !definition.ContentVersionId.HasValue && definition.Purpose != "Study")
+        {
+            var used = await db.Attempts.Where(a => a.CenterId == centerId && a.StudentId == studentId).Select(a => a.QuestionId).Distinct().ToListAsync(cancellationToken);
+            pool = definition.DifficultyFloor.HasValue ? pool.Where(q => q.Difficulty >= definition.DifficultyFloor).ToList()
+                : LearningPathInsights.PracticePool(pool, used.ToHashSet());
+            var cooling = await LearningPathV4Data.RecentQuestionIdsAsync(db, centerId, studentId, Now, plan.Schedule.QuestionReuseDelayDays, cancellationToken);
+            pool = pool.Where(q => !cooling.Contains(q.QuestionId)).ToList();
+            var recent = await db.Attempts.AsNoTracking().Where(a => a.CenterId == centerId && a.StudentId == studentId &&
+                a.Question.PrimaryTopicNodeId == node.NodeId).OrderByDescending(a => a.CreatedAt).ToListAsync(cancellationToken);
+            var wrong = recent.GroupBy(a => a.QuestionId).Where(g => g.First().IsCorrect == false).Select(g => g.Key).ToHashSet();
+            // Prioritize previously missed items, then increase difficulty through the set.
+            // Previously missed items first, then unseen items, then items already answered correctly; easy to hard inside each group.
+            // The loop's target difficulty decides the level inside each group (harder after a good set, easier after a weak one).
+            var target = definition.TargetDifficulty;
+            pool = pool.OrderBy(q => wrong.Contains(q.QuestionId) ? 0 : used.Contains(q.QuestionId) ? 2 : 1)
+                .ThenBy(q => target.HasValue ? Math.Abs(q.Difficulty - target.Value) : q.Difficulty).ThenBy(q => q.Difficulty).ThenBy(q => q.QuestionId).ToList();
+            if (pool.Count == 0) throw new InvalidOperationException("Chưa có câu hỏi hợp lệ sẵn sàng cho nhiệm vụ này. Câu vừa dùng cần qua thời gian chờ; hãy học phần khác hoặc quay lại sau.");
         }
         var number = (run?.RunNumber ?? 0) + 1;
         run = new LearningPathSessionRun
@@ -170,22 +192,6 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         }
         else
         {
-            if (!independent)
-            {
-                var used = await db.Attempts.Where(a => a.CenterId == centerId && a.StudentId == studentId).Select(a => a.QuestionId).Distinct().ToListAsync(cancellationToken);
-                pool = definition.DifficultyFloor.HasValue ? pool.Where(q => q.Difficulty >= definition.DifficultyFloor).ToList()
-                    : LearningPathInsights.PracticePool(pool, used.ToHashSet());
-                var recent = await db.Attempts.AsNoTracking().Where(a => a.CenterId == centerId && a.StudentId == studentId &&
-                    a.Question.PrimaryTopicNodeId == node.NodeId).OrderByDescending(a => a.CreatedAt).ToListAsync(cancellationToken);
-                var wrong = recent.GroupBy(a => a.QuestionId).Where(g => g.First().IsCorrect == false).Select(g => g.Key).ToHashSet();
-                // Prioritize previously missed items, then increase difficulty through the set.
-                // Previously missed items first, then unseen items, then items already answered correctly; easy to hard inside each group.
-                // The loop's target difficulty decides the level inside each group (harder after a good set, easier after a weak one).
-                var target = definition.TargetDifficulty;
-                pool = pool.OrderBy(q => wrong.Contains(q.QuestionId) ? 0 : used.Contains(q.QuestionId) ? 2 : 1)
-                    .ThenBy(q => target.HasValue ? Math.Abs(q.Difficulty - target.Value) : q.Difficulty).ThenBy(q => q.Difficulty).ThenBy(q => q.QuestionId).ToList();
-            }
-            if (pool.Count == 0) throw new InvalidOperationException("Chưa có câu hỏi hợp lệ cho nhiệm vụ này.");
             // Today's plan may resize a practice set to the chosen time; the independent check stays fixed for comparability.
             var requested = request.QuestionCount is > 0 ? request.QuestionCount.Value : definition.QuestionCount;
             var size = requested > 0 ? (int)Math.Clamp(requested, 1u, LearningPathPacing.MaxPracticeQuestions) : 6;
@@ -435,6 +441,7 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
 
     public async Task<ActivitySubmissionResponseDto> SubmitActivityAsync(Guid centerId, Guid studentId, ulong activityRunId, SubmitActivityRequest request, CancellationToken cancellationToken = default)
     {
+        if (request.Skipped) request.FinalAnswer = "SKIPPED";
         if (request.ClientSubmissionId == Guid.Empty || request.FinalAnswer.Length > 20000 || request.ReasoningText?.Length > 50000)
             throw new ArgumentException("Thiếu mã lần nộp hoặc nội dung vượt giới hạn.");
         var a = await LoadAsync(centerId, studentId, activityRunId, cancellationToken);
@@ -443,7 +450,7 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         if (issued?.Attempt != null)
         {
             if (issued.Attempt.ClientSubmissionId != request.ClientSubmissionId || request.QuestionId != issued.QuestionId ||
-                issued.Attempt.FinalAnswer != request.FinalAnswer || issued.Attempt.ReasoningText != request.ReasoningText)
+                issued.Attempt.FinalAnswer != request.FinalAnswer || issued.Attempt.ReasoningText != request.ReasoningText || issued.Attempt.Skipped != request.Skipped)
                 throw new InvalidOperationException("Hoạt động đã nộp với nội dung khác.");
             await AppendPrerequisiteProbeAsync(a, issued.AttemptId!.Value, cancellationToken);
             return await SubmissionResponseAsync(a, issued.AttemptId, cancellationToken);
@@ -464,6 +471,7 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
             {
                 ClientSubmissionId = request.ClientSubmissionId, SessionRunId = a.SessionRunId, QuestionId = issued.QuestionId.Value.ToString(),
                 ClassId = a.SessionRun.Session.ClassId, FinalAnswer = request.FinalAnswer, ReasoningText = request.ReasoningText,
+                Skipped = request.Skipped,
                 AnswerDisplayLatex = request.AnswerDisplayLatex, DrawingUploadToken = request.DrawingUploadToken,
                 TimeSpentSeconds = (uint)Math.Clamp(request.TimeSpentSeconds, 0, 86400)
             }, $"mission:{a.SessionRunId}", cancellationToken);
@@ -511,7 +519,8 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         var used = await db.Attempts.Where(a => a.CenterId == activity.CenterId && a.StudentId == run.StudentId).Select(a => a.QuestionId).ToListAsync(ct);
         var issued = await db.IssuedItems.Where(i => i.CenterId == activity.CenterId && i.ActivityRun.SessionRun.StudentId == run.StudentId && i.QuestionId != null)
             .Select(i => i.QuestionId!.Value).ToListAsync(ct);
-        var selected = pool.Where(q => !used.Contains(q.QuestionId) && !issued.Contains(q.QuestionId)).Take(2).ToList();
+        var selected = pool.Where(q => !used.Contains(q.QuestionId) && !issued.Contains(q.QuestionId))
+            .GroupBy(q => q.PrimaryTopicNodeId).Select(g => g.First()).Take(2).ToList();
         if (selected.Count == 0) return;
         var order = await db.ActivityRuns.Where(a => a.CenterId == activity.CenterId && a.SessionRunId == run.SessionRunId).MaxAsync(a => a.ActivityOrder, ct);
         foreach (var q in selected)
@@ -608,8 +617,16 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         {
             var item = a.IssuedItems.SingleOrDefault();
             if (item?.QuestionId != null && questions != null)
+            {
                 result.Question = await questions.GetQuestionDtoAsync(a.CenterId, a.SessionRun.SessionId, item.QuestionId.Value, a.ActivityType != "Practice", ct)
                     ?? throw new InvalidOperationException("Câu hỏi đã bị thu hồi. Bài làm trước đó được giữ; cần giáo viên bổ sung nội dung.");
+                var skillId = await db.Questions.Where(q => q.CenterId == a.CenterId && q.QuestionId == item.QuestionId).Select(q => q.PrimaryTopicNodeId).SingleAsync(ct);
+                if (skillId != a.SessionRun.Session.TopicNodeId)
+                {
+                    var name = await db.KnowledgeNodes.Where(n => n.CenterId == a.CenterId && n.NodeId == skillId).Select(n => n.NodeName).SingleAsync(ct);
+                    result.Stage = $"Kiểm tra nền tảng · {name}";
+                }
+            }
         }
         return result;
     }

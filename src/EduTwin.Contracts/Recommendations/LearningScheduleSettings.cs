@@ -11,6 +11,7 @@ public class LearningScheduleSettings
     public uint ReviewReservePercent { get; set; } = 20;
     public uint ShortCheckDays { get; set; } = 45;
     public uint MockExamDays { get; set; } = 14;
+    public uint QuestionReuseDelayDays { get; set; } = 2;
 }
 
 public class StudySlotDto

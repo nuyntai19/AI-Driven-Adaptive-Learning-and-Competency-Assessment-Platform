@@ -21,6 +21,8 @@ public class CapabilityMapDto
 
 public class SkillCapabilityStatusDto
 {
+    public bool StageGateFailed { get; set; }
+    public bool BlockedByStageGate { get; set; }
     public string SkillId { get; set; } = string.Empty;
     public string SkillName { get; set; } = string.Empty;
     public string TopicName { get; set; } = string.Empty;

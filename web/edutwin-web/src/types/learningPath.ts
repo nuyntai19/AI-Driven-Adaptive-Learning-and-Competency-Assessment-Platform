@@ -238,6 +238,7 @@ export interface EvaluateSessionResponse {
 
 // --- V4 Personalized Learning Path Interfaces ---
 export interface LearningScheduleSettings {
+  questionReuseDelayDays?: number;
   studyDays: number[];
   excludedDates: string[];
   timeZoneId: string;
@@ -418,6 +419,8 @@ export interface CapabilityMapDto {
 }
 
 export interface AgendaItemDto {
+  milestoneOrder?: number;
+  milestoneTitle?: string;
   remainingUnscheduledMinutes?: number;
   isMockExam?: boolean;
   plannedDate?: string | null;
@@ -634,6 +637,7 @@ export interface AssistanceResponseDto {
 }
 
 export interface SubmitActivityRequest {
+  skipped?: boolean;
   clientSubmissionId: string;
   questionId?: number | string;
   finalAnswer: string;

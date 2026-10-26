@@ -19,6 +19,18 @@ public static class LearningPathV4Data
     public static bool IsV4Policy(string policy) => policy.StartsWith("v4-evidence-", StringComparison.Ordinal);
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    public static async Task<HashSet<ulong>> RecentQuestionIdsAsync(EduTwinDbContext db, Guid center, Guid student,
+        DateTime now, uint delayDays, CancellationToken ct)
+    {
+        if (delayDays == 0) return [];
+        var cutoff = now.AddDays(-(int)delayDays);
+        var answered = await db.Attempts.AsNoTracking().Where(a => a.CenterId == center && a.StudentId == student && a.CreatedAt > cutoff)
+            .Select(a => a.QuestionId).Distinct().ToListAsync(ct);
+        var exposed = await db.IssuedItems.AsNoTracking().Where(i => i.CenterId == center && i.ActivityRun.SessionRun.StudentId == student &&
+            i.QuestionId != null && i.SolutionExposedAt > cutoff).Select(i => i.QuestionId!.Value).Distinct().ToListAsync(ct);
+        return answered.Concat(exposed).ToHashSet();
+    }
+
     public static async Task<List<KnowledgeNode>> NodesAsync(EduTwinDbContext db, Guid center, Guid student,
         Guid subject, Guid? classId, CancellationToken ct)
     {
@@ -152,6 +164,34 @@ public static class LearningPathV4Data
                     : "Chưa có bằng chứng cho kỹ năng này; không coi là năng lực thấp."
             });
         }
+        // A failed progress gate remains binding even if an 80% evidence window looks strong enough.
+        // A mock is diagnostic and never participates in this gate.
+        var activePaths = await db.LearningPaths.AsNoTracking().Where(p => p.CenterId == center && p.StudentId == student &&
+            p.SubjectId == subject && p.PlanSchemaVersion == "4.0" && p.Status == LearningPathStatus.Active &&
+            p.Sessions.Any(s => s.ClassId == classId)).Select(p => new { p.LearningPathId, p.PlanJson }).ToListAsync(ct);
+        foreach (var path in activePaths)
+        {
+            var definition = path.PlanJson == null ? null : System.Text.Json.JsonSerializer.Deserialize<PathProposalDto>(path.PlanJson.RootElement.GetRawText(), Json);
+            var gates = definition?.Milestones.SelectMany(m => m.Missions).Where(m => m.IsMilestoneExam && !m.IsProbe).Select(m => m.MissionId).ToHashSet() ?? [];
+            if (gates.Count == 0) continue;
+            var finished = await db.LearningPathSessionRuns.AsNoTracking().Where(r => r.CenterId == center && r.StudentId == student &&
+                r.Session.LearningPathId == path.LearningPathId && r.Status == SessionRunStatus.Completed)
+                .Select(r => new { r.SessionId, r.Session.TopicNodeId, r.CompletedAt, r.SessionRunId, r.Outcome }).ToListAsync(ct);
+            foreach (var gate in finished.Where(r => gates.Contains(r.SessionId.ToString())).GroupBy(r => r.TopicNodeId)
+                .Select(g => g.OrderByDescending(r => r.CompletedAt).ThenByDescending(r => r.SessionRunId).First()))
+            {
+                if (gate.Outcome == SessionRunOutcome.Passed) continue;
+                var skill = statuses.FirstOrDefault(s => s.SkillId == gate.TopicNodeId.ToString());
+                if (skill == null) continue;
+                skill.State = "Developing";
+                skill.StageGateFailed = true;
+                skill.Rationale = "Mốc kiểm tra chặng chưa đạt: hoàn thành phần rèn lại rồi kiểm tra lại. Các kỹ năng phụ thuộc cần đợi kết quả đạt; phần độc lập vẫn học được.";
+            }
+        }
+        for (var pass = 0; pass < statuses.Count; pass++)
+            foreach (var skill in statuses)
+                if (skill.PrerequisiteSkillIds.Any(id => statuses.Any(s => s.SkillId == id && (s.StageGateFailed || s.BlockedByStageGate))))
+                    skill.BlockedByStageGate = true;
         foreach (var skill in statuses.Where(s => s.Availability == "Available" && s.State != "Confirmed"))
             if (skill.PrerequisiteSkillIds.Any(p => statuses.All(s => s.SkillId != p || s.State != "Confirmed") && externalMastery.GetValueOrDefault(p) < 60m))
                 skill.Availability = "PrerequisiteBlocked";

@@ -29,6 +29,7 @@ public static class LearningAssessmentPolicy
         : JsonSerializer.Deserialize<LearningScheduleSettings>(json.RootElement.GetRawText(), LearningPathV4Data.Json) ?? new();
 
     public static uint PracticeSize(string pace) => pace switch { "Gentle" => 3, "Accelerated" => 8, _ => 6 };
+    public static uint DailySetsPerSkill(string pace) => pace switch { "Gentle" => 1, "Accelerated" => 4, _ => 3 };
     public static DateTime? ExpiresAt(JsonDocument? policy, DateTime startedAt) => policy?.RootElement.TryGetProperty("timeLimitMinutes", out var value) == true &&
         value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var minutes) && minutes > 0 ? startedAt.AddMinutes(minutes) : null;
 }

@@ -253,6 +253,26 @@ public class CreateAssignmentUseCaseTests
         Assert.Single(result.Data.Questions);
     }
 
+    [Theory]
+    [InlineData("Unknown", null, false)]
+    [InlineData("Final", null, false)]
+    [InlineData("Midterm", "2026-07-29T10:00:00Z", false)]
+    [InlineData("Final", "2026-08-03T10:00:00Z", true)]
+    public async Task Exam_kind_and_start_time_are_validated(string kind, string? at, bool success)
+    {
+        var center = Guid.NewGuid(); var teacher = Guid.NewGuid();
+        SetupTenant(center, teacher, nameof(UserRole.Teacher));
+        using var ctx = CreateContext(center);
+        var (_, _, _, _, cls, question) = await SeedBaseAsync(ctx, center, teacher);
+        var result = await CreateSut(ctx).ExecuteAsync(new CreateAssignmentRequest {
+            ClassId = cls.ClassId, Title = "Exam", TargetMode = "WholeClass", Kind = kind,
+            ExamAt = at == null ? null : DateTime.Parse(at, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal), TimeLimitMinutes = 30,
+            QuestionIds = [question.QuestionId.ToString(CultureInfo.InvariantCulture)] });
+        Assert.Equal(success, result.IsSuccess);
+        if (success) { Assert.Equal(kind, result.Data!.Kind); Assert.NotNull(result.Data.ExamAt); }
+        else Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+    }
+
     [Fact]
     public async Task ExecuteAsync_TeacherOwner_ClassNotBelongToTeacher_ReturnsNotFound()
     {

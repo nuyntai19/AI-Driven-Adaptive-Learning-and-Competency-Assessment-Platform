@@ -59,8 +59,10 @@ public sealed partial class LearningPathV4Planner
                 PolicyVersion = LearningPathV4Data.Policy, ReasonCodes = JsonSerializer.SerializeToDocument(new[] { "MISSED_STUDY_DATE" }),
                 CreatedAt = Now, UpdatedAt = Now, RowVersion = 1 });
         }
+        var deadlineChanged = plan.DeadlineDate != goal.DeadlineDate;
         plan.Schedule = settings; plan.TargetScore = goal.TargetScore; plan.DeadlineDate = goal.DeadlineDate;
         plan.AvailableMinutesPerDay = goal.AvailableMinutesPerDay; plan.AvailableDaysPerWeek = goal.AvailableDaysPerWeek;
+        await RefreshExamDefinitionsAsync(center, student, path, plan, classId, deadlineChanged, ct);
         var closed = path.Sessions.Where(s => s.Status is LearningPathSessionStatus.Completed or LearningPathSessionStatus.Skipped)
             .Select(s => s.SessionId.ToString()).ToHashSet();
         // Work in progress has its own timer and saved state; preserve it and exclude it from new date allocations.

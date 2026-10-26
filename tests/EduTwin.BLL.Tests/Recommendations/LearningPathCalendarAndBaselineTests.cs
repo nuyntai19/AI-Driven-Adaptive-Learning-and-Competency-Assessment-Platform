@@ -94,13 +94,13 @@ public sealed class LearningPathCalendarAndBaselineTests
                 QuestionId = question.QuestionId, ClientSubmissionId = Guid.NewGuid(), FinalAnswer = question.CorrectAnswer! });
         }
         var evaluation = await f.Evaluator.EvaluateMissionRunAsync(f.Center, f.Student, run.SessionRunId);
-        Assert.Equal("Inconclusive", evaluation.Outcome);
+        Assert.Equal("Passed", evaluation.Outcome);
         Assert.All(await f.Db.AIAnalysisJobs.ToListAsync(), j => Assert.Equal(AIJobStatus.Completed, j.Status));
         Assert.All(await f.Db.EvidenceAssessments.ToListAsync(), e => Assert.False(e.RequiresTeacherReview));
         var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
         Assert.True(agenda.PlacementReport!.IsComplete);
         Assert.Equal("Low", Assert.Single(agenda.PlacementReport.Skills).Confidence);
-        Assert.Equal("Inconclusive", agenda.PlacementReport.Skills[0].Classification);
+        Assert.Equal("Strong", agenda.PlacementReport.Skills[0].Classification);
         var forecast = await LearningGoalForecast.ReadAsync(f.Db, f.Center, f.Student, f.English, null,
             DateTime.UtcNow, ["101"], default);
         Assert.Equal(10m, forecast.Score);
@@ -182,6 +182,7 @@ public sealed class LearningPathCalendarAndBaselineTests
         var study = plan.Milestones.SelectMany(m => m.Missions).First(m => m.Purpose == "Study");
         var originalId = Guid.Parse(study.MissionId);
         study.PlannedDate = LearningPathCalendar.LocalDate(DateTime.UtcNow, plan.Schedule.TimeZoneId).AddDays(-1);
+        study.StudySlots.Clear();
         path.PlanJson = System.Text.Json.JsonSerializer.SerializeToDocument(plan, LearningPathV4Data.Json); await f.Db.SaveChangesAsync();
         await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
         Assert.Equal(LearningPathSessionStatus.Skipped, (await f.Db.LearningPathSessions.SingleAsync(s => s.SessionId == originalId)).Status);

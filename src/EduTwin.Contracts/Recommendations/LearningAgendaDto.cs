@@ -120,6 +120,8 @@ public class MissionRunSummaryDto
 
 public class AgendaItemDto
 {
+    public uint MilestoneOrder { get; set; }
+    public string MilestoneTitle { get; set; } = "";
     public DateOnly? PlannedDate { get; set; }
     public bool Deferred { get; set; }
     public uint RemainingUnscheduledMinutes { get; set; }

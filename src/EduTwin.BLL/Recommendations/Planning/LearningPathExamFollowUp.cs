@@ -17,9 +17,17 @@ public static class LearningPathExamFollowUp
             .Select(i => new { i.Attempt!.Question.PrimaryTopicNodeId, i.Attempt.IsCorrect, i.Attempt.AttemptId }).ToListAsync(ct);
         var ids = answers.Select(a => a.AttemptId).ToList();
         var corrections = await db.ReasoningAnalyses.AsNoTracking().Where(a => a.CenterId == run.CenterId && ids.Contains(a.AttemptId)).ToDictionaryAsync(a => a.AttemptId, ct);
-        var weak = answers.GroupBy(a => a.PrimaryTopicNodeId).Where(g => g.Count(a => corrections.GetValueOrDefault(a.AttemptId)?.OverrideIsCorrect ?? a.IsCorrect ?? false) / (decimal)g.Count() < run.Session.RequiredCorrectRate)
+        var requiredRate = Math.Max(run.Session.RequiredCorrectRate, Math.Max(.8m, (plan.TargetScore ?? 8m) / 10m));
+        var weak = answers.GroupBy(a => a.PrimaryTopicNodeId).Where(g => g.Count(a => corrections.GetValueOrDefault(a.AttemptId)?.OverrideIsCorrect ?? a.IsCorrect ?? false) / (decimal)g.Count() < requiredRate)
             .Select(g => g.Key).ToList();
+        var issuedIds = await db.IssuedItems.AsNoTracking().Where(i => i.CenterId == run.CenterId && i.ActivityRun.SessionRunId == run.SessionRunId && i.QuestionId != null)
+            .Select(i => i.QuestionId!.Value).ToListAsync(ct);
+        var issuedSkills = await db.Questions.AsNoTracking().Where(q => q.CenterId == run.CenterId && issuedIds.Contains(q.QuestionId))
+            .Select(q => q.PrimaryTopicNodeId).Distinct().ToListAsync(ct);
+        // An unfinished section needs a retry path too, without treating unanswered questions as proof of weakness.
+        weak.AddRange(issuedSkills.Where(id => answers.Count(a => a.PrimaryTopicNodeId == id) < 5 && !weak.Contains(id)));
         uint order = (await db.LearningPathSessions.Where(s => s.CenterId == run.CenterId && s.LearningPathId == path.LearningPathId).MaxAsync(s => (uint?)s.SessionOrder, ct) ?? 0);
+        var isGate = plan.Milestones.SelectMany(m => m.Missions).Any(m => m.MissionId == run.SessionId.ToString() && m.IsMilestoneExam && !m.IsProbe);
         foreach (var skillId in weak)
         {
             var id = skillId.ToString();
@@ -35,8 +43,10 @@ public static class LearningPathExamFollowUp
                 Title = $"Rèn lại sau mốc thi: {milestone.Title}", QuestionCount = size, EstimatedMinutes = size * 2, ActivityTypes = ["Practice"], CanStart = size > 0,
                 SelectionReason = "Kết quả mốc thi cho thấy kỹ năng này cần củng cố; các kỹ năng độc lập khác vẫn học tiếp được." };
             var check = new ProposedMissionDto { MissionId = Guid.NewGuid().ToString(), SkillId = id, Purpose = "IndependentCheck", IsRepair = true,
+                IsMilestoneExam = isGate, IsProbe = false, AssessedSkillIds = [id], TimeLimitMinutes = isGate ? 10u : null,
                 Title = $"Kiểm tra lại: {milestone.Title}", QuestionCount = 5, EstimatedMinutes = 10, ActivityTypes = ["IndependentCheck"], CanStart = pool.Count >= 5,
                 SelectionReason = "Làm phần rèn lại rồi kiểm tra bằng câu mới; thiếu câu thì giữ trạng thái chưa đủ bằng chứng." };
+            // Retaking a stage gate uses the same timed policy; mock follow-up stays diagnostic.
             milestone.Missions.Add(repair); milestone.Missions.Add(check); milestone.ReadyForCheck = false;
             foreach (var mission in new[] { repair, check })
                 db.LearningPathSessions.Add(new LearningPathSession { SessionId = Guid.Parse(mission.MissionId), CenterId = run.CenterId,
