@@ -29,7 +29,10 @@ public sealed class NotificationOutbox(EduTwinDbContext db, ITenantContext tenan
             ?? await db.NotificationEvents.SingleOrDefaultAsync(x => x.DeduplicationKey == key, ct);
         if (existing is not null)
         {
-            if (existing.Title != title.Trim() || existing.Body != body.Trim() || existing.RecipientUserIds != JsonSerializer.Serialize(ids))
+            // JSON columns may normalize whitespace; recipient identity is independent of JSON formatting and order.
+            var existingIds = JsonSerializer.Deserialize<Guid[]>(existing.RecipientUserIds);
+            if (existing.Title != title.Trim() || existing.Body != body.Trim() ||
+                existingIds is null || !ids.ToHashSet().SetEquals(existingIds))
                 throw new InvalidOperationException("Notification deduplication key reused for a different envelope.");
             return existing.EventId;
         }
