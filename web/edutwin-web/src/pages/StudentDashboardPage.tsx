@@ -4,7 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { getStudentDashboard } from "../api/dashboardsApi";
 import { getStudentAssignments } from "../api/assignmentsApi";
 import { getLearningAgenda } from "../api/learningPathApi";
+import { getStudentTwinHistory } from "../api/digitalTwinApi";
 import type { StudentDashboardDataDto } from "../types/dashboards";
+import type { TwinUpdateHistoryItemDto } from "../types/digitalTwin";
 import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentProgressTrack } from "../components/student/StudentProgressTrack";
 import { StudentSubjectPattern } from "../components/student/StudentSubjectPattern";
@@ -13,6 +15,7 @@ import { studentScopeUrl } from "../utils/studentAcademicNavigation";
 import { goalGapLabel } from "../utils/academicDisplay";
 
 const StudentRadarChart = React.lazy(() => import("../components/student/StudentRadarChart"));
+const StudentMasteryTrendChart = React.lazy(() => import("../components/student/StudentMasteryTrendChart"));
 
 export const StudentDashboardPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -44,6 +47,13 @@ export const StudentDashboardPage: React.FC = () => {
   const { data: agenda, isPending: agendaLoading, isError: agendaError } = useQuery({
     queryKey: ["learning-agenda", "dashboard", selectedSubjectId, selectedClassId, 15],
     queryFn: () => getLearningAgenda(selectedSubjectId, 15, selectedClassId || undefined),
+    enabled: !!selectedSubjectId && !isHistory,
+    staleTime: 60 * 1000,
+  });
+
+  const { data: twinHistory } = useQuery<TwinUpdateHistoryItemDto[]>({
+    queryKey: ["studentTwinHistory", selectedSubjectId],
+    queryFn: () => getStudentTwinHistory(selectedSubjectId),
     enabled: !!selectedSubjectId && !isHistory,
     staleTime: 60 * 1000,
   });
@@ -460,6 +470,29 @@ export const StudentDashboardPage: React.FC = () => {
             </React.Suspense>
           )}
         </div>
+
+        {/* Mastery trend over time: one line per topic, stock-chart style */}
+        {!!selectedSubjectId && !isHistory && (
+          <div className="rounded-2xl border border-stone-200/90 dark:border-stone-800/90 p-5 sm:p-6 bg-white dark:bg-[#151d2f] shadow-xs xl:col-span-2">
+            <div className="pb-3 mb-2 border-b border-stone-100 dark:border-stone-800/80">
+              <h3 className="text-base font-bold text-stone-900 dark:text-stone-100">
+                Diễn biến năng lực theo chủ đề
+              </h3>
+              <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                Độ thành thạo lên xuống theo từng lần thay đổi trong quá trình học — mỗi chủ đề một đường, chú thích ở dưới biểu đồ
+              </p>
+            </div>
+            <React.Suspense
+              fallback={
+                <div className="h-80 w-full flex items-center justify-center text-sm text-stone-400">
+                  Đang tải biểu đồ diễn biến...
+                </div>
+              }
+            >
+              <StudentMasteryTrendChart history={twinHistory ?? []} />
+            </React.Suspense>
+          </div>
+        )}
 
         {/* Right Column: TIẾN ĐỘ CHẶNG HỌC TẬP (STUDY PROGRESSION ROUTE) */}
         <div className="rounded-2xl border border-stone-200/90 dark:border-stone-800/90 p-5 sm:p-6 bg-white dark:bg-[#151d2f] shadow-xs">
