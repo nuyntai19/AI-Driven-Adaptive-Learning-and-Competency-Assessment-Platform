@@ -34,7 +34,7 @@ public sealed class LearningPathHandoffTests
     }
 
     [Fact]
-    public async Task Used_questions_wait_before_practice_and_never_become_fresh_check_evidence()
+    public async Task Used_questions_wait_before_practice_and_checks_fall_back_to_answered_questions()
     {
         using var f = new LearningPathV4Fixture();
         f.Db.Questions.RemoveRange(f.Db.Questions.Where(q => q.PrimaryTopicNodeId == 102 || q.PrimaryTopicNodeId == 103)); await f.Db.SaveChangesAsync();
@@ -52,7 +52,12 @@ public sealed class LearningPathHandoffTests
         Assert.NotEmpty(run.Activities);
         await f.Execution.AbandonMissionRunAsync(f.Center, f.Student, Guid.Parse(practice.MissionId), run.SessionRunId);
         var check = plan.Milestones.SelectMany(m => m.Missions).Single(m => m.Purpose == "IndependentCheck");
-        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(check.MissionId)));
+        // Tiered eligibility (6aa0c60) replaced the old strict rule that used questions could
+        // never serve a check again: on a small bank that made every check unreachable. With
+        // no fresh questions left the check now falls back to answered ones (fresh first when
+        // available) and only refuses below the floor of 3 eligible questions.
+        var checkRun = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(check.MissionId));
+        Assert.NotEmpty(checkRun.Activities);
     }
 
     [Fact]
