@@ -105,6 +105,21 @@ public sealed partial class LearningPathV4Planner
         plan.Schedule = LearningAssessmentPolicy.Settings(goal.ScheduleSettings);
         if (plan.Schedule.StudyDays.Count != goal.AvailableDaysPerWeek) plan.Schedule.StudyDays.Clear();
         LearningPathCalendar.Schedule(plan, Now);
+        var weights = nodes.ToDictionary(n => n.NodeId.ToString(), n => n.ExamImportance > 0 ? n.ExamImportance : 50m);
+        var forecast = await LearningGoalForecast.ReadAsync(db, centerId, studentId, source.SubjectId, source.Goal.ClassId, Now, plan.RequestedSkillIds, cancellationToken);
+        decimal? currentScore; string scoreSource; string scoreCoverage;
+        if (forecast.Score.HasValue)
+        {
+            var total = plan.Milestones.SelectMany(m => m.SkillIds).Distinct().Count();
+            currentScore = forecast.Score; scoreSource = "Forecast"; scoreCoverage = $"{total}/{total}";
+        }
+        else
+        {
+            var milestoneSkills = plan.Milestones.SelectMany(m => m.SkillIds).ToHashSet();
+            var fallback = LearningPathFeasibility.FromMasteryMap(map.Skills.Where(s => milestoneSkills.Contains(s.SkillId)).ToList(), weights);
+            currentScore = fallback.Score; scoreSource = currentScore.HasValue ? "MasteryMap" : "None"; scoreCoverage = $"{fallback.Covered}/{fallback.Total}";
+        }
+        LearningPathFeasibility.Annotate(plan, currentScore, scoreSource, scoreCoverage, Now);
         db.LearningGoals.Add(goal);
         db.PathProposals.Add(new PathProposal
         {

@@ -202,7 +202,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 var practicePool = LearningPathInsights.PracticePool(questions.Where(q => q.PrimaryTopicNodeId == node.NodeId).ToList(), usedQuestionIds.ToHashSet());
                 if (goal.GoalType == "Advanced") practicePool = questions.Where(q => q.PrimaryTopicNodeId == node.NodeId && q.Difficulty >= 4).ToList();
                 practicePool = practicePool.Where(q => !cooling.Contains(q.QuestionId)).ToList();
-                var estimatedSets = LearningPathPacing.EstimatedSetsFor(weakness);
+                var extraSets = LearningPathPacing.ExtraSetsForTargetGap(goal.TargetScore, skill.MasteryScore);
+                var estimatedSets = Math.Min(LearningPathPacing.MaxSetsPerSkill, LearningPathPacing.EstimatedSetsFor(weakness) + extraSets);
                 // No answers yet: try a few questions first instead of making a student who may already know it read theory.
                 var probeFirst = insight is not { QuestionCount: > 0 } && skill.State == "Unknown" && goal.GoalType is not ("Foundation" or "Advanced") && practicePool.Count >= 3;
                 // Strong recent answers skip re-reading theory (it stays available from review); weak skills restart from the concept.
@@ -244,6 +245,11 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                             first.SelectionReason = $"Phần {node.NodeName} chưa đủ câu luyện. Tạm luyện phần liên quan cùng môn/giáo trình; kết quả chỉ ghi nhận kỹ năng thực sự được hỏi, không xác nhận thay cho phần đang thiếu.";
                         }
                     }
+                }
+                if (extraSets > 0)
+                {
+                    var practice = missions.LastOrDefault(m => m.Purpose == "Practice");
+                    if (practice != null) practice.SelectionReason += $" Điểm mục tiêu {goal.TargetScore}/10 cao hơn mức hiện tại của phần này nên dự kiến thêm {extraSets} bộ.";
                 }
                 if (count < 10) missions.Last().SelectionReason += " Ngân hàng còn ít câu nên vòng luyện sẽ ngắn; cần giáo viên bổ sung đề.";
                 if (goal.GoalType == "Advanced")
@@ -372,6 +378,15 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         };
         AddExamPreparationMilestones(proposal, ordered, questions, usedQuestionIds.Concat(exposedQuestionIds).ToHashSet(), nodes.ToDictionary(n => n.NodeId.ToString(), n => n.ExamImportance > 0 ? n.ExamImportance : 1m));
         LearningPathCalendar.Schedule(proposal, Now);
+        var forecast = await LearningGoalForecast.ReadAsync(db, center, student, goal.SubjectId, goal.ClassId, Now, scope.TargetSkillIds, ct);
+        decimal? currentScore; string scoreSource; string scoreCoverage;
+        if (forecast.Score.HasValue) { currentScore = forecast.Score; scoreSource = "Forecast"; scoreCoverage = $"{ordered.Count}/{ordered.Count}"; }
+        else
+        {
+            var fallback = LearningPathFeasibility.FromMasteryMap(ordered, examPriority);
+            currentScore = fallback.Score; scoreSource = currentScore.HasValue ? "MasteryMap" : "None"; scoreCoverage = $"{fallback.Covered}/{fallback.Total}";
+        }
+        LearningPathFeasibility.Annotate(proposal, currentScore, scoreSource, scoreCoverage, Now);
         return proposal;
     }
 
@@ -419,6 +434,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         foreach (var p in old.Where(p => p.Status == LearningPathStatus.Active)) { p.Status = LearningPathStatus.Superseded; p.RowVersion++; p.UpdatedAt = Now; }
         var plan = JsonSerializer.Deserialize<PathProposalDto>(proposal.CandidatePlan.RootElement.GetRawText(), LearningPathV4Data.Json)
             ?? throw new InvalidOperationException("Đề xuất không hợp lệ; hãy tạo lại.");
+        if (plan.TargetScore.HasValue && plan.FeasibilityStatus == "InsufficientTime")
+            throw new InvalidOperationException(plan.FeasibilityMessage ?? "Mốc thời gian đã chọn không đủ để đạt điểm mục tiêu. Hãy tạo đề xuất mới với mốc khả thi.");
         var path = new LearningPath
         {
             LearningPathId = Guid.NewGuid(), CenterId = centerId, StudentId = studentId, SubjectId = proposal.SubjectId,

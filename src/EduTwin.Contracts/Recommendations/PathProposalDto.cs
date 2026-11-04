@@ -37,6 +37,14 @@ public class PathProposalDto
 
     public string FeasibilityStatus { get; set; } = "Feasible"; // Feasible, TightBudget, InsufficientTime
     public string? FeasibilityMessage { get; set; }
+    public decimal? CurrentEstimatedScore { get; set; }
+    public string? CurrentScoreSource { get; set; }
+    public string? CurrentScoreCoverage { get; set; }
+    public uint RequiredStudyMinutes { get; set; }
+    public uint MinimumStudyDays { get; set; }
+    public DateTime? EarliestFeasibleDate { get; set; }
+    public DateTime? SuggestedDeadline { get; set; }
+    public decimal? AchievableScore { get; set; }
     public uint EstimatedWeeks { get; set; } = 4;
     public DateTime ExpiresAt { get; set; }
     public string Status { get; set; } = "Pending";
