@@ -8,7 +8,7 @@ import type { StudentDashboardDataDto } from "../types/dashboards";
 import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentProgressTrack } from "../components/student/StudentProgressTrack";
 import { StudentSubjectPattern } from "../components/student/StudentSubjectPattern";
-import { StudentKnowledgeMap, type TopicMapNode } from "../components/student/StudentKnowledgeMap";
+import { StudentCompetencyList } from "../components/student/StudentCompetencyList";
 import { studentScopeUrl } from "../utils/studentAcademicNavigation";
 import { goalGapLabel } from "../utils/academicDisplay";
 
@@ -120,16 +120,6 @@ export const StudentDashboardPage: React.FC = () => {
     groupName: item.groupName || item.topicName,
     weight: item.examImportance ?? 1,
     evidenceCount: item.evidenceCount ?? 0,
-  }));
-
-  // Knowledge Map nodes mapping
-  const knowledgeMapTopics: TopicMapNode[] = masteryRadar.map((item) => ({
-    topicNodeId: item.topicNodeId,
-    topicName: item.topicName,
-    masteryPercentage: item.mastery,
-    evidenceCount: item.evidenceCount ?? 0,
-    groupId: item.groupNodeId,
-    groupName: item.groupName,
   }));
 
   const goalDiff = goal.hasGoal && goal.hasPrediction !== false ? goalGapLabel(goal.targetScore, goal.currentPredictedScore) : "—";
@@ -419,7 +409,7 @@ export const StudentDashboardPage: React.FC = () => {
                 {isAllSubjects ? "Radar Năng Lực Theo Môn Học" : "Radar Năng Lực Theo Chuyên Đề"}
               </h3>
               <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-                Bản đồ định vị năng lực & các mốc kiến thức đã chinh phục
+                Định vị năng lực theo từng chuyên đề & mức cần ưu tiên
               </p>
             </div>
 
@@ -434,7 +424,7 @@ export const StudentDashboardPage: React.FC = () => {
                     : "text-stone-500 hover:text-stone-800 dark:text-stone-400"
                 }`}
               >
-                Bản đồ Atlas
+                Danh sách chuyên đề
               </button>
               <button
                 type="button"
@@ -451,9 +441,9 @@ export const StudentDashboardPage: React.FC = () => {
           </div>
 
           {competencyViewMode === "atlas" ? (
-            <StudentKnowledgeMap
-              topics={knowledgeMapTopics}
-              subjectName={subject.subjectName}
+            <StudentCompetencyList
+              data={radarChartData}
+              themeColor={currentSubjectTheme.color}
             />
           ) : (
             <React.Suspense

@@ -21,6 +21,7 @@ interface Props { isOpen: boolean; onClose: () => void; subjectId: string; class
   selfAssessedSkillIds?: string[]; onPlacementStarted?: () => void; placementReport?: PlacementReportDto | null;
   initialMinutes?: number; initialDays?: number; initialGoalType?: string; initialTitle?: string; initialDeadline?: string | null; initialSelfReportedPrerequisiteSkillIds?: string[] }
 function todayIso() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+function formatIsoDate(iso?: string | null) { if (!iso) return ""; const bits = iso.split("T")[0].split("-"); return bits.length === 3 ? `${bits[2]}/${bits[1]}/${bits[0]}` : iso; }
 export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAccepted, onOpenBlockingMission, skills = [], subjectName = "môn đang học", suggestedSkillIds = [], recommendationSummary, automatic = false, insights, entryMode, initialMinutes = 15, initialDays = 5, initialGoalType, initialTitle, initialDeadline, initialSelfReportedPrerequisiteSkillIds = [], selfAssessedSkillIds = [], onPlacementStarted, placementReport, initialTargetScore, initialSchedule, initialPreferredPace }: Props) {
   const fromPlacement = entryMode === "FromPlacement";
   const cache = useQueryClient();
@@ -92,6 +93,9 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
     } });
   if (!isOpen) return null;
   const blockers = pathChangeBlockersFromError(accept.error);
+  const assessedTargets = skills.filter(s => targets.includes(s.skillId) && s.evidenceCount > 0 && s.masteryScore != null);
+  const currentMasteryAverage = assessedTargets.length ? assessedTargets.reduce((sum, s) => sum + (s.masteryScore ?? 0), 0) / assessedTargets.length : null;
+  const infeasibleWithTarget = !!proposal && proposal.feasibilityStatus === "InsufficientTime" && proposal.targetScore != null;
   const input = "mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 dark:bg-slate-900";
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
     <section role="dialog" aria-modal="true" aria-labelledby="goal-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100">
@@ -126,6 +130,9 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
         </select></label>
         <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">Điểm muốn đạt (thang 10)<input type="number" placeholder="Ví dụ: 8" min="0" max="10" step="0.1" className={input} value={targetScore} onChange={e => setTargetScore(e.target.value)} /></label>
           <label className="text-sm">Nhịp học<select className={input} value={pace} onChange={e => setPace(e.target.value)}><option value="Gentle">Nhẹ nhàng · bộ ngắn</option><option value="Moderate">Vừa phải</option><option value="Accelerated">Tập trung · bộ dài hơn</option></select></label></div>
+        {targets.length > 0 && (currentMasteryAverage != null
+          ? <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">Điểm ước tính hiện tại (từ bản đồ năng lực, {assessedTargets.length}/{targets.length} phần đã chọn có bằng chứng): <strong>{(currentMasteryAverage / 10).toFixed(1)}/10</strong>. Hệ thống sẽ tính thời gian học tối thiểu và ngày đích đề xuất ở bản xem trước; mốc quá ngắn sẽ không chọn được tuyến.</p>
+          : <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">Chưa đủ bằng chứng để ước tính điểm hiện tại cho các phần đã chọn — kiểm tra đầu vào sẽ cho con số này, và thời gian tối thiểu sẽ tính theo khối lượng nội dung.</p>)}
         <TimeBudgetSlider label="Thời gian học mỗi ngày" value={minutes} onChange={setMinutes} summary="Đây là trần thời gian mỗi ngày, dùng để xếp lịch thực tế. Khi không đủ thời gian, hệ thống sẽ chỉ rõ phần cần hoãn hoặc điều chỉnh." />
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="text-sm">Ngày mỗi tuần<select className={input} value={days} onChange={e => { setDays(Number(e.target.value)); setSchedule(s => ({...s, studyDays: []})); }}>{[1, 2, 3, 4, 5, 6, 7].map(n => <option key={n}>{n}</option>)}</select></label>
@@ -146,7 +153,17 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
             <p className="mt-1 text-slate-600 dark:text-slate-300">{s.recommendation}</p></li>)}</ul>
         </section>}<div className="rounded-xl border border-slate-200 p-4"><h3 className="font-semibold">{title}</h3><p className="mt-2 text-sm">{placement ? "Kiểm tra đầu vào" : goalType === "Advanced" ? "Học nâng cao" : goalType === "Diagnostic" ? "Xác định điểm xuất phát" : goalType === "Foundation" ? "Củng cố nền tảng" : goalType === "ExamPrep" ? "Chuẩn bị bài kiểm tra" : "Theo kịp bài trên lớp"} · Tổng quỹ {formatStudyMinutes(minutes)}/ngày · {days} ngày/tuần · {placement ? "5 câu mới / kỹ năng cần kiểm tra" : Object.keys(proposal.practiceQuestionsBySkill ?? {}).length ? "Số câu theo từng phần học" : `${proposal.practiceQuestionsPerSet ?? 6} câu/bộ luyện`}</p><p className="mt-2 text-sm text-slate-500">Mốc dự kiến: {deadline ? deadline.split("-").reverse().join("/") : "Theo tiến độ học"}. Đây là ước lượng có thể điều chỉnh.</p>{(!deadline || targetScore === "") && !placement && <p className="mt-2 rounded-lg bg-amber-50 p-2 text-sm text-amber-900">Chưa đặt {[targetScore === "" ? "điểm muốn đạt" : "", !deadline ? "ngày thi" : ""].filter(Boolean).join(" và ")}. <button type="button" className="font-semibold underline" onClick={() => { accept.reset(); setEditing(true); contentRef.current?.scrollTo({ top: 0 }); }}>Đặt ngay</button> để lộ trình xếp theo ngày thật và có mốc kiểm tra, thi thử.</p>}</div><p className="rounded-xl bg-indigo-50 p-4 text-sm text-indigo-900">{proposal.startingBaselineSummary}</p>
         <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Đổi tuyến không xóa gì: mọi câu trả lời trước đây vẫn được giữ và dùng để quyết định kỹ năng nào cần học nhiều hơn, kỹ năng nào được rút gọn. Tuyến cũ chuyển vào “Lịch sử tuyến học”. Nhiệm vụ đang làm dở cần làm xong hoặc hủy lượt trước khi đổi; bài đang chờ chấm sẽ được giữ nguyên.</p>
-        <p className="text-sm">{proposal.feasibilityMessage}</p>
+        <div className={`rounded-xl border p-4 text-sm ${proposal.feasibilityStatus === "InsufficientTime" ? "border-rose-300 bg-rose-50 text-rose-950" : proposal.feasibilityStatus === "TightBudget" ? "border-amber-300 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`}>
+          <dl className="grid gap-2 sm:grid-cols-2">
+            <div><dt className="font-semibold">Điểm hiện tại ước tính</dt><dd>{proposal.currentEstimatedScore != null ? `${proposal.currentEstimatedScore}/10` : "Chưa đủ dữ liệu"}</dd></div>
+            {proposal.targetScore != null && <div><dt className="font-semibold">Điểm mục tiêu</dt><dd>{proposal.targetScore}/10</dd></div>}
+            {!!proposal.requiredStudyMinutes && <div><dt className="font-semibold">Thời lượng cần</dt><dd>~{proposal.requiredStudyMinutes} phút ({proposal.minimumStudyDays ?? 0} ngày học)</dd></div>}
+            {proposal.earliestFeasibleDate && <div><dt className="font-semibold">Ngày sớm nhất</dt><dd>{formatIsoDate(proposal.earliestFeasibleDate)}</dd></div>}
+            {proposal.suggestedDeadline && <div><dt className="font-semibold">Ngày đề xuất</dt><dd>{formatIsoDate(proposal.suggestedDeadline)}</dd></div>}
+            {proposal.achievableScore != null && proposal.feasibilityStatus === "InsufficientTime" && <div><dt className="font-semibold">Điểm đạt được tối đa với mốc đã chọn</dt><dd>{proposal.achievableScore}/10</dd></div>}
+          </dl>
+          <p className="mt-3">{proposal.feasibilityMessage}</p>
+        </div>
         {!!proposal.selfReportedPrerequisiteSkillIds?.length && <p className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">Bỏ qua theo tự xác nhận: {proposal.selfReportedPrerequisiteSkillIds.map(id => skills.find(s => s.skillId === id)?.skillName ?? id).join(", ")}. Các phần này không thêm vào bài kiểm tra hoặc tuyến học và chưa được đánh dấu nắm vững trên hệ thống.</p>}
         {!!proposal.selfAssessedSkillIds?.length && <p className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">Phần em tự đánh giá đã vững (không chọn kiểm tra): <strong>{proposal.selfAssessedSkillIds.map(id => skills.find(s => s.skillId === id)?.skillName ?? id).join(", ")}</strong>. Cuối lộ trình có một bài ôn ngắn cho mỗi phần để xác nhận; chưa đạt sẽ thêm bộ rèn lại.</p>}
         {proposal.milestones.map(m => <article key={m.order} className={`rounded-xl border p-4 ${m.isSelfAssessedCheck ? "border-sky-200" : "border-slate-200"}`}><h3 className="font-semibold">{m.order}. {m.title}{m.isSelfAssessedCheck && <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-800">Tự đánh giá đã vững · ôn xác nhận</span>}</h3>
@@ -168,8 +185,9 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
         </div>}
         {accept.isPending && <p role="status" className="text-sm text-indigo-700">Đang lưu tuyến và cập nhật nhiệm vụ của bạn…</p>}
         <button disabled={accept.isPending} className="text-sm text-slate-600 underline disabled:opacity-50" onClick={() => { accept.reset(); setEditing(true); contentRef.current?.scrollTo({ top: 0 }); }}>Thay đổi mục tiêu học</button>
+        {infeasibleWithTarget && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">Chưa thể chọn tuyến này: mốc thời gian không đủ để đạt điểm mục tiêu. Hãy bấm "Tùy chỉnh tuyến học" để dời mốc/tăng thời gian, hoặc "Thay đổi mục tiêu học".</p>}
         <div className="flex flex-wrap gap-3">{!proposal.isPlacement && <button disabled={accept.isPending} className="rounded-xl border px-4 py-3 disabled:opacity-50" onClick={() => { accept.reset(); customize.reset(); setCustomizing(true); contentRef.current?.scrollTo({ top: 0 }); }}>Tùy chỉnh tuyến học</button>}
-          <button disabled={accept.isPending} className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white disabled:opacity-50" onClick={() => accept.mutate()}>{accept.isPending ? "Đang kích hoạt…" : accept.error ? "Thử lại" : proposal.isPlacement ? "Bắt đầu kiểm tra đầu vào" : "Chọn tuyến học này"}</button></div>
+          <button disabled={accept.isPending || infeasibleWithTarget} className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white disabled:opacity-50" onClick={() => accept.mutate()}>{accept.isPending ? "Đang kích hoạt…" : accept.error ? "Thử lại" : proposal.isPlacement ? "Bắt đầu kiểm tra đầu vào" : "Chọn tuyến học này"}</button></div>
       </footer>}
     </section>
   </div>;

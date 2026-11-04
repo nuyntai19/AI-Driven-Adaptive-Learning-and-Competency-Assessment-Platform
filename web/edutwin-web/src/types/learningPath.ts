@@ -372,6 +372,14 @@ export interface PathProposalDto {
   alternativeOption?: ProposedMissionDto | null;
   feasibilityStatus: 'Feasible' | 'TightBudget' | 'InsufficientTime' | string;
   feasibilityMessage?: string | null;
+  currentEstimatedScore?: number | null;
+  currentScoreSource?: string | null;
+  currentScoreCoverage?: string | null;
+  requiredStudyMinutes?: number;
+  minimumStudyDays?: number;
+  earliestFeasibleDate?: string | null;
+  suggestedDeadline?: string | null;
+  achievableScore?: number | null;
   estimatedWeeks: number;
   expiresAt: string;
   status: string;
