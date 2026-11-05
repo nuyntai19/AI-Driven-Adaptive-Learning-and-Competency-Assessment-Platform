@@ -24,6 +24,7 @@ public sealed class DynamicPermissionEndpointCoverageTests
             .ToHashSet(StringComparer.Ordinal);
         var excludedControllers = new HashSet<Type>
         {
+            typeof(AccountSecurityController),
             typeof(AuthController),
             typeof(HealthController)
         };

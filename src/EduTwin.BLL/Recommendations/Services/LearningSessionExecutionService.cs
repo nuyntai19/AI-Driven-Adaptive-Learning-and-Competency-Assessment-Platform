@@ -788,7 +788,7 @@ public class LearningSessionExecutionService : ILearningSessionExecutionService
         if (session != null)
         {
             var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, subjectId, classId ?? session.ClassId, false, ct);
-            if (!scope.Includes(session.TopicNodeId) || (classId.HasValue && session.ClassId != classId) || session.PolicyVersion == Planning.LearningPathV4Data.Policy) return null;
+            if (!scope.Includes(session.TopicNodeId) || (classId.HasValue && session.ClassId != classId) || Planning.LearningPathV4Data.IsV4Policy(session.PolicyVersion)) return null;
         }
         return session;
     }
@@ -939,6 +939,11 @@ public class LearningSessionExecutionService : ILearningSessionExecutionService
         bool isCheckpoint,
         CancellationToken ct = default)
     {
+        var scopedSession = await _dbContext.LearningPathSessions.AsNoTracking().Include(s => s.LearningPath)
+            .SingleOrDefaultAsync(s => s.CenterId == centerId && s.SessionId == sessionId, ct);
+        if (scopedSession is null) return null;
+        var questionScope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId,
+            scopedSession.LearningPath.StudentId, scopedSession.LearningPath.SubjectId, scopedSession.ClassId, false, ct);
         var question = await _dbContext.Questions
             .AsNoTracking()
             .FirstOrDefaultAsync(q =>
@@ -950,7 +955,8 @@ public class LearningSessionExecutionService : ILearningSessionExecutionService
                 q.AnswerEvaluationMode != Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.Manual,
                 ct);
 
-        if (question is null) return null;
+        if (question is null || question.SubjectId != scopedSession.LearningPath.SubjectId ||
+            !questionScope.IncludesQuestion(question.PrimaryTopicNodeId, question.GradeLevel)) return null;
 
         var topic = await _dbContext.KnowledgeNodes
             .AsNoTracking()
@@ -1042,7 +1048,7 @@ public class LearningSessionExecutionService : ILearningSessionExecutionService
         }
 
         var session = run.Session;
-        if (session.PolicyVersion == Planning.LearningPathV4Data.Policy)
+        if (Planning.LearningPathV4Data.IsV4Policy(session.PolicyVersion))
         {
             var result = await (_v4Evaluator ?? new LearningPathV4Evaluator(_dbContext, _timeProvider))
                 .EvaluateMissionRunAsync(centerId, run.StudentId, sessionRunId, ct);

@@ -59,6 +59,8 @@ public class StartStudentAssignmentUseCase : IStartStudentAssignmentUseCase
         {
             return GetStudentAssignmentResult.Failure(ErrorCodes.AssignmentNotAvailable);
         }
+        if (assignment.ExamAt.HasValue && utcNow < assignment.ExamAt.Value)
+            return GetStudentAssignmentResult.Failure(ErrorCodes.AssignmentNotAvailable);
 
         if (assignment.DueAt.HasValue && utcNow > assignment.DueAt.Value)
         {

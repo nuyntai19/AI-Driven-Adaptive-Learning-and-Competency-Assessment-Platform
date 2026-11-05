@@ -78,8 +78,12 @@ public sealed class BehaviorTwinUpdater : IBehaviorTwinUpdater
         var changeRate = Math.Clamp((totalChanges / newCountDecimal) * 100m, 0m, 100m);
         twin.ChangeAnswerRate = Math.Round(changeRate, 2, MidpointRounding.AwayFromZero);
 
-        // 4. Average Confidence (0 - 100)
-        var totalConfidence = (twin.AvgConfidence * prevCount) + Math.Clamp(attempt.Confidence, 0m, 100m);
+        // 4. Average Confidence (0 - 100). Attempts where the student never set a
+        // confidence level carry null and must not move the average (previously the
+        // client defaulted them to a fake 80).
+        var totalConfidence = attempt.Confidence.HasValue
+            ? (twin.AvgConfidence * prevCount) + Math.Clamp(attempt.Confidence.Value, 0m, 100m)
+            : twin.AvgConfidence * newCountDecimal;
         var avgConfidence = Math.Clamp(totalConfidence / newCountDecimal, 0m, 100m);
         twin.AvgConfidence = Math.Round(avgConfidence, 2, MidpointRounding.AwayFromZero);
 
@@ -95,7 +99,7 @@ public sealed class BehaviorTwinUpdater : IBehaviorTwinUpdater
 
         var gradedSamples = subjectSamples
             .Where(sample => sample.EffectiveIsCorrect.HasValue)
-            .Select(sample => new GradedAttemptSample(sample.Confidence, sample.EffectiveIsCorrect!.Value))
+            .Where(sample => sample.Confidence.HasValue).Select(sample => new GradedAttemptSample(sample.Confidence!.Value, sample.EffectiveIsCorrect!.Value))
             .ToList();
 
         twin.ConfidenceCalibration = _calibrationCalculator.CalculateCalibration(gradedSamples);

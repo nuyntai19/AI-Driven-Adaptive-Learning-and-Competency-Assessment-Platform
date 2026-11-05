@@ -65,6 +65,12 @@ public class CurriculumConfiguration : IEntityTypeConfiguration<Curriculum>
             .HasColumnName("grade_level")
             .HasColumnType("tinyint unsigned");
 
+        builder.Property(c => c.GraphVersionId).HasColumnName("graph_version_id").HasColumnType("varchar(36)");
+        builder.HasOne<EduTwin.DAL.KnowledgeGraph.KnowledgeGraphVersion>().WithMany()
+            .HasForeignKey(c => new { c.CenterId, c.GraphVersionId })
+            .HasPrincipalKey(v => new { v.CenterId, v.GraphVersionId }).OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_curriculums_graph_versions");
+
         // MTA Properties
         builder.Property(c => c.CreatedAt).HasColumnName("created_at").HasColumnType("datetime(6)").IsRequired();
         builder.Property(c => c.CreatedBy).HasColumnName("created_by").HasColumnType("varchar(36)");

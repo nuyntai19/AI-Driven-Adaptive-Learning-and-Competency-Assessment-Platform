@@ -42,6 +42,9 @@ public sealed class QuestionImportUseCaseTests : IDisposable
         _db.Users.Add(user); _db.Teachers.Add(new Teacher { TeacherId = _teacherId, CenterId = _centerId, User = user, CreatedAt = _now.UtcDateTime, UpdatedAt = _now.UtcDateTime });
         _db.Subjects.Add(new Subject { SubjectId = _subjectId, CenterId = _centerId, SubjectCode = "MATH", SubjectName = "Toán", IsActive = true, CreatedAt = _now.UtcDateTime, UpdatedAt = _now.UtcDateTime });
         for (ulong i = 1; i <= 3; i++) _db.KnowledgeNodes.Add(new KnowledgeNode { NodeId = 200 + i, CenterId = _centerId, SubjectId = _subjectId, NodeType = NodeType.Topic, NodeCode = $"TOP-{i}", NodeName = $"Chủ đề {i}", IsActive = true, CreatedAt = _now.UtcDateTime, UpdatedAt = _now.UtcDateTime });
+        GraphScopeFixture.Approve(_db, _centerId, _subjectId, 10, 201, 202, 203);
+        GraphScopeFixture.Approve(_db, _centerId, _subjectId, 11, 201, 202, 203);
+        GraphScopeFixture.Approve(_db, _centerId, _subjectId, 12, 201, 202, 203);
         _db.SaveChanges();
     }
     private QuestionImportUseCase Sut(EduTwinDbContext? db = null, IQuestionActivationPolicy? policy = null) => new(db ?? _db, _tenant.Object, _clock.Object, activationPolicy: policy);
@@ -52,6 +55,23 @@ public sealed class QuestionImportUseCaseTests : IDisposable
         return await (sut ?? Sut()).PreviewAsync(stream, "questions.csv", request ?? Defaults(), default);
     }
     private static QuestionImportConfirmRequest ConfirmRequest(QuestionImportPreviewResult preview) => new() { PreviewToken = preview.Data!.PreviewToken, Revision = preview.Data.Revision };
+
+    [Fact]
+    public async Task ImportPreviewAndConfirm_BothRequireApprovedTopicForExplicitGrade()
+    {
+        var version11 = await _db.KnowledgeGraphVersions.SingleAsync(v => v.GradeLevel == 11);
+        _db.KnowledgeNodeGrades.Remove(await _db.KnowledgeNodeGrades.SingleAsync(m => m.GraphVersionId == version11.GraphVersionId && m.NodeId == 201));
+        await _db.SaveChangesAsync();
+        var invalid = await Preview(Header + ",GradeLevel\nq1,TOP-1,ShortAnswer,Question,2,Solution,11");
+        Assert.Empty(invalid.Data!.ValidQuestions);
+        Assert.Contains(invalid.Data.Errors, e => e.Code == "TOPIC_GRADE_NOT_APPROVED");
+        var valid = await Preview(Header + "\nq1,TOP-1,ShortAnswer,Question,2,Solution"); Assert.Single(valid.Data!.ValidQuestions);
+        var version12 = await _db.KnowledgeGraphVersions.SingleAsync(v => v.GradeLevel == 12);
+        _db.KnowledgeNodeGrades.Remove(await _db.KnowledgeNodeGrades.SingleAsync(m => m.GraphVersionId == version12.GraphVersionId && m.NodeId == 201));
+        await _db.SaveChangesAsync();
+        Assert.False((await Sut().ConfirmAsync(ConfirmRequest(valid), default)).IsSuccess);
+        Assert.Empty(await _db.Questions.ToListAsync());
+    }
 
     [Fact]
     public async Task V1_ThreeTopicsAndAllQuestionTypes_PersistFullScalarMetadataAsDraft()

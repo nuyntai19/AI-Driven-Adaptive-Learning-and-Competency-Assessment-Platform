@@ -40,6 +40,7 @@ import { questionsApi } from "../../api/questionsApi";
 import { RichMathText } from "../../components/math/RichMathText";
 import { questionTypeLabel } from "../../utils/academicDisplay";
 import { parseKnowledgeTopicContext, sameSubject, topicClassDisposition, validateKnowledgeTopicContext, withoutTopicContext } from "../../utils/knowledgeTopicContext";
+import { knowledgeKeys, readKnowledgeScope } from "../../utils/knowledgeScope";
 
 const toLocalDateTime = (value: string | null) => {
   if (!value) return "";
@@ -104,6 +105,8 @@ export function TeacherAssignmentEditorView() {
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState("");
   const [dueAt, setDueAt] = useState("");
+  const [kind, setKind] = useState("Regular");
+  const [examAt, setExamAt] = useState("");
   const [dueDateError, setDueDateError] = useState<string | null>(null);
   const [timeLimitValue, setTimeLimitValue] = useState("");
   const [timeLimitUnit, setTimeLimitUnit] = useState<"minutes" | "hours">("minutes");
@@ -160,7 +163,7 @@ export function TeacherAssignmentEditorView() {
   const [questionDifficulty, setQuestionDifficulty] = useState<number | "">("");
   const [manualQuestionTopicId, setQuestionTopicId] = useState<string>("");
   const [topicContextNotice, setTopicContextNotice] = useState("");
-  const [questionGradeFilter, setQuestionGradeFilter] = useState<number | "">("");
+  const [questionGradeFilter, setQuestionGradeFilter] = useState<number | "">(!isEditing ? readKnowledgeScope(searchParams).gradeLevel ?? "" : "");
   const [allowGradeMismatch, setAllowGradeMismatch] = useState(false);
   const [gradeMismatchReason, setGradeMismatchReason] = useState("");
 
@@ -207,6 +210,9 @@ export function TeacherAssignmentEditorView() {
   const questionTopicId = topicContext.kind === "topic" ? topicContext.topicId : manualQuestionTopicId;
   const contextSubjectId = topicContext.kind === "topic" ? topicContext.subjectId : undefined;
   const nodeSubjectId = contextSubjectId ?? selectedSubjectId;
+  const nodeGrade = questionGradeFilter || selectedClass?.gradeLevel || readKnowledgeScope(searchParams).gradeLevel || undefined;
+  const nodeScope = { gradeLevel: nodeGrade, graphVersionId: topicContext.kind === "topic" ? searchParams.get("graphVersionId") || undefined : undefined };
+  const hasNodeScope = Boolean(nodeScope.gradeLevel || nodeScope.graphVersionId);
 
   const contextSubjectQuery = useQuery({
     queryKey: ["knowledge-topic-context-subject", user?.centerId, user?.userId, contextSubjectId],
@@ -217,14 +223,16 @@ export function TeacherAssignmentEditorView() {
 
   // Knowledge Nodes Query for the subject of the selected class
   const knowledgeNodesQuery = useQuery({
-    queryKey: ["knowledge-nodes-for-teacher-assignment-editor", user?.centerId, user?.userId, nodeSubjectId],
-    queryFn: () => knowledgeGraphApi.listNodes(nodeSubjectId!),
-    enabled: hasScope && canReadNodes && Boolean(nodeSubjectId)
+    queryKey: knowledgeKeys.nodes(user?.centerId, user?.userId, nodeSubjectId || "", nodeScope),
+    queryFn: () => knowledgeGraphApi.listNodes(nodeSubjectId!, nodeScope),
+    enabled: hasScope && canReadNodes && Boolean(nodeSubjectId) && hasNodeScope
       && (!contextSubjectId || Boolean(contextSubjectQuery.data?.isActive && sameSubject(contextSubjectQuery.data.subjectId, contextSubjectId))),
     staleTime: 60_000,
   });
 
-  const topicValidation = validateKnowledgeTopicContext(topicContext, {
+  const topicValidation = topicContext.kind === "topic" && !hasNodeScope
+    ? { status: "invalid" as const, message: "Chọn khối hoặc lớp có khối xác định để xác minh chủ đề từ đồ thị." }
+    : validateKnowledgeTopicContext(topicContext, {
     canRead: canReadQuestions && canReadNodes && canReadSubjects,
     isError: contextSubjectQuery.isError || knowledgeNodesQuery.isError,
     subjects: contextSubjectQuery.data ? [contextSubjectQuery.data] : undefined,
@@ -366,6 +374,8 @@ export function TeacherAssignmentEditorView() {
     setClassId(assignment.classId);
     setTitle(assignment.title);
     setInstructions(assignment.instructions || "");
+    setKind(assignment.kind ?? "Regular");
+    setExamAt(toLocalDateTime(assignment.examAt ?? null));
     const localDue = toLocalDateTime(assignment.dueAt);
     setDueAt(localDue);
     if (localDue && new Date(localDue).getTime() <= Date.now()) {
@@ -406,6 +416,20 @@ export function TeacherAssignmentEditorView() {
   }, [selectedClass?.gradeLevel, questionIds, cachedQuestions]);
 
   const isReadOnly = isEditing ? (assignment?.status !== "Draft" || !canUpdate) : !canCreate;
+  const canRescheduleExam = canUpdate && assignment?.status === "Published" && assignment.kind !== "Regular" &&
+    !!assignment.examAt && Date.parse(assignment.examAt) > Date.now();
+  const [scheduleNotice, setScheduleNotice] = useState("");
+  const saveExamSchedule = () => {
+    if (!canRescheduleExam || !id || !assignment) return;
+    const instant = Date.parse(examAt);
+    if (!Number.isFinite(instant) || instant <= Date.now() || !effectiveTimeLimitMinutes || effectiveTimeLimitMinutes <= 0) {
+      setScheduleNotice("Chọn giờ thi trong tương lai và thời lượng lớn hơn 0 phút."); return;
+    }
+    updateMutation.mutate({ id, request: { examAt: new Date(instant).toISOString(), timeLimitMinutes: effectiveTimeLimitMinutes, rowVersion: assignment.rowVersion } }, {
+      onSuccess: () => setScheduleNotice("Đã cập nhật lịch thi. Lộ trình học sinh sẽ dùng giờ thi mới."),
+      onError: error => setScheduleNotice(mapSafeOperationalError(error, "Chưa thể cập nhật lịch thi. Hãy tải lại bài để kiểm tra phiên bản mới nhất.")),
+    });
+  };
 
   const toggleQuestion = (q: Question) => {
     if (isReadOnly) return;
@@ -482,6 +506,11 @@ export function TeacherAssignmentEditorView() {
       });
       setStep(0);
       return false;
+    }
+    if (kind !== "Regular" && (!examAt || !Number.isFinite(new Date(examAt).getTime()) || new Date(examAt).getTime() <= Date.now() || !effectiveTimeLimitMinutes ||
+        (dueAt && new Date(dueAt).getTime() < new Date(examAt).getTime() + effectiveTimeLimitMinutes * 60000))) {
+      setFormError({message: "Bài thi cần giờ bắt đầu trong tương lai và giới hạn thời gian. Hạn nộp phải sau khi kết thúc thời gian làm bài."});
+      setStep(0); return false;
     }
     if (dueAt) {
       const dueTime = new Date(dueAt).getTime();
@@ -588,6 +617,7 @@ export function TeacherAssignmentEditorView() {
 
     if (!isEditing) {
       const createPayload: CreateAssignmentRequest = {
+        kind, examAt: kind !== "Regular" && examAt ? new Date(examAt).toISOString() : null,
         classId,
         title: title.trim(),
         instructions: instructions.trim() || null,
@@ -623,6 +653,7 @@ export function TeacherAssignmentEditorView() {
       }
 
       const updatePayload: UpdateAssignmentRequest = {
+        kind, examAt: kind !== "Regular" && examAt ? new Date(examAt).toISOString() : null,
         title: title.trim(),
         instructions: instructions.trim() || null,
         dueAt: payloadDueAt,
@@ -738,6 +769,16 @@ export function TeacherAssignmentEditorView() {
       />
 
       {!isEditing && !canCreate && <p role="status" className="text-xs">Bạn không có quyền tạo bài tập.</p>}
+      {canRescheduleExam && <section className="th-surface space-y-3 p-4" aria-label="Điều chỉnh lịch thi đã công bố">
+        <h2 className="font-semibold">Điều chỉnh lịch thi đã công bố</h2>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm">Ngày giờ thi<input type="datetime-local" className="th-input mt-1 block" min={minDateTime} value={examAt} onChange={e => setExamAt(e.target.value)} /></label>
+          <label className="text-sm">Thời lượng (phút)<input type="number" min={1} className="th-input mt-1 block" value={effectiveTimeLimitMinutes ?? ""} onChange={e => handleTimeLimitChange(e.target.value, "minutes")} /></label>
+          <button type="button" disabled={updateMutation.isPending} className="th-primary-button" onClick={saveExamSchedule}>{updateMutation.isPending ? "Đang cập nhật…" : "Lưu lịch thi"}</button>
+        </div>
+        <p className="text-xs text-[var(--th-text-muted)]">Hạn nộp sẽ theo giờ kết thúc bài thi mới.</p>
+        {scheduleNotice && <p role="status" className="text-sm">{scheduleNotice}</p>}
+      </section>}
       {topicValidation.status !== "none" && (
         <div role="status" className="th-surface p-3 text-xs space-y-2">
           <p>{subjectMismatch
@@ -871,6 +912,8 @@ export function TeacherAssignmentEditorView() {
             </div>
 
             <div>
+              <label className="mb-4 block text-xs font-semibold text-[var(--th-text-muted)]">Phân loại bài<select className="th-input mt-1 w-full text-sm" value={kind} disabled={isReadOnly} onChange={e => setKind(e.target.value)}><option value="Regular">Bài tập thường</option><option value="Midterm">Thi giữa kỳ</option><option value="Final">Thi cuối kỳ</option><option value="MockExam">Thi thử</option></select></label>
+              {kind !== "Regular" && <label className="mb-4 block text-xs font-semibold text-[var(--th-text-muted)]">Ngày giờ thi<input type="datetime-local" className="th-input mt-1 w-full text-sm" min={minDateTime} disabled={isReadOnly} value={examAt} onChange={e => setExamAt(e.target.value)} /><span className="mt-1 block font-normal">Bài thi đã công bố sẽ xuất hiện trong lộ trình học sinh thuộc phạm vi giao bài.</span></label>}
               <label htmlFor="teacher-assignment-dueat-input" className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1">
                 Hạn chót nộp bài (tùy chọn)
               </label>
@@ -1008,12 +1051,14 @@ export function TeacherAssignmentEditorView() {
                       setQuestionTopicId(e.target.value);
                       setQuestionPage(1);
                     }}
-                    disabled={!canReadNodes || !selectedSubjectId || knowledgeNodesQuery.isLoading || knowledgeNodesQuery.isError || topicValidation.status === "pending" || subjectMismatch}
+                    disabled={!canReadNodes || !selectedSubjectId || !hasNodeScope || knowledgeNodesQuery.isLoading || knowledgeNodesQuery.isError || topicValidation.status === "pending" || subjectMismatch}
                     className="th-select text-xs py-1 max-w-[220px]"
                   >
                     <option value="">
                       {!selectedSubjectId
                         ? "-- Chọn lớp trước --"
+                        : !hasNodeScope
+                        ? "-- Chọn khối trước --"
                         : knowledgeNodesQuery.isLoading
                         ? "Đang tải nút..."
                         : "Tất cả nút tri thức"}
@@ -1038,6 +1083,8 @@ export function TeacherAssignmentEditorView() {
                     id="teacher-q-grade-filter"
                     value={questionGradeFilter}
                     onChange={(e) => {
+                      if (topicContext.kind !== "none") setSearchParams(withoutTopicContext(searchParams), { replace: true });
+                      setQuestionTopicId("");
                       setQuestionGradeFilter(e.target.value ? Number(e.target.value) : "");
                       setQuestionPage(1);
                     }}
@@ -1457,6 +1504,22 @@ export function TeacherAssignmentEditorView() {
                     {effectiveTimeLimitMinutes ? `⏱ ${effectiveTimeLimitMinutes} phút` : "Không giới hạn"}
                   </p>
                 </div>
+                <div>
+                  <span className="text-[var(--th-text-muted)] uppercase tracking-wider text-[10px] font-semibold block mb-1">
+                    Phân loại bài:
+                  </span>
+                  <p className="font-semibold text-[var(--th-text)]">
+                    {kind === "Midterm" ? "Thi giữa kỳ" : kind === "Final" ? "Thi cuối kỳ" : kind === "MockExam" ? "Thi thử" : "Bài tập thường"}
+                  </p>
+                </div>
+                {kind !== "Regular" && examAt && (
+                  <div>
+                    <span className="text-[var(--th-text-muted)] uppercase tracking-wider text-[10px] font-semibold block mb-1">
+                      Ngày giờ thi:
+                    </span>
+                    <p className="font-semibold text-[var(--th-text)]">{new Date(examAt).toLocaleString("vi-VN")}</p>
+                  </div>
+                )}
                 {dueAt && (
                   <div>
                     <span className="text-[var(--th-text-muted)] uppercase tracking-wider text-[10px] font-semibold block mb-1">

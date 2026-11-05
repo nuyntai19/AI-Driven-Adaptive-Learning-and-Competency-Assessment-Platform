@@ -17,6 +17,7 @@ import { TeacherFilterBar } from "../../components/teacher/TeacherFilterBar";
 import { TeacherModal } from "../../components/teacher/TeacherOverlays";
 import { CurriculumArchiveDialog } from "../../components/teacher/CurriculumArchiveDialog";
 import { academicLifecycleError } from "../../utils/academicLifecycleError";
+import { knowledgeKeys } from "../../utils/knowledgeScope";
 
 export const TeacherCurriculumListView: React.FC = () => {
   const queryClient = useQueryClient();
@@ -28,6 +29,12 @@ export const TeacherCurriculumListView: React.FC = () => {
 
   const selectedSubjectId = searchParams.get("subjectId") || "";
   const selectedStatus = searchParams.get("status") || "";
+  const selectedGrade = searchParams.get("gradeLevel") || "";
+  const selectedClass = searchParams.get("classId") || "";
+  const selectedYear = searchParams.get("academicYear") || "";
+  const history = searchParams.get("history") === "true";
+  const setFilter = (key: string, value: string) => { const next = new URLSearchParams(searchParams);
+    if (value) next.set(key, value); else next.delete(key); setSearchParams(next); };
   const [searchTerm, setSearchTerm] = useState("");
   const [archiveTarget, setArchiveTarget] = useState<Curriculum | null>(null);
   const [cloneTarget, setCloneTarget] = useState<Curriculum | null>(null);
@@ -40,11 +47,17 @@ export const TeacherCurriculumListView: React.FC = () => {
 
   // Fetch subjects
   const { data: subjectsData } = useQuery({
-    queryKey: ["teacherSubjectsList"],
+    queryKey: ["teacherSubjectsList", centerId, actorId],
     queryFn: () => organizationApi.listSubjects(true),
   });
 
   const subjects = subjectsData?.data ?? [];
+  const { data: classes = [] } = useQuery({ queryKey: ["teacherClassesList", "curriculum-filters", centerId, actorId],
+    enabled: Boolean(actorId), queryFn: async () => { const filter = { teacherId: actorId, pageSize: 100 };
+      const first = await organizationApi.listClasses({ ...filter, page: 1 }); const result = [...first.data];
+      for (let page = 2; page <= first.meta.totalPages; page++) result.push(...(await organizationApi.listClasses({ ...filter, page })).data);
+      return result; } });
+  const years = [...new Set(classes.map(c => c.academicYear))].sort().reverse();
 
   // Fetch curriculums
   const {
@@ -54,15 +67,19 @@ export const TeacherCurriculumListView: React.FC = () => {
     error,
     refetch,
   } = useQuery({
-    queryKey: ["teacherCurriculums", selectedSubjectId, selectedStatus, centerId, actorId],
+    queryKey: ["teacherCurriculums", selectedSubjectId, selectedStatus, centerId, actorId, selectedGrade, selectedClass, selectedYear, history],
     queryFn: () =>
       curriculumApi.getAll({
         subjectId: selectedSubjectId || undefined,
         status: (selectedStatus as ReviewStatus) || undefined,
+        gradeLevel: selectedGrade ? Number(selectedGrade) : undefined,
+        classId: selectedClass || undefined,
+        academicYear: selectedYear || undefined,
+        history,
       }),
   });
 
-  const curriculums: Curriculum[] = curriculumsData?.data ?? [];
+  const curriculums: Curriculum[] = useMemo(() => curriculumsData?.data ?? [], [curriculumsData]);
 
   // Filter curriculums locally by search term
   const filteredCurriculums = useMemo(() => {
@@ -86,6 +103,7 @@ export const TeacherCurriculumListView: React.FC = () => {
     onSuccess: () => {
       setActionError(null);
       queryClient.invalidateQueries({ queryKey: ["teacherCurriculums"] });
+      queryClient.invalidateQueries({ queryKey: knowledgeKeys.all });
     },
     onError: (err: any) => {
       setActionError(err.message || "Không thể xuất bản giáo trình.");
@@ -104,6 +122,7 @@ export const TeacherCurriculumListView: React.FC = () => {
       setArchiveTarget(null);
       setActionError(null);
       queryClient.invalidateQueries({ queryKey: ["teacherCurriculums"] });
+      queryClient.invalidateQueries({ queryKey: knowledgeKeys.all });
     },
     onError: (err: any) => {
       setActionError(academicLifecycleError(err, "Không thể lưu trữ giáo trình."));
@@ -264,6 +283,17 @@ export const TeacherCurriculumListView: React.FC = () => {
           ))}
         </select>
 
+        <select className="th-select" aria-label="Lọc giáo trình theo khối" value={selectedGrade} onChange={e => { setFilter("gradeLevel", e.target.value); }}>
+          <option value="">Tất cả khối</option>{[10,11,12].map(g => <option key={g} value={g}>Khối {g}</option>)}
+        </select>
+        <select className="th-select" aria-label="Lọc giáo trình theo lớp" value={selectedClass} onChange={e => setFilter("classId", e.target.value)}>
+          <option value="">Tất cả lớp phụ trách</option>{classes.filter(c => c.classId === selectedClass || ((!selectedSubjectId || c.subject.subjectId === selectedSubjectId) && (!selectedGrade || c.gradeLevel === Number(selectedGrade)) && (!selectedYear || c.academicYear === selectedYear))).map(c => <option key={c.classId} value={c.classId}>{c.className} · {c.academicYear} · Khối {c.gradeLevel ?? "?"}</option>)}
+        </select>
+        <select className="th-select" aria-label="Lọc giáo trình theo năm học" value={selectedYear} onChange={e => setFilter("academicYear", e.target.value)}>
+          <option value="">Tất cả năm học</option>{years.map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+        <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={history} onChange={e => setFilter("history", e.target.checked ? "true" : "")} />Bao gồm lịch sử áp dụng</label>
+
         <select
           className="th-select"
           value={selectedStatus}
@@ -394,6 +424,11 @@ export const TeacherCurriculumListView: React.FC = () => {
                       {curr.reviewStatus === "Draft" ? "Lớp dự kiến" : "Lớp đang áp dụng"}
                     </div>
                   </div>
+                  {!!curr.applicationClasses?.length && <ul className="text-xs text-[var(--th-text-secondary)] space-y-1 mb-3" aria-label="Các lớp áp dụng giáo trình">
+                    {curr.applicationClasses.map(c => <li key={`${c.classId}-${c.applicationRole ?? "planned"}-${c.isCurrent}`}>
+                      {c.className} · {c.academicYear} · Khối {c.gradeLevel ?? "chưa xác định"} · {c.isPlanned ? "Dự kiến" : c.isCurrent ? c.applicationRole === "Supplemental" ? "Bổ trợ đang áp dụng" : "Chính đang áp dụng" : "Lịch sử"}
+                    </li>)}
+                  </ul>}
 
                   <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" }}>
                     {canPublish && curr.teacherId === actorId && curr.reviewStatus === "Draft" && (

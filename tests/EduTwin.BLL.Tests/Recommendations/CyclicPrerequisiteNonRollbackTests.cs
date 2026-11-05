@@ -63,6 +63,7 @@ public sealed class CyclicPrerequisiteNonRollbackTests : IDisposable
             CenterId = _centerId,
             StudentId = _studentId,
             FullName = "Test Student",
+            GradeLevel = 10,
             CreatedAt = _utcNow,
             UpdatedAt = _utcNow
         });
@@ -127,12 +128,18 @@ public sealed class CyclicPrerequisiteNonRollbackTests : IDisposable
             }
         );
 
+        // This fixture intentionally represents corrupted historical topology. Declare its
+        // approved scope so the non-rollback test actually exercises cycle handling.
+        var version = GraphScopeFixture.Approve(_dbContext, _centerId, _subjectId, 10, 101, 102);
+        GraphScopeFixture.MapEdges(_dbContext, _centerId, version, 1, 2);
+
         _dbContext.Questions.Add(new Question
         {
             CenterId = _centerId,
             QuestionId = 501,
             SubjectId = _subjectId,
             PrimaryTopicNodeId = 101,
+            GradeLevel = 10,
             QuestionText = "Question on Topic 1",
             CorrectAnswer = "A",
             Solution = "A is correct",

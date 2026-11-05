@@ -16,6 +16,8 @@ public class Assignment : IMutableTenantAggregate
     public string? Instructions { get; set; }
     public DateTime? DueAt { get; set; }
     public int? TimeLimitMinutes { get; set; }
+    public AssignmentKind Kind { get; set; } = AssignmentKind.Regular;
+    public DateTime? ExamAt { get; set; }
     public AssignmentStatus Status { get; set; }
     public DateTime? PublishedAt { get; set; }
     public TargetSource TargetMode { get; set; } = TargetSource.WholeClass;

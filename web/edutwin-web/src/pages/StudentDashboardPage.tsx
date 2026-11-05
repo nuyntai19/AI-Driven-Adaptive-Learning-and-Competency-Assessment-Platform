@@ -4,15 +4,18 @@ import { useQuery } from "@tanstack/react-query";
 import { getStudentDashboard } from "../api/dashboardsApi";
 import { getStudentAssignments } from "../api/assignmentsApi";
 import { getLearningAgenda } from "../api/learningPathApi";
+import { getStudentTwinHistory } from "../api/digitalTwinApi";
 import type { StudentDashboardDataDto } from "../types/dashboards";
+import type { TwinUpdateHistoryItemDto } from "../types/digitalTwin";
 import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentProgressTrack } from "../components/student/StudentProgressTrack";
 import { StudentSubjectPattern } from "../components/student/StudentSubjectPattern";
-import { StudentKnowledgeMap, type TopicMapNode } from "../components/student/StudentKnowledgeMap";
+import { StudentCompetencyList } from "../components/student/StudentCompetencyList";
 import { studentScopeUrl } from "../utils/studentAcademicNavigation";
 import { goalGapLabel } from "../utils/academicDisplay";
 
 const StudentRadarChart = React.lazy(() => import("../components/student/StudentRadarChart"));
+const StudentMasteryTrendChart = React.lazy(() => import("../components/student/StudentMasteryTrendChart"));
 
 export const StudentDashboardPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -44,6 +47,13 @@ export const StudentDashboardPage: React.FC = () => {
   const { data: agenda, isPending: agendaLoading, isError: agendaError } = useQuery({
     queryKey: ["learning-agenda", "dashboard", selectedSubjectId, selectedClassId, 15],
     queryFn: () => getLearningAgenda(selectedSubjectId, 15, selectedClassId || undefined),
+    enabled: !!selectedSubjectId && !isHistory,
+    staleTime: 60 * 1000,
+  });
+
+  const { data: twinHistory } = useQuery<TwinUpdateHistoryItemDto[]>({
+    queryKey: ["studentTwinHistory", selectedSubjectId],
+    queryFn: () => getStudentTwinHistory(selectedSubjectId),
     enabled: !!selectedSubjectId && !isHistory,
     staleTime: 60 * 1000,
   });
@@ -122,17 +132,9 @@ export const StudentDashboardPage: React.FC = () => {
     evidenceCount: item.evidenceCount ?? 0,
   }));
 
-  // Knowledge Map nodes mapping
-  const knowledgeMapTopics: TopicMapNode[] = masteryRadar.map((item) => ({
-    topicNodeId: item.topicNodeId,
-    topicName: item.topicName,
-    masteryPercentage: item.mastery,
-    evidenceCount: item.evidenceCount ?? 0,
-    groupId: item.groupNodeId,
-    groupName: item.groupName,
-  }));
-
-  const goalDiff = goal.hasGoal ? goalGapLabel(goal.targetScore, goal.currentPredictedScore) : "—";
+  const goalDiff = goal.hasGoal && goal.hasPrediction !== false ? goalGapLabel(goal.targetScore, goal.currentPredictedScore) : "—";
+  const currentMonth = new Date().getMonth() + 1;
+  const currentSemester = currentMonth >= 8 || currentMonth === 1 ? "Học kỳ I" : "Học kỳ II";
   const pathLink = studentScopeUrl("/hoc-tap/lo-trinh-hoc-tap", searchParams);
   const practiceLink = urgentAssignment
     ? studentScopeUrl(`/hoc-tap/bai-tap/${urgentAssignment.assignmentId}`, searchParams)
@@ -161,7 +163,7 @@ export const StudentDashboardPage: React.FC = () => {
             </span>
           </div>
           <p className="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
-            Học kỳ II · Lộ trình cá nhân hóa định hướng năng lực mục tiêu
+            {currentSemester} · Lộ trình cá nhân hóa định hướng năng lực mục tiêu
           </p>
         </div>
 
@@ -359,7 +361,7 @@ export const StudentDashboardPage: React.FC = () => {
 
           <div className="pt-4 mt-4 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between text-xs">
             <span className="text-stone-500 dark:text-stone-400">
-              {goal.hasGoal ? <>Mục tiêu: <strong className="text-stone-800 dark:text-stone-200">{goal.targetScore} điểm</strong></> : "Mục tiêu do học sinh tự đặt"}
+              {goal.hasGoal && goal.targetScore > 0 ? <>Mục tiêu: <strong className="text-stone-800 dark:text-stone-200">{goal.targetScore} điểm</strong></> : goal.hasGoal ? "Mục tiêu lộ trình đang hoạt động" : "Mục tiêu do học sinh tự đặt"}
             </span>
             <Link
               to={studentScopeUrl("/hoc-tap/ho-so-nang-luc", searchParams)}
@@ -378,7 +380,7 @@ export const StudentDashboardPage: React.FC = () => {
             Điểm dự đoán
           </span>
           <span className="text-xl font-bold font-mono text-stone-900 dark:text-stone-100">
-            {goal.currentPredictedScore.toFixed(1)} / 10
+            {goal.hasPrediction === false ? "Chưa đủ dữ liệu" : `${goal.currentPredictedScore.toFixed(1)} / 10`}
           </span>
         </div>
         <div className="py-2.5 px-3 border-l-2 border-stone-300 dark:border-stone-700">
@@ -386,7 +388,7 @@ export const StudentDashboardPage: React.FC = () => {
             Mục tiêu kỳ thi
           </span>
           <span className="text-xl font-bold font-mono text-stone-900 dark:text-stone-100">
-            {goal.hasGoal ? `${goal.targetScore.toFixed(1)} / 10` : "Chưa đặt"}
+            {goal.hasGoal && goal.targetScore > 0 ? `${goal.targetScore.toFixed(1)} / 10` : "Chưa đặt"}
           </span>
         </div>
         <div className="py-2.5 px-3 border-l-2 border-stone-300 dark:border-stone-700">
@@ -417,7 +419,7 @@ export const StudentDashboardPage: React.FC = () => {
                 {isAllSubjects ? "Radar Năng Lực Theo Môn Học" : "Radar Năng Lực Theo Chuyên Đề"}
               </h3>
               <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-                Bản đồ định vị năng lực & các mốc kiến thức đã chinh phục
+                Định vị năng lực theo từng chuyên đề & mức cần ưu tiên
               </p>
             </div>
 
@@ -432,7 +434,7 @@ export const StudentDashboardPage: React.FC = () => {
                     : "text-stone-500 hover:text-stone-800 dark:text-stone-400"
                 }`}
               >
-                Bản đồ Atlas
+                Danh sách chuyên đề
               </button>
               <button
                 type="button"
@@ -449,9 +451,9 @@ export const StudentDashboardPage: React.FC = () => {
           </div>
 
           {competencyViewMode === "atlas" ? (
-            <StudentKnowledgeMap
-              topics={knowledgeMapTopics}
-              subjectName={subject.subjectName}
+            <StudentCompetencyList
+              data={radarChartData}
+              themeColor={currentSubjectTheme.color}
             />
           ) : (
             <React.Suspense
@@ -552,6 +554,29 @@ export const StudentDashboardPage: React.FC = () => {
             </div>
           )}
         </div>
+        {/* Mastery trend over time: one line per topic, stock-chart style */}
+        {!!selectedSubjectId && !isHistory && (
+          <div className="rounded-2xl border border-stone-200/90 dark:border-stone-800/90 p-5 sm:p-6 bg-white dark:bg-[#151d2f] shadow-xs xl:col-span-2">
+            <div className="pb-3 mb-2 border-b border-stone-100 dark:border-stone-800/80">
+              <h3 className="text-base font-bold text-stone-900 dark:text-stone-100">
+                Diễn biến năng lực theo chủ đề
+              </h3>
+              <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                Độ thành thạo lên xuống theo từng lần thay đổi trong quá trình học — mỗi chủ đề một đường, chú thích ở dưới biểu đồ
+              </p>
+            </div>
+            <React.Suspense
+              fallback={
+                <div className="h-80 w-full flex items-center justify-center text-sm text-stone-400">
+                  Đang tải biểu đồ diễn biến...
+                </div>
+              }
+            >
+              <StudentMasteryTrendChart history={twinHistory ?? []} />
+            </React.Suspense>
+          </div>
+        )}
+
       </div>
     </div>
   );

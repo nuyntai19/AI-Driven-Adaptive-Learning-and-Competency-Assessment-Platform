@@ -19,11 +19,13 @@ public static class LearningPathFollowUp
         var path = await db.LearningPaths.SingleAsync(p => p.CenterId == run.CenterId && p.LearningPathId == run.Session.LearningPathId, ct);
         if (path.Status != LearningPathStatus.Active || path.PlanJson == null) return;
         var plan = JsonSerializer.Deserialize<PathProposalDto>(path.PlanJson.RootElement.GetRawText(), LearningPathV4Data.Json);
-        var milestone = plan?.Milestones.FirstOrDefault(m => m.SkillIds.Contains(run.Session.TopicNodeId.ToString()));
+        var milestone = plan?.Milestones.FirstOrDefault(m => m.Missions.Any(x => x.MissionId == run.SessionId.ToString()));
         if (plan == null || milestone == null) return;
         // Placement gathers a baseline across the chosen scope; remediation starts in the next accepted route.
         if (plan.IsPlacement) return;
         var original = milestone.Missions.FirstOrDefault(m => m.MissionId == run.SessionId.ToString());
+        if (original?.IsMilestoneExam == true) { await LearningPathExamFollowUp.AddAsync(db, path, plan, run, now, ct); return; }
+        if (original is { AssessedSkillIds.Count: > 0 } && !original.AssessedSkillIds.Contains(run.Session.TopicNodeId.ToString())) return;
         var purpose = original?.Purpose ?? run.Session.Objective;
         var trigger = $"FollowUp:{run.SessionRunId}:{outcome}";
         if (await db.PathDecisions.AnyAsync(d => d.CenterId == run.CenterId && d.LearningPathId == path.LearningPathId && d.TriggerType == trigger, ct)) return;
@@ -63,6 +65,14 @@ public static class LearningPathFollowUp
         {
             explanation = "Đạt tự kiểm tra. Hẹn ôn sau 2 ngày để kiểm tra khả năng nhớ lại; buổi ôn không tự cấp xác nhận thành thạo.";
             next = Review(2, explanation); code = "SPACED_RECALL";
+        }
+        else if (outcome == "Inconclusive")
+        {
+            explanation = "Mẫu kiểm tra còn ít: chưa kết luận, không bắt học lại từ đầu. Hẹn thử lại sau hai ngày học; bằng chứng độc lập được tích lũy theo câu khác nhau.";
+            next = new ProposedMissionDto { MissionId = Guid.NewGuid().ToString(), SkillId = run.Session.TopicNodeId.ToString(),
+                Purpose = "IndependentCheck", Title = $"Kiểm tra bổ sung: {milestone.Title}", IsProbe = true, QuestionCount = 3,
+                EstimatedMinutes = 6, AvailableFrom = now.AddDays(2), ActivityTypes = ["IndependentCheck"], CanStart = available >= 3 };
+            code = "INCONCLUSIVE_RECHECK";
         }
         else if (outcome == "NeedsSupport")
         {

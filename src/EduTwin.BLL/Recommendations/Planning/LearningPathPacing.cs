@@ -54,6 +54,14 @@ public static class LearningPathPacing
     /// <summary>Expected number of 6-question sets before a skill is ready for its check. Only an estimate: the loop decides.</summary>
     public static uint EstimatedSetsFor(decimal weakness) => Level(weakness) switch { "Weak" => 4u, "Developing" => 3u, _ => 2u };
 
+    /// <summary>Extra sets when the target score sits above the skill's current mastery; unknown mastery counts as 50%.</summary>
+    public static uint ExtraSetsForTargetGap(decimal? targetScore, decimal? masteryPercent)
+    {
+        if (targetScore is null) return 0;
+        var gap = Math.Max(0m, targetScore.Value * 10m - (masteryPercent ?? 50m));
+        return (uint)Math.Min(3, (int)Math.Ceiling(gap / 20m));
+    }
+
     /// <summary>Starting difficulty (1-5) of the first set: weak skills start easy and climb.</summary>
     public static byte StartDifficulty(decimal weakness) => Level(weakness) switch { "Weak" => 1, "Developing" => 2, _ => 3 };
 

@@ -152,12 +152,15 @@ public class AssignCurriculumNodesUseCaseTests
 
         using (var dbContext = new EduTwinDbContext(_dbOptions, _tenantAccessorMock.Object))
         {
+            var version = GraphScopeFixture.Approve(dbContext, centerId, subjectId, 10, nodeId);
             dbContext.Curriculums.Add(new Curriculum
             {
                 CurriculumId = curriculumId,
                 CenterId = centerId,
                 TeacherId = userId,
                 SubjectId = subjectId,
+                GradeLevel = 10,
+                GraphVersionId = version,
                 Title = "Draft Curriculum",
                 ReviewStatus = ReviewStatus.Draft,
                 RowVersion = 1,

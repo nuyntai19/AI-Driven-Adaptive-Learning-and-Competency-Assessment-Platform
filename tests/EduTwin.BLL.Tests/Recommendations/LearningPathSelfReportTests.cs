@@ -8,9 +8,7 @@ namespace EduTwin.BLL.Tests.Recommendations;
 
 public sealed class LearningPathSelfReportTests
 {
-    private static void Edge(LearningPathV4Fixture f, ulong source, ulong target) => f.Db.KnowledgeEdges.Add(new KnowledgeEdge {
-        CenterId = f.Center, SubjectId = f.English, SourceNodeId = source, TargetNodeId = target,
-        RelationType = RelationType.PrerequisiteOf, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+    private static void Edge(LearningPathV4Fixture f, ulong source, ulong target) => f.AddPrerequisite(source, target);
 
     [Theory]
     [InlineData("Placement")]

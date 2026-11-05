@@ -368,43 +368,14 @@ public sealed class RecommendationsController : ControllerBase
     [HttpPost("learning-path/generate")]
     [Authorize(Policy = "recommendations.student.update_own")]
     [ProducesResponseType(typeof(DetailedLearningPathResponse), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GenerateLearningPath(
+    public Task<IActionResult> GenerateLearningPath(
         [FromBody] GenerateLearningPathRequest request,
         CancellationToken cancellationToken)
     {
         var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
-        DetailedLearningPathDto path;
-        try { path = await _generateLearningPathUseCase.ExecuteAsync(request, cancellationToken); }
-        catch (EduTwin.BLL.Organization.LearningScopeDeniedException error)
-        {
-            return Conflict(CreateProblemDetails(409, "https://edutwin.local/problems/invalid-state", "Phạm vi học tập chỉ xem",
-                error.Message, traceId, ErrorCodes.InvalidStateTransition));
-        }
-        catch (ArgumentException error)
-        {
-            return BadRequest(CreateProblemDetails(400, "https://edutwin.local/problems/validation", "Mục tiêu học tập không hợp lệ", error.Message, traceId, ErrorCodes.ValidationFailed));
-        }
-        catch (KeyNotFoundException error)
-        {
-            return NotFound(CreateProblemDetails(404, "https://edutwin.local/problems/not-found", "Không tìm thấy môn học", error.Message, traceId, ErrorCodes.ResourceNotFound));
-        }
-        catch (LearningPathUnavailableException error)
-        {
-            return Conflict(CreateProblemDetails(409, "https://edutwin.local/problems/invalid-state", "Chưa thể tạo lộ trình", error.Message, traceId, ErrorCodes.InvalidStateTransition));
-        }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
-        {
-            return Conflict(CreateProblemDetails(409, "https://edutwin.local/problems/concurrency", "Lộ trình đã thay đổi", "Vui lòng tải lại lộ trình rồi thử lại.", traceId, ErrorCodes.ConcurrencyConflict));
-        }
-        return Ok(new DetailedLearningPathResponse
-        {
-            Data = path,
-            Meta = new MetaDto
-            {
-                Timestamp = _timeProvider.GetUtcNow().UtcDateTime,
-                TraceId = traceId
-            }
-        });
+        return Task.FromResult<IActionResult>(StatusCode(StatusCodes.Status410Gone,
+            CreateProblemDetails(410, "https://edutwin.local/problems/legacy-learning-path-retired", "Bộ sinh lộ trình cũ đã ngừng hoạt động",
+                "Hãy dùng mục tiêu học và đề xuất lộ trình V4. Lịch sử và bài làm cũ vẫn đọc được.", traceId, ErrorCodes.InvalidStateTransition)));
     }
 
     [HttpGet("learning-path/detailed")]

@@ -90,7 +90,7 @@ internal static class FallbackAnalysisRecovery
             decimal? quality = EduTwin.BLL.AssessmentAndReasoning.EffectiveReasoningQuality.Resolve(analysis);
             var calibration = calculator.CalculateCalibration(samples.Where(s => s.EffectiveIsCorrect.HasValue &&
                 (s.CreatedAt < a.CreatedAt || s.CreatedAt == a.CreatedAt && s.AttemptId <= a.AttemptId))
-                .Select(s => new GradedAttemptSample(s.Confidence, s.EffectiveIsCorrect!.Value)));
+                .Where(s => s.Confidence.HasValue).Select(s => new GradedAttemptSample(s.Confidence!.Value, s.EffectiveIsCorrect!.Value)));
             var ratio = q.EstimatedTimeSeconds > 0 ? a.TimeSpentSeconds / (decimal)q.EstimatedTimeSeconds : 1m;
             var timeQuality = Math.Round(Math.Clamp(1m - Math.Abs(ratio - 1m) * 0.5m, 0m, 1m), 2);
             var calc = MasteryCalculator.Calculate(new MasteryCalculationInput(mastery, quality, weight,

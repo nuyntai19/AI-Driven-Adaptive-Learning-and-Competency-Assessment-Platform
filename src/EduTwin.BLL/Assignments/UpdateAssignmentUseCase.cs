@@ -80,8 +80,12 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
         if (classEntity == null || classEntity.TeacherId != actorId)
             return UpdateAssignmentResult.Failure(ErrorCodes.ForbiddenResource);
 
-        // 5. State machine: only Draft allowed
-        if (assignment.Status != AssignmentStatus.Draft)
+        // Published exams permit schedule corrections only; content, targets and submitted work stay immutable.
+        var scheduleOnly = assignment.Status == AssignmentStatus.Published && assignment.Kind != AssignmentKind.Regular &&
+            assignment.ExamAt > _timeProvider.GetUtcNow().UtcDateTime &&
+            request.Title == null && request.Instructions == null && request.QuestionIds == null && request.Kind == null &&
+            request.TargetMode == null && request.StudentIds == null && request.AllowGradeMismatch == null && request.GradeMismatchReason == null;
+        if (assignment.Status != AssignmentStatus.Draft && !scheduleOnly)
             return UpdateAssignmentResult.Failure(ErrorCodes.InvalidStateTransition);
 
         // 6. rowVersion concurrency check
@@ -96,6 +100,16 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
         }
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
+        var kind = assignment.Kind;
+        if (request.Kind != null && (!Enum.TryParse(request.Kind, false, out kind) || !Enum.IsDefined(kind)))
+            return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
+        var examAt = request.ExamAt ?? assignment.ExamAt;
+        var timeLimit = request.TimeLimitMinutes ?? assignment.TimeLimitMinutes;
+        var dueAt = request.DueAt ?? (kind != AssignmentKind.Regular && (request.ExamAt.HasValue || request.TimeLimitMinutes.HasValue) && examAt.HasValue && timeLimit.HasValue
+            ? examAt.Value.AddMinutes(timeLimit.Value) : assignment.DueAt);
+        if (kind != AssignmentKind.Regular && (!examAt.HasValue || examAt <= now || timeLimit is not > 0 ||
+            dueAt.HasValue && dueAt < examAt.Value.AddMinutes(timeLimit.Value)))
+            return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
         if (request.DueAt.HasValue && request.DueAt.Value <= now)
             return UpdateAssignmentResult.Failure(ErrorCodes.ValidationFailed);
 
@@ -338,8 +352,9 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
 
             // Allow clearing DueAt by sending null explicitly — we use a sentinel here.
             // If the caller wants to clear DueAt, they'd send null; we accept it.
-            assignment.DueAt = request.DueAt;
-            assignment.TimeLimitMinutes = request.TimeLimitMinutes;
+            assignment.DueAt = kind == AssignmentKind.Regular ? request.DueAt : dueAt ?? examAt?.AddMinutes(timeLimit ?? 0);
+            assignment.TimeLimitMinutes = timeLimit;
+            assignment.Kind = kind; assignment.ExamAt = kind == AssignmentKind.Regular ? null : examAt;
 
             if (newTargetMode != null)
             {
@@ -447,6 +462,7 @@ public class UpdateAssignmentUseCase : IUpdateAssignmentUseCase
                 Instructions = assignment.Instructions,
                 DueAt = assignment.DueAt,
                 TimeLimitMinutes = assignment.TimeLimitMinutes,
+                Kind = assignment.Kind.ToString(), ExamAt = assignment.ExamAt,
                 TargetMode = assignment.TargetMode.ToString(),
                 AllowGradeMismatch = assignment.AllowGradeMismatch,
                 GradeMismatchReason = assignment.GradeMismatchReason,

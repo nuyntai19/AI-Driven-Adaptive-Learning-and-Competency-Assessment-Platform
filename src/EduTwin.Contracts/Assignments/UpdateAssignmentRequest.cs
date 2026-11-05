@@ -6,7 +6,7 @@ namespace EduTwin.Contracts.Assignments;
 
 /// <summary>
 /// Request body cho PATCH /api/v1/assignments/{id} (API_CONTRACTS.md §51).
-/// Chỉ được phép khi Status == Draft.
+/// Draft cho phép cập nhật nội dung; Published chỉ cho phép đổi lịch thi chưa bắt đầu.
 /// </summary>
 public class UpdateAssignmentRequest
 {
@@ -14,6 +14,8 @@ public class UpdateAssignmentRequest
     public string? Instructions { get; set; }
     public DateTime? DueAt { get; set; }
     public int? TimeLimitMinutes { get; set; }
+    public string? Kind { get; set; }
+    public DateTime? ExamAt { get; set; }
 
     /// <summary>
     /// Danh sách questionId mới. Nếu null → giữ nguyên; nếu cung cấp → replace toàn bộ.

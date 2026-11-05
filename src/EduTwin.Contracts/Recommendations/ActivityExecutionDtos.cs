@@ -103,6 +103,7 @@ public class StartMissionRequest
 
 public class SubmitActivityRequest
 {
+    public bool Skipped { get; set; }
     public Guid ClientSubmissionId { get; set; }
     [System.Text.Json.Serialization.JsonNumberHandling(System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString)]
     public ulong? QuestionId { get; set; }
@@ -165,6 +166,7 @@ public class V4SessionEvaluationResultDto
 
 public class MissionRunDto
 {
+    public DateTime? ExpiresAt { get; set; }
     public string Outcome { get; set; } = "None";
     public ulong SessionRunId { get; set; }
     public Guid SessionId { get; set; }

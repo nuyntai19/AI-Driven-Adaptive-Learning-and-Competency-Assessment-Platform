@@ -1681,3 +1681,45 @@ Accepted V4 paths use `PlanSchemaVersion = 4.0`. PlanJson stores the accepted pr
 Content is selected only when Published and matched to a real subject/node. The application content entity defaults to Draft; the inherited migration's SQL status default remains Published, so imports must explicitly set editorial status. No reviewed content library is seeded by the corrective rollout. Shortages are reported instead of duplicating question exposure as independent evidence.
 
 Connected learning update (same day) adds no tables/migration. Recent-work insights are projections of existing Attempts, Questions and reviewed analyses. Practice feedback is reconstructed for the owner from the canonical Attempt and authored Question after submission. Under evaluator transaction/student lock, follow-up sessions are appended to the active path, the PlanJson projection gains their question count/availability date, and PathDecision stores the reason plus real evidence references. Scheduled recall and repair never overwrite submissions or write synthetic Twin scores.
+
+
+## Amendment KNOWLEDGE-GRADE-CLASS-SCOPE — 22/10/2026
+
+Approved: [implementation plan](docs/plans/KNOWLEDGE-GRADE-CLASS-SCOPE-FIX-PLAN-2026-10-22.md), [initial classification](docs/verification/KNOWLEDGE-GRADE-PROPOSALS-2026-10-22.md). This amendment extends the earlier subject-wide graph sections.
+
+### knowledge_graph_versions [Tenant, OCC]
+
+| Column | Type | Null | Rule |
+| --- | --- | --- | --- |
+| graph_version_id | VARCHAR(36) | No | PK; alternate key (center_id, graph_version_id) |
+| center_id / subject_id | VARCHAR(36) | No | Composite tenant-safe Subject FK |
+| grade_level | TINYINT UNSIGNED | No | 10..12 |
+| status | VARCHAR(16) | No | Draft, Published, Archived |
+| is_current | TINYINT(1) | No | Only Published nonlegacy may be current |
+| is_legacy | TINYINT(1) | No | Existing curriculum snapshot; never approved current library |
+| title | VARCHAR(250) | Yes | Version label |
+| source_graph_version_id | VARCHAR(36) | Yes | Tenant-safe source/fork version FK |
+| created_at / updated_at | DATETIME(6) | No | UTC audit |
+| created_by / updated_by | VARCHAR(36) | Yes | Audit actor |
+| row_version | BIGINT UNSIGNED | No | Optimistic concurrency token |
+| current_grade | TINYINT UNSIGNED | Generated, nullable | grade when current, otherwise null |
+
+Unique (center_id, subject_id, current_grade) permits exactly one current library per subject/grade. Index (center_id, subject_id, grade_level, status). Published topology and versions referenced by Published/Archived curricula or application history are immutable; fork instead of rewriting structure.
+
+### knowledge_node_grades [Tenant join, versioned applicability]
+
+PK (center_id, graph_version_id, node_id). Columns: graph_version_id VARCHAR(36), node_id BIGINT UNSIGNED, parent_node_id BIGINT UNSIGNED NULL, created_at DATETIME(6), created_by VARCHAR(36) NULL; center_id VARCHAR(36). Tenant-safe FKs to version and canonical node; parent FK references (center_id, graph_version_id, node_id) in the same mapping table. Reject self-parent/cycles and node from another subject. Index (center_id, node_id, graph_version_id).
+
+Grade is resolved through graph_version_id, not inferred from node_code. A canonical NodeId can occur in several grade versions. Missing mapping means unclassified, not all grades. Parent is version-specific; the old canonical parent_node_id remains transition data and is not the new historical topology source.
+
+### knowledge_edge_grades [Tenant join, versioned relation]
+
+PK (center_id, graph_version_id, edge_id). Columns: center_id/graph_version_id VARCHAR(36), edge_id BIGINT UNSIGNED, relation_type VARCHAR(32), weight DECIMAL(5,2), source_graph_version_id VARCHAR(36) NULL, created_at DATETIME(6), created_by VARCHAR(36) NULL. Composite tenant-safe FKs to graph versions and canonical edge. Weight 0..1; relation types remain PrerequisiteOf, RelatedTo, PartOf, CausesErrorIn.
+
+RelationType and Weight are scoped snapshots; changing a version never mutates a shared canonical edge. Target must belong to the version. Ordinary relations require source in that version; an external prerequisite explicitly names a Published source version of the same subject. Preserve DAG and parent cycle checks. Frozen version mappings cannot be inserted/updated/deleted. Canonical node/edge identity used by snapshots cannot be rewritten to alter historical meaning.
+
+### curriculums extension and transition
+
+Add graph_version_id VARCHAR(36) NULL with tenant-safe version FK. Nullable supports empty drafts and migration of unclassified legacy records; populated new authoring/publishing must reference an approved nonlegacy Published version with matching subject/grade and all selected nodes mapped there. Selected classes must match actor, subject, grade and Active/Current; explicit application grade exceptions retain the existing ledger semantics.
+
+Existing curricula receive legacy snapshots preserving their exact composition. Separately create approved current library versions only from the user-approved manifest. No NodeId/EdgeId replacement, question reassignment, mastery reset, evidence replay or academic history deletion. New grade/version guards supplement, rather than replace, existing subject/tenant/lifecycle triggers. Class graph provenance retains curriculum/version/grade occurrences; competency/mastery counts deduplicate canonical NodeId. Academic year belongs to Class, not the reusable curriculum.

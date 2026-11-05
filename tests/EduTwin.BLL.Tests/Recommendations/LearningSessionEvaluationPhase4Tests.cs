@@ -77,6 +77,35 @@ public sealed class LearningSessionEvaluationPhase4Tests : IDisposable
 
     private async Task SeedQuestionsAsync(IEnumerable<ulong> questionIds, ulong topicId)
     {
+        if (!await _dbContext.Students.AnyAsync(s => s.CenterId == _centerId && s.StudentId == _studentId))
+        {
+            await _dbContext.Students.AddAsync(new EduTwin.DAL.Organization.Student
+            {
+                CenterId = _centerId,
+                StudentId = _studentId,
+                FullName = "Test Student",
+                GradeLevel = 10,
+                CreatedAt = _now,
+                UpdatedAt = _now
+            });
+        }
+        if (!await _dbContext.KnowledgeNodes.AnyAsync(n => n.CenterId == _centerId && n.NodeId == topicId))
+        {
+            await _dbContext.KnowledgeNodes.AddAsync(new EduTwin.DAL.KnowledgeGraph.KnowledgeNode
+            {
+                CenterId = _centerId,
+                SubjectId = _subjectId,
+                NodeId = topicId,
+                NodeCode = $"T{topicId}",
+                NodeName = $"Topic {topicId}",
+                NodeType = Contracts.KnowledgeGraph.NodeType.Topic,
+                IsActive = true,
+                CreatedAt = _now,
+                UpdatedAt = _now
+            });
+        }
+        GraphScopeFixture.Approve(_dbContext, _centerId, _subjectId, 10, topicId);
+
         foreach (var id in questionIds)
         {
             if (await _dbContext.Questions.AnyAsync(q => q.CenterId == _centerId && q.QuestionId == id))
@@ -92,6 +121,7 @@ public sealed class LearningSessionEvaluationPhase4Tests : IDisposable
                 CorrectAnswer = "A",
                 Solution = "Solution",
                 LanguageCode = "vi",
+                GradeLevel = 10,
                 Status = Contracts.CurriculumAndQuestions.QuestionStatus.Active,
                 QuestionType = Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice,
                 AnswerEvaluationMode = Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.TextExact,

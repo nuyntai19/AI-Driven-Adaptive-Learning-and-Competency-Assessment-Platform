@@ -16,4 +16,6 @@ public class KnowledgeNodeDto
     public uint EstimatedLearningMinutes { get; set; }
     public bool IsActive { get; set; }
     public string RowVersion { get; set; } = null!;
+    public IReadOnlyList<byte> GradeLevels { get; set; } = [];
+    public IReadOnlyList<KnowledgeNodeProvenanceDto> Provenance { get; set; } = [];
 }

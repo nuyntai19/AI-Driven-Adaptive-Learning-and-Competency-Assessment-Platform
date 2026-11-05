@@ -12,6 +12,8 @@ namespace EduTwin.BLL.Recommendations;
 
 public interface IAdaptiveQuestionSelector
 {
+    Task<Question?> SelectForClassAsync(Guid centerId, Guid studentId, ulong topicNodeId, decimal currentMastery,
+        Guid? classId, CancellationToken ct) => SelectQuestionAsync(centerId, studentId, topicNodeId, currentMastery, ct);
     Task<Question?> SelectQuestionAsync(
         Guid centerId,
         Guid studentId,
@@ -44,7 +46,17 @@ public sealed class AdaptiveQuestionSelector : IAdaptiveQuestionSelector
         ulong topicNodeId,
         decimal currentMastery,
         CancellationToken cancellationToken)
+        => await SelectForClassAsync(centerId, studentId, topicNodeId, currentMastery, null, cancellationToken);
+
+    public async Task<Question?> SelectForClassAsync(Guid centerId, Guid studentId, ulong topicNodeId,
+        decimal currentMastery, Guid? classId, CancellationToken cancellationToken)
     {
+        var subject = await _dbContext.KnowledgeNodes.AsNoTracking().Where(n => n.CenterId == centerId &&
+            n.NodeId == topicNodeId && n.IsActive && !n.IsDeleted).Select(n => (Guid?)n.SubjectId).SingleOrDefaultAsync(cancellationToken);
+        if (!subject.HasValue) return null;
+        var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId,
+            studentId, subject.Value, classId, false, cancellationToken);
+        if (!scope.Includes(topicNodeId)) return null;
         // 1. Fetch active questions for this topic
         var activeQuestions = await _dbContext.Questions
             .Where(q => q.CenterId == centerId
@@ -52,6 +64,8 @@ public sealed class AdaptiveQuestionSelector : IAdaptiveQuestionSelector
                 && q.Status == QuestionStatus.Active
                 && !q.IsDeleted)
             .ToListAsync(cancellationToken);
+
+        activeQuestions = activeQuestions.Where(q => scope.IncludesQuestion(q.PrimaryTopicNodeId, q.GradeLevel)).ToList();
 
         if (activeQuestions.Count == 0)
         {

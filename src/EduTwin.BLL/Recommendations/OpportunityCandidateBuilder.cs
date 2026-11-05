@@ -61,108 +61,24 @@ public sealed class OpportunityCandidateBuilder : IOpportunityCandidateBuilder
 
     private async Task<CandidateBuildResult> BuildCoreAsync(Guid centerId, Guid studentId, Guid subjectId, Guid? classId, CancellationToken cancellationToken)
     {
-        var membershipScope = EduTwin.BLL.Organization.StudentClassScope.Memberships(_dbContext, centerId, studentId)
-            .Where(m => m.SubjectId == subjectId);
-        if (classId.HasValue && !await membershipScope.AnyAsync(m => m.ClassId == classId && !m.IsHistorical, cancellationToken) ||
-            !classId.HasValue && await membershipScope.AnyAsync(cancellationToken) && !await membershipScope.AnyAsync(m => !m.IsHistorical, cancellationToken))
-            return new CandidateBuildResult { BlockedReason = "NO_ACTIVE_CLASS" };
-        // 0. Scope Resolution: Determine active curriculum for this student and subject
-        var ledgerQuery = from cs in _dbContext.ClassStudents
-            join c in _dbContext.Classes on new { cs.CenterId, cs.ClassId } equals new { c.CenterId, c.ClassId }
-            join a in _dbContext.ClassCurriculumApplications on new { c.CenterId, c.ClassId } equals new { a.CenterId, a.ClassId }
-            where cs.CenterId == centerId && cs.StudentId == studentId && cs.Status == ClassStudentStatus.Active &&
-                c.SubjectId == subjectId && c.Status == ClassStatus.Active && !c.IsDeleted && c.LearningScope == ClassLearningScope.Current &&
-                (!classId.HasValue || c.ClassId == classId)
-            select a;
-        var hasLedger = await ledgerQuery.AnyAsync(cancellationToken);
-        var applications = await ledgerQuery.Where(a => a.EndedAt == null && a.Curriculum.ReviewStatus == ReviewStatus.Published && !a.Curriculum.IsDeleted)
-            .Select(a => new { a.ClassId, a.CurriculumId, a.ApplicationRole }).ToListAsync(cancellationToken);
-        if (applications.GroupBy(a => a.ClassId).Any(g => g.Count(a => a.ApplicationRole == "Primary") > 1))
-            return new CandidateBuildResult { BlockedReason = "AMBIGUOUS_CURRICULUM_ASSIGNMENT" };
-        var assignedCurriculumIds = applications.Select(a => a.CurriculumId).Distinct().ToList();
-        // Compatibility for older isolated fixtures/data without an application ledger.
-        // Once ledger history exists, never resurrect an ended planning link.
-        if (!hasLedger) assignedCurriculumIds = await (
-            from cs in _dbContext.ClassStudents
-            join c in _dbContext.Classes on new { cs.CenterId, cs.ClassId } equals new { c.CenterId, c.ClassId }
-            join cc in _dbContext.CurriculumClasses on new { c.CenterId, c.ClassId } equals new { cc.CenterId, cc.ClassId }
-            join curriculum in _dbContext.Curriculums
-                on new { cc.CenterId, cc.CurriculumId } equals new { curriculum.CenterId, curriculum.CurriculumId }
-            where cs.CenterId == centerId
-                && cs.StudentId == studentId
-                && cs.Status == ClassStudentStatus.Active
-                && c.SubjectId == subjectId
-                && (!classId.HasValue || c.ClassId == classId)
-                && c.Status == ClassStatus.Active
-                && c.LearningScope == ClassLearningScope.Current
-                && !c.IsDeleted
-                && curriculum.SubjectId == subjectId
-                && curriculum.ReviewStatus == ReviewStatus.Published
-                && !curriculum.IsDeleted
-            select cc.CurriculumId
-        ).Distinct().ToListAsync(cancellationToken);
-
-        if (!hasLedger && assignedCurriculumIds.Count > 1)
+        var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(
+            _dbContext, centerId, studentId, subjectId, classId, false, cancellationToken);
+        if (!scope.Allowed)
         {
-            // Ambiguous curriculum: multiple active curriculums assigned for this subject. Fail closed!
-            return new CandidateBuildResult
-            {
-                BlockedReason = "AMBIGUOUS_CURRICULUM_ASSIGNMENT"
-            };
+            var memberships = await EduTwin.BLL.Organization.StudentClassScope.Memberships(_dbContext, centerId, studentId)
+                .Where(m => m.SubjectId == subjectId).ToListAsync(cancellationToken);
+            var hasCurrent = memberships.Any(m => !m.IsHistorical && (!classId.HasValue || m.ClassId == classId));
+            return new CandidateBuildResult { BlockedReason = hasCurrent ? "NO_APPLIED_CURRICULUM"
+                : classId.HasValue || memberships.Count > 0 ? "NO_ACTIVE_CLASS" : "NO_APPROVED_GRAPH" };
         }
-
-        if (assignedCurriculumIds.Count == 0 && await (
-            from cs in _dbContext.ClassStudents join c in _dbContext.Classes
-                on new { cs.CenterId, cs.ClassId } equals new { c.CenterId, c.ClassId }
-            where cs.CenterId == centerId && cs.StudentId == studentId && cs.Status == ClassStudentStatus.Active &&
-                c.SubjectId == subjectId && c.LearningScope == ClassLearningScope.Current && c.Status == ClassStatus.Active && !c.IsDeleted &&
-                (!classId.HasValue || c.ClassId == classId)
-            select cs.ClassId).AnyAsync(cancellationToken))
-            return new CandidateBuildResult { BlockedReason = "NO_APPLIED_CURRICULUM" };
-
-        // 1. Query active topic nodes in subject (scoped to curriculum if assigned, otherwise subject-wide)
-        var topicQuery = _dbContext.KnowledgeNodes
-            .AsNoTracking()
-            .Where(n => n.CenterId == centerId
-                && n.SubjectId == subjectId
-                && n.NodeType == NodeType.Topic
-                && n.IsActive
-                && !n.IsDeleted);
-
-        List<KnowledgeNode> allActiveTopicNodes;
-        if (assignedCurriculumIds.Count >= 1)
-        {
-            var scopedNodes = new List<KnowledgeNode>();
-            foreach (var singleCurriculumId in assignedCurriculumIds.OrderBy(id => id))
-            {
-            var curriculumTopics = await (
-                from cn in _dbContext.CurriculumNodes.AsNoTracking()
-                join n in topicQuery
-                    on new { cn.CenterId, cn.NodeId } equals new { n.CenterId, n.NodeId }
-                where cn.CenterId == centerId && cn.CurriculumId == singleCurriculumId
-                orderby cn.OrderIndex, n.NodeId
-                select new { Node = n, CurriculumOrderIndex = cn.OrderIndex }
-            ).ToListAsync(cancellationToken);
-
-            // The detached node is a read model here. Replacing OrderIndex makes every
-            // downstream selector use the curriculum-specific order without mutating storage.
-            foreach (var item in curriculumTopics)
-            {
-                item.Node.OrderIndex = item.CurriculumOrderIndex;
-            }
-
-            scopedNodes.AddRange(curriculumTopics.Select(x => x.Node));
-            }
-            allActiveTopicNodes = scopedNodes.OrderBy(n => n.OrderIndex).ThenBy(n => n.NodeId).DistinctBy(n => n.NodeId).ToList();
-        }
-        else
-        {
-            allActiveTopicNodes = await topicQuery
-                .OrderBy(n => n.OrderIndex)
-                .ThenBy(n => n.NodeId)
-                .ToListAsync(cancellationToken);
-        }
-
+        var scopedIds = scope.TopicIds!.ToList();
+        var allActiveTopicNodes = await _dbContext.KnowledgeNodes.AsNoTracking()
+            .Where(n => n.CenterId == centerId && n.SubjectId == subjectId && n.NodeType == NodeType.Topic &&
+                n.IsActive && !n.IsDeleted && scopedIds.Contains(n.NodeId))
+            .OrderBy(n => n.OrderIndex).ThenBy(n => n.NodeId).ToListAsync(cancellationToken);
+        foreach (var node in allActiveTopicNodes)
+            node.OrderIndex = scope.OrderByNodeId.GetValueOrDefault(node.NodeId, node.OrderIndex);
+        allActiveTopicNodes = allActiveTopicNodes.OrderBy(n => n.OrderIndex).ThenBy(n => n.NodeId).ToList();
         if (allActiveTopicNodes.Count == 0)
         {
             return new CandidateBuildResult();
@@ -177,13 +93,9 @@ public sealed class OpportunityCandidateBuilder : IOpportunityCandidateBuilder
             .ToListAsync(cancellationToken);
 
         // 3. Query prerequisite edges in this subject
-        var edges = await _dbContext.KnowledgeEdges
-            .Where(e => e.CenterId == centerId
-                && e.SubjectId == subjectId
-                && e.RelationType == RelationType.PrerequisiteOf
-                && !e.IsDeleted)
-            .ToListAsync(cancellationToken);
-
+        var topology = await EduTwin.BLL.Organization.ScopedKnowledgeTopology.ReadAsync(
+            _dbContext, centerId, subjectId, scope, cancellationToken);
+        var edges = topology.Edges.Where(e => e.RelationType == RelationType.PrerequisiteOf).ToList();
         var prerequisitesByTarget = edges
             .GroupBy(e => e.TargetNodeId)
             .ToDictionary(g => g.Key, g => g.Select(x => x.SourceNodeId).Distinct().ToList());
@@ -224,7 +136,8 @@ public sealed class OpportunityCandidateBuilder : IOpportunityCandidateBuilder
             .Include(e => e.Analysis)
             .Where(e => e.CenterId == centerId
                 && e.Attempt.StudentId == studentId
-                && e.Attempt.Question.SubjectId == subjectId)
+                && e.Attempt.Question.SubjectId == subjectId
+                && scopedIds.Contains(e.Attempt.Question.PrimaryTopicNodeId))
             .OrderByDescending(e => e.EvaluatedAt)
             .ThenByDescending(e => e.EvidenceAssessmentId)
             .ToListAsync(cancellationToken);

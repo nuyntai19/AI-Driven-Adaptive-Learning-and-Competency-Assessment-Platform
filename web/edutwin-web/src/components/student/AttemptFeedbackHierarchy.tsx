@@ -309,7 +309,7 @@ export function AttemptFeedbackHierarchy({
             <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 dark:text-slate-400 pt-1">
               <span>⏱ Thời gian làm: <strong>{studentSubmission.timeSpentSeconds}s</strong></span>
               <span>🔄 Số lần đổi đáp án: <strong>{studentSubmission.answerChanges}</strong></span>
-              <span>🎯 Mức tự tin: <strong>{Math.round(studentSubmission.confidence)}%</strong></span>
+              <span>🎯 Mức tự tin: <strong>{studentSubmission.confidence == null ? "Không ghi nhận" : `${Math.round(studentSubmission.confidence)}%`}</strong></span>
             </div>
           )}
         </div>

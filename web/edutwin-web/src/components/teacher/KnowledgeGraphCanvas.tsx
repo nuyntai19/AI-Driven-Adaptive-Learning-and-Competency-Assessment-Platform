@@ -23,7 +23,7 @@ const relations: { type: KnowledgeRelationType; label: string }[] = [
   { type: "PrerequisiteOf", label: "Tiên quyết" }, { type: "PartOf", label: "Thuộc về" },
   { type: "RelatedTo", label: "Liên quan" }, { type: "CausesErrorIn", label: "Gây lỗi" },
 ];
-const cardWidth = 240, cardHeight = 100;
+const cardWidth = 240, cardHeight = 118;
 
 /** Read-only visualization. Authoring stays in the existing permission-checked inspector. */
 export function KnowledgeGraphCanvas(props: Props) {
@@ -80,7 +80,7 @@ export function KnowledgeGraphCanvas(props: Props) {
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--th-text-secondary)]">
-        <span>{focusNode ? `Đang xem quanh: ${focusNode.nodeName}` : "Toàn bộ đồ thị môn học"} · {graph.nodes.length}/{props.nodes.length} nút · {graph.edges.length} liên kết</span>
+        <span>{focusNode ? `Đang xem quanh: ${focusNode.nodeName}` : "Toàn bộ đồ thị trong phạm vi đang chọn"} · {graph.nodes.length}/{props.nodes.length} nút · {graph.edges.length} liên kết</span>
         <label className="flex items-center gap-2 ml-auto"><input type="checkbox" checked={props.hideInactive} onChange={e => props.onHideInactive(e.target.checked)} />Ẩn nút đã tắt ({props.inactiveCount})</label>
       </div>
       {props.nodes.some(n => n.nodeType === "Chapter") && <label className="flex flex-wrap items-center gap-2 text-sm font-semibold">
@@ -162,12 +162,13 @@ export function KnowledgeGraphCanvas(props: Props) {
               onClick={e => { e.stopPropagation(); props.onSelectNode(node.nodeId); }}
               onDoubleClick={e => { e.stopPropagation(); focus(node.nodeId); }}
               onKeyDown={e => { e.stopPropagation(); if (e.key === "Enter" || e.key === " ") { e.preventDefault(); props.onSelectNode(node.nodeId); } }}>
-              <title>{node.nodeName} ({node.nodeCode}) · {props.nodeLabels[node.nodeType]}{node.isActive ? "" : " · Đã tắt"}</title>
+              <title>{node.nodeName} ({node.nodeCode}) · {props.nodeLabels[node.nodeType]}{node.gradeLevel ? ` · Khối ${node.gradeLevel}` : node.gradeLevels?.length ? ` · Khối ${node.gradeLevels.join(", ")}` : " · Chưa xác định khối"}{node.sources?.map(s => ` · ${s.curriculumTitle || "Giáo trình"}`).join("")}{node.isActive ? "" : " · Đã tắt"}</title>
               <rect width={cardWidth} height={cardHeight} rx={10} fill="var(--th-surface)" stroke={selected ? "var(--th-teal)" : "var(--th-border)"} strokeWidth={selected ? 3 : 1.5} strokeDasharray={node.isActive ? undefined : "6 4"} />
               <rect width={cardWidth} height={5} rx={2} fill={color} />
               <text x={12} y={25} fontSize={11} fill={color} fontFamily="monospace">{node.nodeCode.length > 30 ? `${node.nodeCode.slice(0, 29)}…` : node.nodeCode}</text>
               {graphLabelLines(node.nodeName).map((line, i) => <text key={i} x={12} y={46 + i * 17} fontSize={13} fontWeight={700} fill="var(--th-text)">{line}</text>)}
               <text x={12} y={85} fontSize={10} fill="var(--th-text-muted)">{props.nodeLabels[node.nodeType]} · {node.isActive ? `${node.examImportance}% thi · ${node.estimatedLearningMinutes}p` : "Đã tắt hoạt động"}</text>
+              <text x={12} y={104} fontSize={10} fill="var(--th-teal)">{node.gradeLevel ? `Khối ${node.gradeLevel}` : node.gradeLevels?.length ? `Khối ${node.gradeLevels.join(", ")}` : "Chưa xác định khối"}{node.sources?.[0]?.curriculumTitle ? ` · ${node.sources[0].curriculumTitle.slice(0, 27)}` : ""}</text>
             </g>;
           })}
         </svg>

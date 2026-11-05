@@ -66,7 +66,8 @@ public static class LearningPathInsights
         var fresh = pool.Where(q => !used.Contains(q.QuestionId)).ToList();
         // Reserve confirmation only when there are enough items for a useful practice set.
         // A small bank must still support learning; its independent check will report the shortage.
-        var eligible = pool.Count >= 10 ? fresh.Take(Math.Max(0, fresh.Count - 5)) : fresh;
+        var reserve = fresh.Count >= 5 ? 5 : fresh.Count >= 3 ? 3 : 0;
+        var eligible = fresh.Take(Math.Max(0, fresh.Count - reserve));
         return pool.Where(q => used.Contains(q.QuestionId)).Concat(eligible).DistinctBy(q => q.QuestionId).ToList();
     }
 }

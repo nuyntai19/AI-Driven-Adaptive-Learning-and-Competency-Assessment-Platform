@@ -51,6 +51,8 @@ export interface AssignmentTargetDto {
 }
 
 export interface AssignmentDto {
+  kind?: string;
+  examAt?: string | null;
   assignmentId: string;
   classId: string;
   title: string;
@@ -69,6 +71,8 @@ export interface AssignmentDto {
 }
 
 export interface CreateAssignmentRequest {
+  kind?: string;
+  examAt?: string | null;
   classId: string;
   title: string;
   instructions?: string | null;
@@ -82,12 +86,14 @@ export interface CreateAssignmentRequest {
 }
 
 export interface UpdateAssignmentRequest {
-  title: string;
+  kind?: string;
+  examAt?: string | null;
+  title?: string;
   instructions?: string | null;
   dueAt?: string | null;
   timeLimitMinutes?: number | null;
-  questionIds: string[];
-  targetMode: TargetMode;
+  questionIds?: string[];
+  targetMode?: TargetMode;
   studentIds?: string[];
   allowGradeMismatch?: boolean;
   gradeMismatchReason?: string | null;
@@ -160,7 +166,7 @@ export interface AssignmentDraftAnswerItemDto {
   answerDisplayLatex?: string;
   reasoningText?: string;
   timeSpentSeconds?: number;
-  confidence?: number;
+  confidence?: number | null;
   answerChanges?: number;
   drawingUploadToken?: string;
 }
@@ -174,6 +180,8 @@ export interface SubmitAssignmentResponseDto {
 }
 
 export interface StudentAssignmentDetailDto {
+  kind?: string;
+  examAt?: string | null;
   classId?: string | null;
   isReadOnly?: boolean;
   readOnlyReason?: string | null;
@@ -204,6 +212,8 @@ export interface SaveAssignmentDraftRequest {
 }
 
 export interface StudentAssignmentListItemDto {
+  kind?: string;
+  examAt?: string | null;
   assignmentId: string;
   title: string;
   instructions: string | null;

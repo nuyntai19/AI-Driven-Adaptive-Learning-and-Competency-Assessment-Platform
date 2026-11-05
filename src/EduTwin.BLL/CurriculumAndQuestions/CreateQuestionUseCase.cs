@@ -244,6 +244,10 @@ public class CreateQuestionUseCase : ICreateQuestionUseCase
                 return CreateQuestionResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (!await QuestionGradeScopeGuard.IsValidAsync(_dbContext, centerId, request.SubjectId, request.GradeLevel,
+            topicNodeId, request.KnowledgeMappings, cancellationToken))
+            return CreateQuestionResult.Failure(ErrorCodes.ValidationFailed);
+
         // 7. Persist
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 

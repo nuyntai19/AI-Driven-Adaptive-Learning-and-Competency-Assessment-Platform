@@ -7,7 +7,7 @@ export interface SubmitAttemptRequest {
   finalAnswer: string;
   reasoningText?: string | null;
   timeSpentSeconds: number;
-  confidence: number;
+  confidence: number | null;
   answerChanges: number;
   skipped: boolean;
   clientSubmissionId: string;
@@ -101,7 +101,7 @@ export interface AttemptFeedbackStudentSubmissionDto {
   finalAnswer: string;
   answerDisplayLatex?: string | null;
   reasoningText?: string | null;
-  confidence: number;
+  confidence: number | null;
   timeSpentSeconds: number;
   answerChanges: number;
   attachmentUrl?: string | null;

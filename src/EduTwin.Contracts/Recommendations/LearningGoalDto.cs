@@ -19,6 +19,9 @@ public class LearningGoalDto
 
     public List<string> TargetSkillIds { get; set; } = new();
     public DateTime? DeadlineDate { get; set; }
+    public decimal? TargetScore { get; set; }
+    public bool StartWithPlacement { get; set; }
+    public LearningScheduleSettings Schedule { get; set; } = new();
 
     public uint AvailableMinutesPerDay { get; set; } = 15;
     public uint AvailableDaysPerWeek { get; set; } = 5;
@@ -33,6 +36,10 @@ public class LearningGoalDto
 
 public class CreateLearningGoalRequest
 {
+    public bool ClearDeadline { get; set; }
+    public decimal? TargetScore { get; set; }
+    public bool StartWithPlacement { get; set; }
+    public LearningScheduleSettings Schedule { get; set; } = new();
     public List<string> SelfReportedPrerequisiteSkillIds { get; set; } = new();
     /// <summary>Parts the student left out of the placement check (self-assessed as mastered); each gets a short confirmation review at the end of the route.</summary>
     public List<string> SelfAssessedSkillIds { get; set; } = new();
@@ -54,6 +61,7 @@ public class CreateLearningGoalRequest
 
 public class UpdateLearningGoalRequest
 {
+    public decimal? TargetScore { get; set; }
     public string? Title { get; set; }
     public string? Description { get; set; }
     public List<string>? TargetSkillIds { get; set; }

@@ -11,18 +11,22 @@ import type {
   KnowledgeEdgeResponse,
   CreateKnowledgeEdgeRequest,
   UpdateKnowledgeEdgeRequest,
+  GraphScopeQuery,
+  KnowledgeGraphVersion,
+  KnowledgeVersionNodeMapping,
+  KnowledgeVersionEdgeMapping,
 } from "../types/knowledgeGraph";
 
-const getGraph = async (subjectId: string): Promise<KnowledgeGraphDto> => {
+const getGraph = async (subjectId: string, scope: GraphScopeQuery = {}): Promise<KnowledgeGraphDto> => {
   const trimmedSubjectId = subjectId.trim();
-  if (!trimmedSubjectId) {
+  if (!trimmedSubjectId && !scope.classId && !scope.curriculumId && !scope.graphVersionId) {
     throw new Error("Subject ID is required.");
   }
 
   const response = await httpClient.get<KnowledgeGraphResponse>(
     "/knowledge/graph",
     {
-      params: { subjectId: trimmedSubjectId },
+      params: { subjectId: trimmedSubjectId || undefined, ...scope },
     }
   );
   return response.data.data;
@@ -81,6 +85,7 @@ const createEdge = async (
   request: CreateKnowledgeEdgeRequest
 ): Promise<KnowledgeEdgeDto> => {
   const payload = {
+    graphVersionId: request.graphVersionId,
     subjectId: request.subjectId.trim(),
     sourceNodeId: request.sourceNodeId.trim(),
     targetNodeId: request.targetNodeId.trim(),
@@ -115,16 +120,23 @@ const deleteEdge = async (edgeId: string): Promise<void> => {
   await httpClient.delete(`/knowledge/edges/${edgeId}`);
 };
 
-const listNodes = async (subjectId: string): Promise<KnowledgeNodeDto[]> => {
-  if (!subjectId) return [];
+const listNodes = async (subjectId: string, scope: GraphScopeQuery = {}): Promise<KnowledgeNodeDto[]> => {
+  if (!subjectId && !scope.classId && !scope.curriculumId && !scope.graphVersionId) return [];
   const response = await httpClient.get<KnowledgeNodeListResponse>(
     "/knowledge/nodes",
-    { params: { subjectId } }
+    { params: { subjectId, ...scope } }
   );
   return response.data.data ?? [];
 };
 
 export const knowledgeGraphApi = {
+  listVersions: async (subjectId: string, gradeLevel?: number) => (await httpClient.get<{ data: KnowledgeGraphVersion[] }>("/knowledge/graph/versions", { params: { subjectId, gradeLevel } })).data.data,
+  createVersion: async (data: { subjectId: string; gradeLevel: number; title?: string; sourceGraphVersionId?: string }) =>
+    (await httpClient.post<{ data: KnowledgeGraphVersion }>("/knowledge/graph/versions", data)).data.data,
+  saveVersion: async (id: string, data: { rowVersion: string; nodeMappings: KnowledgeVersionNodeMapping[]; edgeMappings: KnowledgeVersionEdgeMapping[] }) =>
+    (await httpClient.put<{ data: KnowledgeGraphVersion }>(`/knowledge/graph/versions/${id}`, data)).data.data,
+  publishVersion: async (id: string, rowVersion: string) =>
+    (await httpClient.post<{ data: KnowledgeGraphVersion }>(`/knowledge/graph/versions/${id}/publish`, { rowVersion })).data.data,
   getGraph,
   createNode,
   updateNode,

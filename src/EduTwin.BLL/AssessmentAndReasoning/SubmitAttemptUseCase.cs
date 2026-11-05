@@ -155,6 +155,7 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
 
             var now = _timeProvider.GetUtcNow().UtcDateTime;
             var attempt = CreateAttempt(submission, now, isPostFeedback);
+            var deterministicCheck = false;
             if (sessionRun?.Session.PolicyVersion == Recommendations.Planning.LearningPathV4Data.Policy)
             {
                 var item = await _dbContext.IssuedItems.Include(i => i.ActivityRun)
@@ -169,12 +170,30 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
                 item.ActivityRun.CompletedAt = now; item.ActivityRun.UpdatedAt = now; item.ActivityRun.RowVersion++;
                 // Guided practice must not appear as independent evidence to the normal Twin pipeline.
                 attempt.IsPostFeedback = item.ExposureMode != "Independent" || isPostFeedback;
+                deterministicCheck = item.ExposureMode == "Independent" && item.ActivityRun.ActivityType == "IndependentCheck" &&
+                    (sessionRun.PolicySnapshot?.RootElement.TryGetProperty("isPlacement", out var baseline) == true && baseline.ValueKind == System.Text.Json.JsonValueKind.True ||
+                     sessionRun.PolicySnapshot?.RootElement.TryGetProperty("isMilestoneExam", out var exam) == true && exam.ValueKind == System.Text.Json.JsonValueKind.True);
+                if (deterministicCheck && !submission.IsCorrect.HasValue)
+                    return SubmitAttemptResult.Failure(ErrorCodes.ValidationFailed);
             }
             var job = CreateAnalysisJob(
                 submission,
                 attempt,
                 SanitizeCorrelationId(correlationId),
                 now);
+            if (deterministicCheck)
+            {
+                // The canonical deterministic grader already supplied the result. Keep an idempotent completed job for existing clients;
+                // do not enqueue an AI/teacher-review job for a self-graded assessment.
+                attempt.Status = AttemptStatus.Completed;
+                job.Status = AIJobStatus.Completed;
+                _dbContext.EvidenceAssessments.Add(new EvidenceAssessment { CenterId = submission.CenterId, Attempt = attempt,
+                    SourceType = EvidenceSourceType.RuleFallback, TrustLevel = EvidenceTrustLevel.Reduced,
+                    DecisionMode = EvidenceDecisionMode.DeterministicOnly, RequiresTeacherReview = false,
+                    PolicyVersion = Recommendations.Planning.LearningAssessmentPolicy.Version,
+                    ReasonCodes = System.Text.Json.JsonSerializer.SerializeToDocument(new[] { "AUTO_GRADED_INDEPENDENT_CHECK" }),
+                    EvaluatedAt = now, CreatedAt = now });
+            }
 
             if (progress?.Status == ProgressStatus.NotStarted)
             {

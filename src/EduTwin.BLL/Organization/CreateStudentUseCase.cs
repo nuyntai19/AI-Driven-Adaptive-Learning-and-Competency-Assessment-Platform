@@ -173,6 +173,8 @@ public class CreateStudentUseCase : ICreateStudentUseCase
             _dbContext.ClassStudents.AddRange(classStudents);
             _dbContext.StudentTwins.Add(studentTwin);
 
+            foreach (var membership in classStudents)
+                await Assignments.ClassExamEnrollment.StageAsync(_dbContext, centerId, membership.ClassId, new[] { student.StudentId }, now, cancellationToken, actorId);
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
         }

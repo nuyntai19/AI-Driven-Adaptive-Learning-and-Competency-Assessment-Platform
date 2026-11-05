@@ -107,7 +107,7 @@ public sealed class MathGradingRepair(EduTwinDbContext db)
             var quality = EduTwin.BLL.AssessmentAndReasoning.EffectiveReasoningQuality.Resolve(r);
             var weight = evidences.GetValueOrDefault(a.AttemptId)?.ReasoningWeight ?? 0m;
             var rolling = samples.Where(s => s.EffectiveIsCorrect.HasValue && (s.CreatedAt < a.CreatedAt || s.CreatedAt == a.CreatedAt && s.AttemptId <= a.AttemptId))
-                .Select(s => new GradedAttemptSample(s.Confidence, s.EffectiveIsCorrect!.Value));
+                .Where(s => s.Confidence.HasValue).Select(s => new GradedAttemptSample(s.Confidence!.Value, s.EffectiveIsCorrect!.Value));
             var calibrated = calibration.CalculateCalibration(rolling);
             var ratio = a.Question.EstimatedTimeSeconds > 0 ? a.TimeSpentSeconds / (decimal)a.Question.EstimatedTimeSeconds : 1m;
             var time = Math.Round(Math.Clamp(1m - Math.Abs(ratio - 1m) * .5m, 0m, 1m), 2, MidpointRounding.AwayFromZero);
@@ -122,7 +122,7 @@ public sealed class MathGradingRepair(EduTwinDbContext db)
         twin.LastReasoningQuality = latestQuality;
         twin.LastAttemptId = latestAttempt;
         twin.UpdatedAt = now;
-        var finalCalibration = calibration.CalculateCalibration(samples.Where(s => s.EffectiveIsCorrect.HasValue).Select(s => new GradedAttemptSample(s.Confidence, s.EffectiveIsCorrect!.Value)));
+        var finalCalibration = calibration.CalculateCalibration(samples.Where(s => s.EffectiveIsCorrect.HasValue).Where(s => s.Confidence.HasValue).Select(s => new GradedAttemptSample(s.Confidence!.Value, s.EffectiveIsCorrect!.Value)));
         var behavior = await db.BehaviorTwins.SingleOrDefaultAsync(t => t.CenterId == center && t.StudentId == student && t.SubjectId == subject && !t.IsDeleted, ct);
         if (behavior is not null) { behavior.ConfidenceCalibration = finalCalibration; behavior.UpdatedAt = now; }
         await new StudentGoalRiskUpdater(db).UpdateAsync(center, student, subject, now, ct);

@@ -22,7 +22,7 @@ public class Attempt : ITenantAppendOnlyEntity, IHasRowVersion
     public decimal? AwardedScore { get; set; }
     public string? PreliminaryGradingReasonCode { get; set; }
     public uint TimeSpentSeconds { get; set; }
-    public decimal Confidence { get; set; }
+    public decimal? Confidence { get; set; }
     public uint AnswerChanges { get; set; }
     public bool Skipped { get; set; }
     public string ReasoningLanguage { get; set; } = null!;

@@ -114,6 +114,7 @@ public class ListStudentAssignmentsUseCase : IListStudentAssignmentsUseCase
                 p.Assignment!.Title,
                 p.Assignment.Instructions,
                 p.Assignment.DueAt,
+                p.Assignment.Kind, p.Assignment.ExamAt,
                 p.Status,
                 p.CompletedQuestionCount,
                 p.TotalQuestionCount,
@@ -144,6 +145,7 @@ public class ListStudentAssignmentsUseCase : IListStudentAssignmentsUseCase
                 Title = p.Title,
                 Instructions = p.Instructions,
                 DueAt = p.DueAt,
+                Kind = p.Kind.ToString(), ExamAt = p.ExamAt,
                 SubjectId = p.SubjectId?.ToString(),
                 SubjectName = p.SubjectName,
                 Progress = new StudentAssignmentProgressDto

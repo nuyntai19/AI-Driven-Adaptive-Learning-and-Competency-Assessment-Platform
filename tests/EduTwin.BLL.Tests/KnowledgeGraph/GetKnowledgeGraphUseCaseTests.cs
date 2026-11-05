@@ -83,6 +83,10 @@ public class GetKnowledgeGraphUseCaseTests
 
         dbContext.Centers.Add(center);
         dbContext.Subjects.Add(subject);
+        dbContext.Classes.Add(new Class { CenterId = _centerId, ClassId = Guid.NewGuid(),
+            TeacherId = _userId, SubjectId = _subjectId, ClassName = "Subject scope",
+            GradeLevel = 10, AcademicYear = "2026-2027", Status = ClassStatus.Active,
+            CreatedAt = _utcNow.AddDays(-1), UpdatedAt = _utcNow.AddDays(-1) });
         await dbContext.SaveChangesAsync();
     }
 
@@ -116,20 +120,26 @@ public class GetKnowledgeGraphUseCaseTests
         var expectedNodeProps = new[]
         {
             "NodeId", "ParentNodeId", "NodeType", "NodeCode", "NodeName", "Description",
-            "OrderIndex", "ExamImportance", "EstimatedLearningMinutes", "IsActive", "RowVersion"
+            "OrderIndex", "ExamImportance", "EstimatedLearningMinutes", "IsActive", "RowVersion",
+            "GradeLevels", "Provenance"
         }
             .OrderBy(x => x).ToList();
         Assert.Equal(expectedNodeProps, nodeProps);
 
         var edgeProps = typeof(KnowledgeGraphEdgeDto).GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Select(p => p.Name).OrderBy(x => x).ToList();
-        var expectedEdgeProps = new[] { "EdgeId", "SourceNodeId", "TargetNodeId", "RelationType", "Weight", "RowVersion" }
+        var expectedEdgeProps = new[]
+        {
+            "EdgeId", "SourceNodeId", "TargetNodeId", "RelationType", "Weight", "RowVersion",
+            "OccurrenceId", "GraphVersionId", "GradeLevel", "CurriculumId", "SourceOccurrenceId",
+            "TargetOccurrenceId", "SourceGraphVersionId", "SourceNodeName", "SourceGradeLevel", "External"
+        }
             .OrderBy(x => x).ToList();
         Assert.Equal(expectedEdgeProps, edgeProps);
 
         var graphProps = typeof(KnowledgeGraphDto).GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Select(p => p.Name).OrderBy(x => x).ToList();
-        var expectedGraphProps = new[] { "SubjectId", "Nodes", "Edges" }
+        var expectedGraphProps = new[] { "SubjectId", "Nodes", "Edges", "ResolvedScope", "ExternalPrerequisites" }
             .OrderBy(x => x).ToList();
         Assert.Equal(expectedGraphProps, graphProps);
     }

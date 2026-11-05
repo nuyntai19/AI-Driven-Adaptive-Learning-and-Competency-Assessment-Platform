@@ -128,6 +128,12 @@ public class UpdateKnowledgeNodeUseCase : IUpdateKnowledgeNodeUseCase
             var blocked = await AcademicDependencyGuards.FrozenNodeMessageAsync(_dbContext, _tenantContext.CenterId.Value, parsedNodeId, cancellationToken);
             if (blocked is not null) return UpdateKnowledgeNodeResult.Failure(ErrorCodes.InvalidStateTransition, blocked);
         }
+        if (targetNode.OrderIndex != request.OrderIndex || targetNode.ExamImportance != request.ExamImportance.Value ||
+            targetNode.EstimatedLearningMinutes != request.EstimatedLearningMinutes)
+        {
+            var blocked = await AcademicDependencyGuards.FrozenGraphNodeMessageAsync(_dbContext, _tenantContext.CenterId.Value, parsedNodeId, cancellationToken);
+            if (blocked is not null) return UpdateKnowledgeNodeResult.Failure(ErrorCodes.InvalidStateTransition, blocked);
+        }
         if (targetNode.IsActive && !request.IsActive.Value)
         {
             var blocked = await AcademicDependencyGuards.DeactivationMessageAsync(_dbContext, _tenantContext.CenterId.Value, parsedNodeId, cancellationToken);

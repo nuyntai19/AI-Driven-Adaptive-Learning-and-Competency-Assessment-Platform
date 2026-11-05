@@ -13,4 +13,7 @@ public sealed record EvidenceGateInput(
     decimal? AnalysisConfidence,
     uint AnalysisOverrideVersion,
     IReadOnlyCollection<string>? DiagnosticReasonCodes = null,
-    bool IsPostFeedback = false);
+    bool IsPostFeedback = false,
+    // True when the score itself was produced by exact auto-grading (text/numeric
+    // match), so correctness does not depend on the reasoning-analysis provider.
+    bool CorrectnessIsDeterministic = false);

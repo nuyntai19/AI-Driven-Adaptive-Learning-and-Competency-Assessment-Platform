@@ -442,7 +442,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                 // Subject-wide rolling calibration up to (CreatedAt, AttemptId)
                 var rollingWindow = gradedSubjectAttempts
                     .Where(x => x.CreatedAt < att.CreatedAt || (x.CreatedAt == att.CreatedAt && x.AttemptId <= att.AttemptId))
-                    .Select(x => new GradedAttemptSample(x.Confidence, x.EffectiveIsCorrect!.Value))
+                    .Where(x => x.Confidence.HasValue).Select(x => new GradedAttemptSample(x.Confidence!.Value, x.EffectiveIsCorrect!.Value))
                     .ToList();
                 var stepCalibration = _calibrationCalculator.CalculateCalibration(rollingWindow);
 
@@ -488,7 +488,7 @@ public sealed class TeacherOverrideUseCase : ITeacherOverrideUseCase
                     cancellationToken);
 
             var finalCalibration = _calibrationCalculator.CalculateCalibration(
-                gradedSubjectAttempts.Select(x => new GradedAttemptSample(x.Confidence, x.EffectiveIsCorrect!.Value)));
+                gradedSubjectAttempts.Where(x => x.Confidence.HasValue).Select(x => new GradedAttemptSample(x.Confidence!.Value, x.EffectiveIsCorrect!.Value)));
 
             if (behaviorTwin is not null)
             {

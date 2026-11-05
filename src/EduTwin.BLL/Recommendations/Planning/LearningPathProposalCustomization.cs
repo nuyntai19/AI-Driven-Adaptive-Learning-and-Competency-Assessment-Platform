@@ -42,7 +42,7 @@ public sealed partial class LearningPathV4Planner
                 if (selected.Add(prerequisite)) pending.Enqueue(prerequisite);
         }
         var nodes = await LearningPathV4Data.NodesAsync(db, centerId, studentId, source.SubjectId, source.Goal.ClassId, cancellationToken);
-        var questions = await LearningPathV4Data.QuestionsAsync(db, centerId, source.SubjectId, nodes.Select(n => n.NodeId).ToList(), cancellationToken);
+        var questions = await LearningPathV4Data.QuestionsAsync(db, centerId, studentId, source.SubjectId, nodes.Select(n => n.NodeId).ToList(), source.Goal.ClassId, cancellationToken);
         var used = (await db.Attempts.AsNoTracking().Where(a => a.CenterId == centerId && a.StudentId == studentId &&
             a.Question.SubjectId == source.SubjectId).Select(a => a.QuestionId).Distinct().ToListAsync(cancellationToken)).ToHashSet();
         plan.Milestones = plan.Milestones.Where(m => !m.IsSelfAssessedCheck && m.SkillIds.Any(selected.Contains))
@@ -73,6 +73,8 @@ public sealed partial class LearningPathV4Planner
             GoalId = Guid.NewGuid(), CenterId = centerId, StudentId = studentId, SubjectId = source.SubjectId,
             ClassId = source.Goal.ClassId, Title = source.Goal.Title, GoalType = source.Goal.GoalType,
             Description = source.Goal.Description, PreferredMode = source.Goal.PreferredMode, PreferredPace = source.Goal.PreferredPace,
+            TargetScore = source.Goal.TargetScore, StartWithPlacement = source.Goal.StartWithPlacement,
+            ScheduleSettings = source.Goal.ScheduleSettings == null ? null : JsonDocument.Parse(source.Goal.ScheduleSettings.RootElement.GetRawText()),
             TargetSkillIds = new LearningGoalScope { TargetSkillIds = plan.RequestedSkillIds,
                 SelfReportedPrerequisiteSkillIds = plan.SelfReportedPrerequisiteSkillIds, SelfAssessedSkillIds = plan.SelfAssessedSkillIds }.Store(),
             AvailableMinutesPerDay = request.AvailableMinutesPerDay, AvailableDaysPerWeek = request.AvailableDaysPerWeek,
@@ -100,6 +102,24 @@ public sealed partial class LearningPathV4Planner
         plan.FeasibilityMessage = $"Ước lượng khoảng {Math.Max(1, plan.EstimatedWeeks - 1)}–{plan.EstimatedWeeks + 1} tuần với tổng quỹ {goal.AvailableMinutesPerDay} phút/ngày, {goal.AvailableDaysPerWeek} ngày/tuần; số câu mỗi bộ theo từng phần học. Tự kiểm tra vẫn gồm 5 câu độc lập."
             + (plan.FeasibilityStatus == "InsufficientTime" ? " Lịch hiện tại chưa đủ trước mốc đã chọn; bạn có thể điều chỉnh thời gian hoặc phần học." : "");
         plan.ExpiresAt = Now.AddDays(1); plan.Status = "Pending";
+        plan.Schedule = LearningAssessmentPolicy.Settings(goal.ScheduleSettings);
+        if (plan.Schedule.StudyDays.Count != goal.AvailableDaysPerWeek) plan.Schedule.StudyDays.Clear();
+        LearningPathCalendar.Schedule(plan, Now);
+        var weights = nodes.ToDictionary(n => n.NodeId.ToString(), n => n.ExamImportance > 0 ? n.ExamImportance : 50m);
+        var forecast = await LearningGoalForecast.ReadAsync(db, centerId, studentId, source.SubjectId, source.Goal.ClassId, Now, plan.RequestedSkillIds, cancellationToken);
+        decimal? currentScore; string scoreSource; string scoreCoverage;
+        if (forecast.Score.HasValue)
+        {
+            var total = plan.Milestones.SelectMany(m => m.SkillIds).Distinct().Count();
+            currentScore = forecast.Score; scoreSource = "Forecast"; scoreCoverage = $"{total}/{total}";
+        }
+        else
+        {
+            var milestoneSkills = plan.Milestones.SelectMany(m => m.SkillIds).ToHashSet();
+            var fallback = LearningPathFeasibility.FromMasteryMap(map.Skills.Where(s => milestoneSkills.Contains(s.SkillId)).ToList(), weights);
+            currentScore = fallback.Score; scoreSource = currentScore.HasValue ? "MasteryMap" : "None"; scoreCoverage = $"{fallback.Covered}/{fallback.Total}";
+        }
+        LearningPathFeasibility.Annotate(plan, currentScore, scoreSource, scoreCoverage, Now);
         db.LearningGoals.Add(goal);
         db.PathProposals.Add(new PathProposal
         {

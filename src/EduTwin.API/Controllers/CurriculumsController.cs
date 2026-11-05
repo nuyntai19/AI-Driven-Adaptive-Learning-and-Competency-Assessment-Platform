@@ -78,7 +78,7 @@ public class CurriculumsController : ControllerBase
             return Created(string.Empty, response);
         }
 
-        return MapError(result.ErrorCode!);
+        return MapError(result.ErrorCode!, scopeConflict: result.ScopeConflict);
     }
 
     [HttpGet]
@@ -151,7 +151,7 @@ public class CurriculumsController : ControllerBase
             };
             return Ok(response);
         }
-        return MapError(result.ErrorCode!);
+        return MapError(result.ErrorCode!, scopeConflict: result.ScopeConflict);
     }
 
     [HttpPut("{id}/classes")]
@@ -199,7 +199,7 @@ public class CurriculumsController : ControllerBase
             };
             return Ok(response);
         }
-        return MapError(result.ErrorCode!);
+        return MapError(result.ErrorCode!, scopeConflict: result.ScopeConflict);
     }
 
     [HttpPost("{id}/publish")]
@@ -223,7 +223,7 @@ public class CurriculumsController : ControllerBase
             };
             return Ok(response);
         }
-        return MapError(result.ErrorCode!);
+        return MapError(result.ErrorCode!, scopeConflict: result.ScopeConflict);
     }
 
     [HttpPost("{id:guid}/archive")]
@@ -300,7 +300,7 @@ public class CurriculumsController : ControllerBase
             Detail = result.Message ?? "Dữ liệu không tồn tại hoặc bạn không có quyền.", Extensions = { ["errorCode"] = result.ErrorCode } });
     }
 
-    private IActionResult MapError(string errorCode, string? message = null)
+    private IActionResult MapError(string errorCode, string? message = null, CurriculumScopeConflictDto? scopeConflict = null)
     {
         var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
         var path = HttpContext.Request.Path;
@@ -324,6 +324,14 @@ public class CurriculumsController : ControllerBase
                 Detail = message ?? "Dữ liệu gửi lên không đúng định dạng hoặc thiếu thông tin.",
                 Instance = path,
                 Extensions = { ["traceId"] = traceId, ["errorCode"] = errorCode }
+            }),
+            ErrorCodes.AcademicScopeConflict => Conflict(new ProblemDetails
+            {
+                Title = "Phạm vi giáo trình không phù hợp",
+                Status = StatusCodes.Status409Conflict,
+                Detail = scopeConflict?.Message,
+                Instance = path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = errorCode, ["scopeConflict"] = scopeConflict }
             }),
             ErrorCodes.ConcurrencyConflict => Conflict(new ProblemDetails
             {

@@ -19,6 +19,7 @@ public class LearningPathSession : IMutableTenantAggregate
 
     public uint PhaseNumber { get; set; }
     public uint WeekNumber { get; set; }
+    public DateOnly? PlannedDate { get; set; }
     public uint SessionOrder { get; set; }
 
     public string Title { get; set; } = string.Empty;

@@ -10,7 +10,7 @@ public class CurriculumClass : ITenantJoinEntity
     public Guid CurriculumId { get; set; }
     public Guid ClassId { get; set; }
 
-    public DateTime AssignedAt { get; set; }
+    public DateTime AssignedAt { get; set; } = DateTime.UtcNow;
     public Guid AssignedBy { get; set; }
 
     // Navigations

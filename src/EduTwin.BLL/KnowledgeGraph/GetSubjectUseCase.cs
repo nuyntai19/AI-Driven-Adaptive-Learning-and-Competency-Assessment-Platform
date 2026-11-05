@@ -60,6 +60,10 @@ public class GetSubjectUseCase : IGetSubjectUseCase
 
         if (subject == null)
             return GetSubjectResult.Failure(ErrorCodes.ResourceNotFound);
+        if (_tenantContext.Role == nameof(UserRole.Teacher) && !await _dbContext.Classes.AnyAsync(c =>
+            c.CenterId == centerId && c.TeacherId == _tenantContext.UserId &&
+            c.SubjectId == subjectId && !c.IsDeleted, cancellationToken))
+            return GetSubjectResult.Failure(ErrorCodes.ResourceNotFound);
 
         var dto = new SubjectDto
         {

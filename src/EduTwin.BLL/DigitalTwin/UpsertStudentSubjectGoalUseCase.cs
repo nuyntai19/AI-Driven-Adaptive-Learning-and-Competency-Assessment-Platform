@@ -154,6 +154,7 @@ public class UpsertStudentSubjectGoalUseCase : IUpsertStudentSubjectGoalUseCase
 
                 try
                 {
+                    await Recommendations.Planning.LearningGoalBridge.StageFromTwinAsync(_dbContext, goal, now, cancellationToken);
                     await _dbContext.SaveChangesAsync(cancellationToken);
                     success = true;
                     break;
@@ -226,6 +227,7 @@ public class UpsertStudentSubjectGoalUseCase : IUpsertStudentSubjectGoalUseCase
 
             try
             {
+                await Recommendations.Planning.LearningGoalBridge.StageFromTwinAsync(_dbContext, goal, now, cancellationToken);
                 await _dbContext.SaveChangesAsync(cancellationToken);
             }
             catch (DbUpdateConcurrencyException)

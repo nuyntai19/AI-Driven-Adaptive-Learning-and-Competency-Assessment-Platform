@@ -176,6 +176,11 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
                 return CreateCurriculumResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        var graphScope = await CurriculumGraphScopeGuard.ResolveAsync(_dbContext, centerId, request.SubjectId,
+            request.GradeLevel.Value, request.GraphVersionId, null, parsedNodeIds, true, cancellationToken);
+        if (graphScope.Conflict is not null)
+            return CreateCurriculumResult.Failure(ErrorCodes.AcademicScopeConflict, graphScope.Conflict);
+
         // 5. Atomic Persistence
         var now = _timeProvider.GetUtcNow().UtcDateTime;
         var curriculumId = Guid.NewGuid();
@@ -188,6 +193,7 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
             Visibility = visibility,
             SubjectId = request.SubjectId,
             GradeLevel = request.GradeLevel,
+            GraphVersionId = graphScope.GraphVersionId,
             Title = request.Title,
             Description = request.Description,
             SourceFile = null,
@@ -237,6 +243,7 @@ public class CreateCurriculumUseCase : ICreateCurriculumUseCase
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             Visibility = curriculum.Visibility.ToString(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            GraphVersionId = curriculum.GraphVersionId?.ToString("D"),
             GradeLevel = curriculum.GradeLevel,
             Title = curriculum.Title,
             Description = curriculum.Description,

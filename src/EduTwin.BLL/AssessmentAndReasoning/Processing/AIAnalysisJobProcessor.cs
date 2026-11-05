@@ -667,7 +667,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                         EffectiveIsCorrect: attempt.IsCorrect,
                         AnalysisConfidence: null,
                         AnalysisOverrideVersion: fallback.OverrideVersion,
-                        IsPostFeedback: attempt.IsPostFeedback));
+                        IsPostFeedback: attempt.IsPostFeedback,
+                        CorrectnessIsDeterministic: question is not null && question.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual));
                     fallback.NeedsTeacherReview = decision.RequiresTeacherReview;
                     var evidence = _evidenceAssessmentFactory.Create(
                         attempt,
@@ -928,6 +929,11 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                         ReasonCodes: [EvidenceReasonCodes.SourceRuleFallback],
                         StructuralValidationPassed: true);
 
+                    var questionEvalMode = await _dbContext.Questions
+                        .Where(q => q.CenterId == attempt.CenterId && q.QuestionId == attempt.QuestionId)
+                        .Select(q => (QuestionAnswerEvaluationMode?)q.AnswerEvaluationMode)
+                        .FirstOrDefaultAsync(cancellationToken);
+
                     var decision = _evidenceGate.Evaluate(new EvidenceGateInput(
                         EvidenceSourceType.RuleFallback,
                         StructuralValidationPassed: consistency.StructuralValidationPassed,
@@ -938,7 +944,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                         EffectiveIsCorrect: attempt.IsCorrect,
                         AnalysisConfidence: null,
                         AnalysisOverrideVersion: fallback.OverrideVersion,
-                        IsPostFeedback: attempt.IsPostFeedback));
+                        IsPostFeedback: attempt.IsPostFeedback,
+                        CorrectnessIsDeterministic: questionEvalMode.HasValue && questionEvalMode.Value != QuestionAnswerEvaluationMode.Manual));
 
                     fallback.NeedsTeacherReview = true;
 

@@ -35,7 +35,7 @@ public class CenterConfiguration : IEntityTypeConfiguration<Organization.Center>
         builder.Property(c => c.Timezone)
             .HasColumnName("timezone")
             .HasColumnType("VARCHAR(64)")
-            .HasDefaultValue("Asia/Bangkok")
+            .HasDefaultValue("Asia/Ho_Chi_Minh")
             .IsRequired();
 
         builder.Property(c => c.CreatedAt)

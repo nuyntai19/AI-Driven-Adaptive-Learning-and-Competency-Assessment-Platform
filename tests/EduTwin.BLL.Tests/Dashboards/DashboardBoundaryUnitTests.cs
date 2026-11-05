@@ -68,17 +68,19 @@ public sealed class DashboardBoundaryUnitTests
 
     private static async Task ApplyTestCurriculumAsync(EduTwinDbContext db, Guid centerId, Guid studentId, params Guid[] subjects)
     {
+        var gradeLevel = (await db.Students.Where(s => s.CenterId == centerId && s.StudentId == studentId).Select(s => (byte?)s.GradeLevel).FirstOrDefaultAsync()) ?? 10;
         foreach (var subjectId in subjects)
         {
+            var nodes = await db.KnowledgeNodes.Where(n => n.CenterId == centerId && n.SubjectId == subjectId).OrderBy(n => n.NodeId).ToListAsync();
+            var versionId = GraphScopeFixture.Approve(db, centerId, subjectId, gradeLevel, nodes.Select(n => n.NodeId).ToArray());
             var teacherId = Guid.NewGuid(); var classId = Guid.NewGuid(); var curriculumId = Guid.NewGuid();
             db.Classes.Add(new Class { CenterId=centerId, ClassId=classId, TeacherId=teacherId, SubjectId=subjectId,
-                ClassName="Current test class",AcademicYear="2026-2027",GradeLevel=10,Status=ClassStatus.Active,CreatedAt=UtcNow,UpdatedAt=UtcNow });
+                ClassName="Current test class",AcademicYear="2026-2027",GradeLevel=gradeLevel,Status=ClassStatus.Active,CreatedAt=UtcNow,UpdatedAt=UtcNow });
             db.ClassStudents.Add(new ClassStudent {CenterId=centerId,ClassId=classId,StudentId=studentId,Status=ClassStudentStatus.Active,JoinedAt=UtcNow.AddDays(-1)});
             db.Curriculums.Add(new Curriculum {CenterId=centerId,CurriculumId=curriculumId,TeacherId=teacherId,SubjectId=subjectId,
-                Title="Applied test curriculum",GradeLevel=10,ReviewStatus=ReviewStatus.Published,CreatedAt=UtcNow,UpdatedAt=UtcNow});
+                Title="Applied test curriculum",GradeLevel=gradeLevel,GraphVersionId=versionId,ReviewStatus=ReviewStatus.Published,CreatedAt=UtcNow,UpdatedAt=UtcNow});
             db.ClassCurriculumApplications.Add(new() {ApplicationId=Guid.NewGuid(),CenterId=centerId,ClassId=classId,CurriculumId=curriculumId,
-                SubjectId=subjectId,AssignedBy=teacherId,StartedAt=UtcNow,ClassGradeAtStart=10,CurriculumGradeAtStart=10});
-            var nodes=await db.KnowledgeNodes.Where(n=>n.CenterId==centerId&&n.SubjectId==subjectId).OrderBy(n=>n.NodeId).ToListAsync();
+                SubjectId=subjectId,AssignedBy=teacherId,StartedAt=UtcNow,ClassGradeAtStart=gradeLevel,CurriculumGradeAtStart=gradeLevel});
             for(var i=0;i<nodes.Count;i++)db.CurriculumNodes.Add(new CurriculumNode {CenterId=centerId,CurriculumId=curriculumId,NodeId=nodes[i].NodeId,OrderIndex=(uint)i+1,CreatedAt=UtcNow});
         }
         await db.SaveChangesAsync();

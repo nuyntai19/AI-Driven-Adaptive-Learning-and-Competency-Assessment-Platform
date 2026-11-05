@@ -32,6 +32,11 @@ public sealed class AdaptiveQuestionSelectorTests : IDisposable
         _tenantContext = new TenantContext();
         _tenantContext.Initialize(_centerId, _studentId, "Student", 1);
         _dbContext = new EduTwinDbContext(options, _tenantContext);
+        _dbContext.Students.Add(new EduTwin.DAL.Organization.Student { CenterId = _centerId, StudentId = _studentId, FullName = "Adaptive student", GradeLevel = 10, CreatedAt = _utcNow, UpdatedAt = _utcNow });
+        _dbContext.KnowledgeNodes.Add(new EduTwin.DAL.KnowledgeGraph.KnowledgeNode { CenterId = _centerId, SubjectId = _subjectId, NodeId = _topicNodeId,
+            NodeCode = "ADAPTIVE", NodeName = "Adaptive topic", NodeType = EduTwin.Contracts.KnowledgeGraph.NodeType.Topic, IsActive = true, CreatedAt = _utcNow, UpdatedAt = _utcNow });
+        GraphScopeFixture.Approve(_dbContext, _centerId, _subjectId, 10, _topicNodeId);
+        _dbContext.SaveChanges();
     }
 
     public void Dispose()
@@ -47,7 +52,7 @@ public sealed class AdaptiveQuestionSelectorTests : IDisposable
         {
             CenterId = _centerId,
             SubjectId = _subjectId,
-            PrimaryTopicNodeId = _topicNodeId,
+            PrimaryTopicNodeId = _topicNodeId, GradeLevel = 10,
             QuestionId = 1,
             Difficulty = 3,
             Status = QuestionStatus.Active,
@@ -64,7 +69,7 @@ public sealed class AdaptiveQuestionSelectorTests : IDisposable
         {
             CenterId = _centerId,
             SubjectId = _subjectId,
-            PrimaryTopicNodeId = _topicNodeId,
+            PrimaryTopicNodeId = _topicNodeId, GradeLevel = 10,
             QuestionId = 2,
             Difficulty = 4,
             Status = QuestionStatus.Active,
@@ -114,7 +119,7 @@ public sealed class AdaptiveQuestionSelectorTests : IDisposable
         {
             CenterId = _centerId,
             SubjectId = _subjectId,
-            PrimaryTopicNodeId = _topicNodeId,
+            PrimaryTopicNodeId = _topicNodeId, GradeLevel = 10,
             QuestionId = 1,
             Difficulty = 3,
             Status = QuestionStatus.Active,
@@ -131,7 +136,7 @@ public sealed class AdaptiveQuestionSelectorTests : IDisposable
         {
             CenterId = _centerId,
             SubjectId = _subjectId,
-            PrimaryTopicNodeId = _topicNodeId,
+            PrimaryTopicNodeId = _topicNodeId, GradeLevel = 10,
             QuestionId = 2,
             Difficulty = 3,
             Status = QuestionStatus.Active,

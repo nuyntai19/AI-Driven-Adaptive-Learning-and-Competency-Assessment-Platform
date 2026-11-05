@@ -281,7 +281,7 @@ public class SubmitStudentAssignmentUseCase : ISubmitStudentAssignmentUseCase
                 var finalAnswer = isSkipped ? "SKIPPED" : rawAnswer!;
                 var reasoningText = isSkipped ? null : ans?.ReasoningText?.Trim();
                 var timeSpent = ans?.TimeSpentSeconds ?? 0;
-                var confidence = ans?.Confidence ?? 80;
+                var confidence = ans?.Confidence;
                 var answerChanges = ans?.AnswerChanges ?? 0;
                 var displayLatex = ans?.AnswerDisplayLatex;
 
@@ -295,7 +295,7 @@ public class SubmitStudentAssignmentUseCase : ISubmitStudentAssignmentUseCase
                     ReasoningText = reasoningText,
                     AnswerDisplayLatex = displayLatex,
                     TimeSpentSeconds = (uint)Math.Max(0, timeSpent),
-                    Confidence = Math.Clamp(confidence, 0, 100),
+                    Confidence = confidence.HasValue ? Math.Clamp(confidence.Value, 0, 100) : (decimal?)null,
                     AnswerChanges = (uint)Math.Max(0, answerChanges),
                     Skipped = isSkipped,
                     ReasoningLanguage = aq.Question?.LanguageCode ?? "vi",

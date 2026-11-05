@@ -16,6 +16,7 @@ using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.DigitalTwin;
 using EduTwin.DAL.IdentityAndTenancy;
 using EduTwin.DAL.KnowledgeGraph;
+using EduTwin.DAL.Organization;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.DAL.Persistence;
 using Xunit;
@@ -195,6 +196,17 @@ public sealed class EffectiveEvidenceAndBoundaryTests : IDisposable
             UpdatedAt = _utcNow
         });
 
+        _dbContext.Students.Add(new Student
+        {
+            CenterId = _centerId,
+            StudentId = _studentId,
+            FullName = "Test Student",
+            GradeLevel = 10,
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
+        });
+        GraphScopeFixture.Approve(_dbContext, _centerId, _subjectId, 10, 1, 2);
+
         // Add 2 active questions
         _dbContext.Questions.Add(new Question
         {
@@ -209,6 +221,25 @@ public sealed class EffectiveEvidenceAndBoundaryTests : IDisposable
             LanguageCode = "vi",
             Difficulty = 2,
             MaxScore = 10m,
+            GradeLevel = 10,
+            Status = QuestionStatus.Active,
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
+        });
+        _dbContext.Questions.Add(new Question
+        {
+            CenterId = _centerId,
+            SubjectId = _subjectId,
+            PrimaryTopicNodeId = 2,
+            QuestionId = 1002,
+            QuestionText = "Question 2",
+            QuestionType = QuestionType.MultipleChoice,
+            CorrectAnswer = "B",
+            Solution = "S",
+            LanguageCode = "vi",
+            Difficulty = 2,
+            MaxScore = 10m,
+            GradeLevel = 10,
             Status = QuestionStatus.Active,
             CreatedAt = _utcNow,
             UpdatedAt = _utcNow

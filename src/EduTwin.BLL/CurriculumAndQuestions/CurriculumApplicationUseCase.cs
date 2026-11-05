@@ -32,7 +32,8 @@ public sealed class CurriculumApplicationUseCase(EduTwinDbContext db, ITenantCon
             .Where(a => a.CenterId == center && a.CurriculumId == curriculumId && a.Class.TeacherId == actor)
             .OrderByDescending(a => a.StartedAt).ThenBy(a => a.ApplicationId)
             .Select(a => new CurriculumApplicationDto { ApplicationId = a.ApplicationId, ClassId = a.ClassId,
-                ClassName = a.Class.ClassName, PausedByClass = a.Class.Status != ClassStatus.Active, ApplicationRole = a.ApplicationRole, StartedAt = a.StartedAt,
+                ClassName = a.Class.ClassName, AcademicYear = a.Class.AcademicYear, GradeLevel = a.Class.GradeLevel,
+                PausedByClass = a.Class.Status != ClassStatus.Active, ApplicationRole = a.ApplicationRole, StartedAt = a.StartedAt,
                 EndedAt = a.EndedAt, AssignedBy = a.AssignedBy, ChangeReason = a.ChangeReason, EndReason = a.EndReason,
                 GradeMismatchReason = a.GradeMismatchReason }).ToListAsync(ct);
         return new(true, null, null, curriculum.RowVersion.ToString(), rows);
@@ -67,6 +68,11 @@ public sealed class CurriculumApplicationUseCase(EduTwinDbContext db, ITenantCon
         var toAdd = selected.Where(c => !current.Any(a => a.EndedAt == null && a.ClassId == c.ClassId &&
             a.CurriculumId == curriculumId && a.ApplicationRole == request.ApplicationRole)).ToList();
         if (toEnd.Count == 0 && toAdd.Count == 0) return await ReadAsync(curriculumId, ct);
+        if (toAdd.Count > 0 && (!curriculum.GraphVersionId.HasValue || !await db.KnowledgeGraphVersions.AnyAsync(v =>
+            v.CenterId == center && v.GraphVersionId == curriculum.GraphVersionId && v.SubjectId == curriculum.SubjectId &&
+            v.GradeLevel == curriculum.GradeLevel && v.Status == "Published" && !v.IsLegacy, ct)))
+            return new(false, ErrorCodes.InvalidStateTransition,
+                "Giáo trình này dùng phiên bản lưu lịch sử chưa được duyệt cho áp dụng mới. Hãy nhân bản, chọn khung tri thức đã duyệt rồi xuất bản trước khi gán thêm lớp.");
         if (toAdd.Any(c => !c.GradeLevel.HasValue || !curriculum.GradeLevel.HasValue || c.GradeLevel != curriculum.GradeLevel) && string.IsNullOrWhiteSpace(request.GradeMismatchReason))
             return new(false, ErrorCodes.ValidationFailed, "Giáo trình khác khối/chưa phân khối cần lý do ngoại lệ rõ ràng.");
         await using var transaction = await db.Database.BeginTransactionAsync(ct);

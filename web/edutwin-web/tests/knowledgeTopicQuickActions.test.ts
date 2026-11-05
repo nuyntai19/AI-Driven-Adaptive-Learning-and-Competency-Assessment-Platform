@@ -101,7 +101,8 @@ test("class transition waits for API data, preserves same subject and detects mi
 test("graph wires subject/topic to both actions only for active Topic and correct permissions", () => {
   assert.match(graph, /selectedNode\?\.nodeType === "Topic" && selectedNode\.isActive/);
   assert.match(graph, /sameSubject\(graphData\?\.subjectId, selectedSubjectId\)/);
-  assert.match(graph, /topicQuickActionSearch\(selectedSubjectId, selectedNode\.nodeId\)/);
+  assert.match(graph, /topicQuickActionSearch\(selectedSubjectId, selectedNode\.canonicalNodeId \|\| selectedNode\.nodeId\)/);
+  assert.match(graph, /gradeLevel: selectedNode\.gradeLevel \?\? scope\.gradeLevel, graphVersionId: selectedNode\.graphVersionId \|\| scope\.graphVersionId/);
   assert.match(graph, /canReadQuestions && \([\s\S]*?to=\{`\/giao-vien\/cau-hoi\?\$\{quickActionSearch\}`\}/);
   assert.match(graph, /canCreateAssignments && \([\s\S]*?to=\{`\/giao-vien\/bai-tap\/tao-moi\?\$\{quickActionSearch\}`\}/);
   assert.match(graph, /permissions\.questionsRead/);

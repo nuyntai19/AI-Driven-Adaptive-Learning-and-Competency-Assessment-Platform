@@ -24,6 +24,31 @@ public sealed class EvidenceGate : IEvidenceGate
         {
             if (input.EffectiveIsCorrect.HasValue)
             {
+                // The fallback label describes the reasoning analysis, not the score. When
+                // correctness was auto-graded by exact match, the score is objectively
+                // reliable even without an AI provider, so it earns full evidence weight
+                // from the start. Teacher review still happens (the reasoning may need
+                // it), but approving can no longer silently triple the weight — and with
+                // it the student's mastery — when nothing about the grade changed.
+                // Judgment-graded work (manual/essay) keeps the reduced provisional weight
+                // until a teacher approves it.
+                if (input.CorrectnessIsDeterministic)
+                {
+                    var trustedReasons = input.IsPostFeedback
+                        ? new[] { EvidenceReasonCodes.SourceRuleFallback, EvidenceReasonCodes.DeterministicCorrectness, EvidenceReasonCodes.PostFeedbackAssessment }
+                        : new[] { EvidenceReasonCodes.SourceRuleFallback, EvidenceReasonCodes.DeterministicCorrectness };
+
+                    return new EvidenceGateDecision(
+                        input.SourceType,
+                        EvidenceTrustLevel.Trusted,
+                        EvidenceDecisionMode.DeterministicOnly,
+                        input.IsPostFeedback ? 0.5m : 1m,
+                        trustedReasons,
+                        true,
+                        CurrentPolicyVersion,
+                        input.AnalysisOverrideVersion);
+                }
+
                 var reasons = input.IsPostFeedback
                     ? new[] { EvidenceReasonCodes.SourceRuleFallback, EvidenceReasonCodes.PostFeedbackAssessment }
                     : new[] { EvidenceReasonCodes.SourceRuleFallback };

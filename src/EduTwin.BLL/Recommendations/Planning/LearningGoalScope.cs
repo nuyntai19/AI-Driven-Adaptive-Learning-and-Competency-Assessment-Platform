@@ -6,6 +6,7 @@ namespace EduTwin.BLL.Recommendations.Planning;
 /// <summary>Route-local self reports never change the evidence-backed capability map.</summary>
 internal sealed class LearningGoalScope
 {
+    public const string ExternalAssessmentReason = "Nền tảng ngoài giáo trình chưa có đủ bằng chứng. Kiểm tra trực tiếp kỹ năng đích bằng 5 câu mới; kết quả chỉ xác nhận kỹ năng đích, không xác nhận năng lực của nền tảng ngoài phạm vi.";
     public LearningGoalScope() { }
     public List<string> TargetSkillIds { get; set; } = [];
     public List<string> SelfReportedPrerequisiteSkillIds { get; set; } = [];
@@ -27,5 +28,14 @@ internal sealed class LearningGoalScope
         : JsonSerializer.SerializeToDocument(this, LearningPathV4Data.Json);
 
     public static bool PrerequisitesSatisfied(SkillCapabilityStatusDto skill, CapabilityMapDto map, IReadOnlyCollection<string> selfReported)
-        => skill.PrerequisiteSkillIds.All(id => selfReported.Contains(id) || map.Skills.Any(s => s.SkillId == id && s.State == "Confirmed"));
+        => skill.PrerequisiteSkillIds.All(id => selfReported.Contains(id) || map.Skills.Any(s => s.SkillId == id && s.State == "Confirmed") ||
+            map.ExternalPrerequisiteMastery.GetValueOrDefault(id) >= 60m);
+
+    public static bool NeedsExternalAssessment(SkillCapabilityStatusDto skill, CapabilityMapDto map, IReadOnlyCollection<string> selfReported)
+        => skill.State != "Confirmed" && skill.PrerequisiteSkillIds.Any(id => !selfReported.Contains(id) &&
+            map.Skills.All(s => s.SkillId != id) && map.ExternalPrerequisiteMastery.GetValueOrDefault(id) < 60m);
+
+    public static bool CanAssessTargetDirectly(SkillCapabilityStatusDto skill, CapabilityMapDto map, IReadOnlyCollection<string> selfReported)
+        => NeedsExternalAssessment(skill, map, selfReported) && skill.PrerequisiteSkillIds.All(id => selfReported.Contains(id) ||
+            map.Skills.All(s => s.SkillId != id) || map.Skills.Any(s => s.SkillId == id && s.State == "Confirmed"));
 }

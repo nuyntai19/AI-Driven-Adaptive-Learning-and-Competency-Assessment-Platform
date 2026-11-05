@@ -116,8 +116,7 @@ public sealed class LearningPathProposalCustomizationTests
     public async Task RequiredFoundationIsKeptWhenItsDependentSectionIsSelected()
     {
         using var f = new LearningPathV4Fixture();
-        f.Db.KnowledgeEdges.Add(new KnowledgeEdge { CenterId = f.Center, SubjectId = f.English, SourceNodeId = 101,
-            TargetNodeId = 103, RelationType = RelationType.PrerequisiteOf, Weight = 1, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        f.AddPrerequisite(101, 103);
         await f.Db.SaveChangesAsync();
         var source = await f.Proposal("103");
         var adjusted = await f.Planner.CustomizePathProposalAsync(f.Center, f.Student, source.ProposalId, Options("103"));
@@ -146,14 +145,14 @@ public sealed class LearningPathProposalCustomizationTests
     }
 
     [Fact]
-    public async Task SourceAndCustomizedPreviewHaveSeparateSessionIdsWhenBothAreAccepted()
+    public async Task SourceAndCustomizedPreviewHaveSeparateSessionIds_AndTheUnchosenPreviewBecomesStale()
     {
         using var f = new LearningPathV4Fixture(); var source = await f.Proposal("101");
         var adjusted = await f.Planner.CustomizePathProposalAsync(f.Center, f.Student, source.ProposalId, Options("101"));
         Assert.Empty(source.Milestones.SelectMany(m => m.Missions).Select(m => m.MissionId)
             .Intersect(adjusted.Milestones.SelectMany(m => m.Missions).Select(m => m.MissionId)));
         await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, source.ProposalId);
-        await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, adjusted.ProposalId);
-        Assert.Equal(2, await f.Db.LearningPaths.CountAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Planner.AcceptPathProposalAsync(f.Center, f.Student, adjusted.ProposalId));
+        Assert.Single(await f.Db.LearningPaths.ToListAsync());
     }
 }

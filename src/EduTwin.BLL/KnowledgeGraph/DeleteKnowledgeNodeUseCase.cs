@@ -78,6 +78,9 @@ public class DeleteKnowledgeNodeUseCase : IDeleteKnowledgeNodeUseCase
         if (transaction is not null) await _context.Entry(node).ReloadAsync(cancellationToken);
         if (node.IsDeleted) return DeleteKnowledgeNodeResult.Failure(ErrorCodes.ResourceNotFound);
 
+        var frozen = await AcademicDependencyGuards.FrozenNodeMessageAsync(_context, tenantContext.CenterId.Value, node.NodeId, cancellationToken);
+        if (frozen != null) return DeleteKnowledgeNodeResult.Failure(ErrorCodes.InvalidStateTransition, frozen);
+
         // 1. Child nodes
         var hasChildNodes = await _context.KnowledgeNodes
             .AnyAsync(x => x.CenterId == tenantContext.CenterId && !x.IsDeleted && x.ParentNodeId == parsedNodeId, cancellationToken);

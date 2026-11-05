@@ -208,6 +208,32 @@ public class UpdateAssignmentUseCaseTests
         Assert.Equal(ErrorCodes.ConcurrencyConflict, result.ErrorCode);
     }
 
+    [Theory]
+    [InlineData(AssignmentKind.Midterm)]
+    [InlineData(AssignmentKind.Final)]
+    public async Task Published_exam_schedule_can_change_without_replacing_questions_or_targets(AssignmentKind kind)
+    {
+        var center = Guid.NewGuid(); var teacher = Guid.NewGuid();
+        SetupTenant(center, teacher, nameof(UserRole.Teacher));
+        using var ctx = CreateContext(center);
+        var (_, exam, _) = await SeedDraftAssignmentAsync(ctx, center, teacher);
+        exam.Status = AssignmentStatus.Published; exam.Kind = kind;
+        exam.ExamAt = new DateTime(2026, 8, 1, 12, 0, 0, DateTimeKind.Utc); exam.TimeLimitMinutes = 30; exam.DueAt = exam.ExamAt.Value.AddMinutes(30);
+        await ctx.SaveChangesAsync();
+        var questionCount = await ctx.AssignmentQuestions.CountAsync();
+        var targetCount = await ctx.AssignmentTargets.CountAsync();
+        var next = exam.ExamAt.Value.AddDays(2);
+        var result = await CreateSut(ctx).ExecuteAsync(exam.AssignmentId, new UpdateAssignmentRequest {
+            ExamAt = next, RowVersion = exam.RowVersion.ToString(CultureInfo.InvariantCulture) });
+        Assert.True(result.IsSuccess, result.ErrorCode);
+        Assert.Equal(next, exam.ExamAt); Assert.Equal(30, exam.TimeLimitMinutes); Assert.Equal(next.AddMinutes(30), exam.DueAt);
+        Assert.Equal(questionCount, await ctx.AssignmentQuestions.CountAsync());
+        Assert.Equal(targetCount, await ctx.AssignmentTargets.CountAsync());
+        var forbidden = await CreateSut(ctx).ExecuteAsync(exam.AssignmentId, new UpdateAssignmentRequest {
+            Title = "Change published content", RowVersion = exam.RowVersion.ToString(CultureInfo.InvariantCulture) });
+        Assert.Equal(ErrorCodes.InvalidStateTransition, forbidden.ErrorCode);
+    }
+
     [Fact]
     public async Task ExecuteAsync_MissingRowVersion_ReturnsValidationFailed()
     {

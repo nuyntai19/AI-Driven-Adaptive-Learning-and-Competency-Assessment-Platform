@@ -23,6 +23,7 @@ public sealed class RecommendationCurriculumScopeTests : IDisposable
     private readonly Guid _teacherId = Guid.NewGuid();
     private readonly DateTime _utcNow = new(2026, 9, 11, 10, 0, 0, DateTimeKind.Utc);
     private readonly EduTwinDbContext _dbContext;
+    private Guid _graphVersion;
 
     public RecommendationCurriculumScopeTests()
     {
@@ -94,6 +95,8 @@ public sealed class RecommendationCurriculumScopeTests : IDisposable
             CreatedAt = _utcNow,
             UpdatedAt = _utcNow
         });
+        _dbContext.KnowledgeEdgeGrades.Add(new KnowledgeEdgeGrade { CenterId = _centerId, GraphVersionId = _graphVersion,
+            EdgeId = 100, RelationType = RelationType.PrerequisiteOf, Weight = 1, CreatedAt = _utcNow });
         _dbContext.KnowledgeTwins.AddRange(
             Twin(nodeId: 1, mastery: 90m, id: 201),
             Twin(nodeId: 2, mastery: 20m, id: 202));
@@ -109,6 +112,7 @@ public sealed class RecommendationCurriculumScopeTests : IDisposable
 
     private async Task SeedClassAndTopicsAsync()
     {
+        _dbContext.Students.Add(new Student { CenterId = _centerId, StudentId = _studentId, FullName = "Scope student", GradeLevel = 10, CreatedAt = _utcNow, UpdatedAt = _utcNow });
         _dbContext.Classes.Add(new Class
         {
             CenterId = _centerId,
@@ -118,6 +122,7 @@ public sealed class RecommendationCurriculumScopeTests : IDisposable
             ClassName = "R07",
             AcademicYear = "2026",
             Status = ClassStatus.Active,
+            GradeLevel = 10,
             CreatedAt = _utcNow,
             UpdatedAt = _utcNow
         });
@@ -132,6 +137,7 @@ public sealed class RecommendationCurriculumScopeTests : IDisposable
         _dbContext.KnowledgeNodes.AddRange(
             Topic(nodeId: 1, globalOrder: 1),
             Topic(nodeId: 2, globalOrder: 2));
+        _graphVersion = GraphScopeFixture.Approve(_dbContext, _centerId, _subjectId, 10, 1, 2);
         await _dbContext.SaveChangesAsync();
     }
 
@@ -139,8 +145,8 @@ public sealed class RecommendationCurriculumScopeTests : IDisposable
     public async Task ActivePrimaryAndSupplemental_UnionAndDeduplicateTopics_WithoutAmbiguousAssignment()
     {
         await SeedClassAndTopicsAsync();
-        var primary = await AddCurriculumAsync(ReviewStatus.Published, "Main");
-        var supplemental = await AddCurriculumAsync(ReviewStatus.Published, "Extra");
+        var primary = await AddCurriculumAsync(ReviewStatus.Published, "Main", false);
+        var supplemental = await AddCurriculumAsync(ReviewStatus.Published, "Extra", false);
         _dbContext.CurriculumNodes.AddRange(CurriculumNode(primary, 1, 1),
             CurriculumNode(supplemental, 1, 1), CurriculumNode(supplemental, 2, 2));
         _dbContext.ClassCurriculumApplications.AddRange(Application(primary, "Primary"), Application(supplemental, "Supplemental"));
@@ -154,7 +160,7 @@ public sealed class RecommendationCurriculumScopeTests : IDisposable
     public async Task EndedApplication_DoesNotResurrectOldPlanningLinks_OrWholeSubjectFallback()
     {
         await SeedClassAndTopicsAsync();
-        var curriculum = await AddCurriculumAsync(ReviewStatus.Published, "Ended");
+        var curriculum = await AddCurriculumAsync(ReviewStatus.Published, "Ended", false);
         _dbContext.CurriculumNodes.Add(CurriculumNode(curriculum, 1, 1));
         var application = Application(curriculum, "Primary");
         application.EndedAt = _utcNow.AddDays(1);
@@ -174,7 +180,7 @@ public sealed class RecommendationCurriculumScopeTests : IDisposable
         AssignedBy = _teacherId, StartedAt = _utcNow
     };
 
-    private async Task<Guid> AddCurriculumAsync(ReviewStatus status, string title)
+    private async Task<Guid> AddCurriculumAsync(ReviewStatus status, string title, bool apply = true)
     {
         var curriculumId = Guid.NewGuid();
         _dbContext.Curriculums.Add(new Curriculum
@@ -183,6 +189,8 @@ public sealed class RecommendationCurriculumScopeTests : IDisposable
             CurriculumId = curriculumId,
             TeacherId = _teacherId,
             SubjectId = _subjectId,
+            GraphVersionId = _graphVersion,
+            GradeLevel = 10,
             Title = title,
             ReviewStatus = status,
             CreatedAt = _utcNow,
@@ -196,6 +204,8 @@ public sealed class RecommendationCurriculumScopeTests : IDisposable
             AssignedAt = _utcNow,
             AssignedBy = _teacherId
         });
+        if (apply && status == ReviewStatus.Published)
+            _dbContext.ClassCurriculumApplications.Add(Application(curriculumId, "Primary"));
         await _dbContext.SaveChangesAsync();
         return curriculumId;
     }

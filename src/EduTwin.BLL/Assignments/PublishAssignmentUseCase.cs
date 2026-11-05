@@ -110,6 +110,8 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
             return PublishAssignmentResult.Failure(ErrorCodes.ConcurrencyConflict);
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
+        if (assignment.Kind != AssignmentKind.Regular && (!assignment.ExamAt.HasValue || assignment.ExamAt <= now || assignment.TimeLimitMinutes is not > 0))
+            return PublishAssignmentResult.Failure(ErrorCodes.ValidationFailed);
         if (assignment.DueAt.HasValue && assignment.DueAt.Value <= now)
             return PublishAssignmentResult.Failure(ErrorCodes.ValidationFailed);
 
@@ -329,7 +331,7 @@ public class PublishAssignmentUseCase : IPublishAssignmentUseCase
             Title = assignment.Title,
             Instructions = assignment.Instructions,
             DueAt = assignment.DueAt,
-            TimeLimitMinutes = assignment.TimeLimitMinutes,
+            TimeLimitMinutes = assignment.TimeLimitMinutes, Kind = assignment.Kind.ToString(), ExamAt = assignment.ExamAt,
             TargetMode = assignment.TargetMode.ToString(),
             AllowGradeMismatch = assignment.AllowGradeMismatch,
             GradeMismatchReason = assignment.GradeMismatchReason,

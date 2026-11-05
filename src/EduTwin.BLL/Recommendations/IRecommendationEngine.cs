@@ -54,6 +54,8 @@ public sealed class RecommendationOperationResult
 
 public interface IRecommendationEngine
 {
+    Task<NextQuestionDto?> GetNextForClassAsync(Guid centerId, Guid studentId, Guid subjectId,
+        Guid? classId, DateTime utcNow, CancellationToken ct) => GetNextQuestionAsync(centerId, studentId, subjectId, utcNow, ct);
     Task<RecommendationGenerationResult> GenerateForClassAsync(Guid centerId, Guid studentId, Guid subjectId,
         Guid classId, DateTime utcNow, CancellationToken ct) => GenerateAndPersistAsync(centerId, studentId, subjectId, null, utcNow, ct);
     Task<RecommendationGenerationResult> GenerateAndPersistAsync(

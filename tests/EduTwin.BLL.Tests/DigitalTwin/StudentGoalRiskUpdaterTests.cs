@@ -30,6 +30,9 @@ public sealed class StudentGoalRiskUpdaterTests : IDisposable
         mockAccessor.Setup(a => a.CenterId).Returns(_centerId);
 
         _dbContext = new EduTwinDbContext(options, mockAccessor.Object);
+        _dbContext.Students.Add(new EduTwin.DAL.Organization.Student { CenterId = _centerId, StudentId = _studentId, FullName = "Risk student", GradeLevel = 10, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        GraphScopeFixture.Approve(_dbContext, _centerId, _subjectId, 10, 101, 102);
+        _dbContext.SaveChanges();
     }
 
     public void Dispose() => _dbContext.Dispose();

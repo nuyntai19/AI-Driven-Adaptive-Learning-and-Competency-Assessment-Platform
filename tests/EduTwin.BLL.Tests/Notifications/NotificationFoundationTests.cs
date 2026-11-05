@@ -48,6 +48,31 @@ public sealed class NotificationFoundationTests
         Assert.Empty(await db.NotificationDeliveries.ToListAsync());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Stage_DedupesPersistedRecipientsRegardlessOfJsonFormattingAndOrder(bool reverse)
+    {
+        var (tenant, db) = Create(); await using var owned = db;
+        var recipient = await Seed(db, tenant);
+        var recipients = new[] { recipient, tenant.UserId!.Value }.Order().ToArray();
+        var outbox = new NotificationOutbox(db, tenant, TimeProvider.System);
+        var id = await outbox.StageNoticeAsync("test:formatted", "Thông báo", "Nội dung", recipients);
+        var storedIds = reverse ? recipients.Reverse().ToArray() : recipients;
+        db.NotificationEvents.Local.Single().RecipientUserIds =
+            $"[\"{storedIds[0]}\", \"{storedIds[1]}\"]";
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(id, await outbox.StageNoticeAsync("test:formatted", "Thông báo", "Nội dung", recipients));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            outbox.StageNoticeAsync("test:formatted", "Thông báo", "Nội dung", [recipient]));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            outbox.StageNoticeAsync("test:formatted", "Thông báo", "Nội dung khác", recipients));
+        Assert.Single(await db.NotificationEvents.ToListAsync());
+        Assert.Single(await db.NotificationDispatches.ToListAsync());
+    }
+
     [Fact]
     public async Task Stage_RejectsForeignOrLockedRecipientAndUnresolvedTenant()
     {

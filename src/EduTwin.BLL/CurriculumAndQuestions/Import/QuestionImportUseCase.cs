@@ -133,6 +133,12 @@ public sealed partial class QuestionImportUseCase : IQuestionImportUseCase, IQue
         var warnings = new List<QuestionImportRowErrorDto>();
         var candidates = new List<QuestionImportItemDto>();
         foreach (var row in parsed.Rows) { cancellationToken.ThrowIfCancellationRequested(); candidates.Add(NormalizeRow(row, request, topics, defaultTopic, errors, media, sourceProfile, sourceFormat)); }
+        var approvedTopicGrades = await QuestionGradeScopeGuard.ApprovedNodeGradesAsync(_dbContext, centerId, request.SubjectId, cancellationToken);
+        foreach (var candidate in candidates)
+            if (ulong.TryParse(candidate.PrimaryTopicNodeId, NumberStyles.None, CultureInfo.InvariantCulture, out var nodeId) &&
+                !approvedTopicGrades.Contains((nodeId, candidate.GradeLevel)))
+                AddError(errors, candidate, "PrimaryTopicNodeId", "TOPIC_GRADE_NOT_APPROVED",
+                    "Chủ đề chưa thuộc đồ thị đã duyệt cho khối của câu hỏi. Chọn đúng khối/chủ đề; hệ thống không tự đổi khối.", candidate.PrimaryTopicNodeId);
         foreach (var duplicate in candidates.GroupBy(q => q.QuestionKey, StringComparer.Ordinal).Where(g => g.Count() > 1))
             foreach (var item in duplicate) AddError(errors, item, "QuestionKey", "DUPLICATE_QUESTION_KEY", "QuestionKey phải duy nhất trong tệp.", item.QuestionKey);
         var invalidRows = errors.Select(e => CandidateIdentity(e.CandidateId, e.SheetName, e.RowIndex)).ToHashSet(StringComparer.Ordinal);
@@ -284,6 +290,9 @@ public sealed partial class QuestionImportUseCase : IQuestionImportUseCase, IQue
             var topicIds = selected.Select(q => ulong.Parse(q.PrimaryTopicNodeId, CultureInfo.InvariantCulture)).Distinct().ToList();
             var currentTopics = await _dbContext.KnowledgeNodes.AsNoTracking().Where(n => n.CenterId == centerId && n.SubjectId == cached.SubjectId && topicIds.Contains(n.NodeId) && n.IsActive && !n.IsDeleted && n.NodeType == NodeType.Topic).ToListAsync(cancellationToken);
             if (currentTopics.Count != topicIds.Count || selected.Any(q => !currentTopics.Any(n => n.NodeId.ToString(CultureInfo.InvariantCulture) == q.PrimaryTopicNodeId && n.NodeCode == q.TopicCode))) return QuestionImportConfirmResult.NotFound("Chủ đề đã đổi hoặc không còn hoạt động trong môn đã chọn. Vui lòng xem trước lại.");
+            var approvedTopicGrades = await QuestionGradeScopeGuard.ApprovedNodeGradesAsync(_dbContext, centerId, cached.SubjectId, cancellationToken);
+            if (selected.Any(q => !approvedTopicGrades.Contains((ulong.Parse(q.PrimaryTopicNodeId, CultureInfo.InvariantCulture), q.GradeLevel))))
+                return QuestionImportConfirmResult.ValidationFailed("Phân khối chủ đề đã thay đổi hoặc chưa được duyệt. Hãy xem trước lại và chọn đúng khối/chủ đề.");
             foreach (var item in selected) if (!ValidateCompleteItem(item, out var message)) return QuestionImportConfirmResult.ValidationFailed($"Dòng {item.RowIndex}: {message}");
             var now = _timeProvider.GetUtcNow().UtcDateTime;
             foreach (var item in selected)

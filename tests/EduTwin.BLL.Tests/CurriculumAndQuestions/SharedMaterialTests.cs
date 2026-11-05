@@ -7,9 +7,11 @@ using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.IdentityAndTenancy;
+using EduTwin.Contracts.Organization;
 using EduTwin.DAL.AssessmentAndReasoning;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.KnowledgeGraph;
+using EduTwin.DAL.Organization;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -30,6 +32,9 @@ public sealed class SharedMaterialTests : IDisposable
         _tenant.Initialize(_center, _actor, nameof(UserRole.Teacher), 1);
         _db = new EduTwinDbContext(new DbContextOptionsBuilder<EduTwinDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning)).Options, _tenant);
+        _db.Classes.Add(new Class { CenterId = _center, ClassId = Guid.NewGuid(), TeacherId = _actor,
+            SubjectId = _subject, ClassName = "Subject scope", GradeLevel = 10, AcademicYear = "2026-2027",
+            Status = ClassStatus.Active, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
     }
     public void Dispose() => _db.Dispose();
     private Question Question(ulong id, Guid owner, MaterialVisibility visibility = MaterialVisibility.Private,
@@ -68,6 +73,7 @@ public sealed class SharedMaterialTests : IDisposable
         question.GradingCriteria = new() { RequiredIdeas = ["first", "second"], CommonErrors = ["invalid division"] };
         _db.Questions.Add(question);
         _db.KnowledgeNodes.Add(new() { CenterId = _center, SubjectId = _subject, NodeId = 5, NodeCode = "topic", NodeName = "Topic", IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        GraphScopeFixture.Approve(_db, _center, _subject, 10, 5);
         await _db.SaveChangesAsync();
         var useCase = new UpdateQuestionUseCase(_db, _tenant, TimeProvider.System);
         var saved = await useCase.ExecuteAsync("1", Update());

@@ -5,6 +5,9 @@ namespace EduTwin.Contracts.Recommendations;
 
 public class PathProposalDto
 {
+    public decimal? TargetScore { get; set; }
+    public LearningScheduleSettings Schedule { get; set; } = new();
+    public LearningScheduleSummaryDto? ScheduleSummary { get; set; }
     public List<string> SelfReportedPrerequisiteSkillIds { get; set; } = new();
     /// <summary>Parts the student left out of the placement check (self-assessed as mastered); each gets a short confirmation review at the end of the route.</summary>
     public List<string> SelfAssessedSkillIds { get; set; } = new();
@@ -34,6 +37,14 @@ public class PathProposalDto
 
     public string FeasibilityStatus { get; set; } = "Feasible"; // Feasible, TightBudget, InsufficientTime
     public string? FeasibilityMessage { get; set; }
+    public decimal? CurrentEstimatedScore { get; set; }
+    public string? CurrentScoreSource { get; set; }
+    public string? CurrentScoreCoverage { get; set; }
+    public uint RequiredStudyMinutes { get; set; }
+    public uint MinimumStudyDays { get; set; }
+    public DateTime? EarliestFeasibleDate { get; set; }
+    public DateTime? SuggestedDeadline { get; set; }
+    public decimal? AchievableScore { get; set; }
     public uint EstimatedWeeks { get; set; } = 4;
     public DateTime ExpiresAt { get; set; }
     public string Status { get; set; } = "Pending";
@@ -41,6 +52,8 @@ public class PathProposalDto
 
 public class ProposedMilestoneDto
 {
+    public List<string> PrerequisiteSkillIds { get; set; } = new();
+    public DateOnly? PlannedDate { get; set; }
     public bool IsSelfAssessedCheck { get; set; }
     public uint Order { get; set; }
     public string Title { get; set; } = string.Empty;
@@ -54,6 +67,14 @@ public class ProposedMilestoneDto
 
 public class ProposedMissionDto
 {
+    public DateOnly? PlannedDate { get; set; }
+    public List<StudySlotDto> StudySlots { get; set; } = new();
+    public bool Deferred { get; set; }
+    public uint RemainingUnscheduledMinutes { get; set; }
+    public List<string> AssessedSkillIds { get; set; } = new();
+    public string? SkipReason { get; set; }
+    public bool IsMilestoneExam { get; set; }
+    public uint? TimeLimitMinutes { get; set; }
     public byte? DifficultyFloor { get; set; }
     /// <summary>Preferred difficulty for a practice set; questions closest to it come first.</summary>
     public byte? TargetDifficulty { get; set; }
@@ -64,6 +85,8 @@ public class ProposedMissionDto
     public bool IsRepair { get; set; }
     /// <summary>A probe (quick try or starting-point check) may run before practice.</summary>
     public bool IsProbe { get; set; }
+    /// <summary>A fresh independent target check when every unmet prerequisite is outside this curriculum. Never asserts mastery of those prerequisites.</summary>
+    public bool IsExternalPrerequisiteAssessment { get; set; }
     /// <summary>Short review confirming a part the student self-assessed as mastered.</summary>
     public bool IsSelfAssessedCheck { get; set; }
     public uint QuestionCount { get; set; }

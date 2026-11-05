@@ -24,6 +24,7 @@ import { TeacherConfirmDialog } from "../../components/teacher/TeacherOverlays";
 import { RichMathText } from "../../components/math/RichMathText";
 import { KnowledgeTopicPicker } from "../../components/teacher/KnowledgeTopicPicker";
 import { parseKnowledgeTopicContext, sameSubject, validateKnowledgeTopicContext, withoutTopicContext } from "../../utils/knowledgeTopicContext";
+import { knowledgeKeys, readKnowledgeScope } from "../../utils/knowledgeScope";
 
 export function TeacherQuestionBankView() {
   const navigate = useNavigate();
@@ -46,7 +47,11 @@ export function TeacherQuestionBankView() {
   // Filters state
   const [manualSubjectId, setSelectedSubjectId] = useState<string>("");
   const selectedSubjectId = topicContext.kind === "topic" ? topicContext.subjectId : manualSubjectId;
-  const [selectedGradeLevel, setSelectedGradeLevel] = useState<number | "">("");
+  const [manualGradeLevel, setSelectedGradeLevel] = useState<number | "">(readKnowledgeScope(searchParams).gradeLevel ?? "");
+  const selectedGradeLevel = topicContext.kind === "topic" ? readKnowledgeScope(searchParams).gradeLevel ?? manualGradeLevel : manualGradeLevel;
+  const nodeScope = { gradeLevel: selectedGradeLevel || undefined,
+    graphVersionId: topicContext.kind === "topic" ? searchParams.get("graphVersionId") || undefined : undefined };
+  const hasNodeScope = Boolean(nodeScope.gradeLevel || nodeScope.graphVersionId);
   const [manualTopicId, setSelectedTopicId] = useState<string>("");
   const selectedTopicId = topicContext.kind === "topic" ? topicContext.topicId : manualTopicId;
   const [selectedType, setSelectedType] = useState<QuestionType | "">("");
@@ -77,14 +82,16 @@ export function TeacherQuestionBankView() {
 
   // Canonical knowledge nodes query for selected subject
   const knowledgeNodesQuery = useQuery({
-    queryKey: ["knowledge-nodes-for-teacher-filter", user?.centerId, user?.userId, selectedSubjectId],
-    queryFn: () => knowledgeGraphApi.listNodes(selectedSubjectId),
-    enabled: Boolean(user?.centerId && user?.userId) && canReadNodes && Boolean(selectedSubjectId)
+    queryKey: knowledgeKeys.nodes(user?.centerId, user?.userId, selectedSubjectId, nodeScope),
+    queryFn: () => knowledgeGraphApi.listNodes(selectedSubjectId, nodeScope),
+    enabled: Boolean(user?.centerId && user?.userId) && canReadNodes && Boolean(selectedSubjectId) && hasNodeScope
       && (topicContext.kind === "none" || Boolean(subjectsData?.data.some(s => s.isActive && sameSubject(s.subjectId, selectedSubjectId)))),
     staleTime: 60_000,
   });
   const { data: knowledgeNodesData, isLoading: isLoadingKnowledgeNodes } = knowledgeNodesQuery;
-  const topicValidation = validateKnowledgeTopicContext(topicContext, {
+  const topicValidation = topicContext.kind === "topic" && !hasNodeScope
+    ? { status: "invalid" as const, message: "Liên kết chủ đề chưa có khối. Chọn khối để xem thư viện phù hợp." }
+    : validateKnowledgeTopicContext(topicContext, {
     canRead: canRead && canReadSubjects && canReadNodes,
     isError: subjectsQuery.isError || knowledgeNodesQuery.isError,
     subjects: subjectsData?.data,
@@ -326,7 +333,9 @@ export function TeacherQuestionBankView() {
               id="filter-teacher-grade"
               value={selectedGradeLevel}
               onChange={(e) => {
+                if (topicContext.kind !== "none") clearTopicContext();
                 setSelectedGradeLevel(e.target.value ? Number(e.target.value) : "");
+                setSelectedTopicId("");
                 setPage(1);
               }}
               className="th-select w-full text-xs py-1.5"
@@ -353,14 +362,17 @@ export function TeacherQuestionBankView() {
                 setSelectedTopicId(value);
                 setPage(1);
               }}
-              disabled={!canReadNodes || !selectedSubjectId || isLoadingKnowledgeNodes || knowledgeNodesQuery.isError || topicValidation.status === "pending"}
+              disabled={!canReadNodes || !selectedSubjectId || !hasNodeScope || isLoadingKnowledgeNodes || knowledgeNodesQuery.isError || topicValidation.status === "pending"}
               emptyLabel="Tất cả chủ đề"
               placeholder={!selectedSubjectId
                   ? "-- Chọn môn học trước --"
+                  : !hasNodeScope
+                  ? "-- Chọn khối trước --"
                   : isLoadingKnowledgeNodes
                   ? "Đang tải nút..."
                   : "Tất cả chủ đề"}
             />
+            {selectedSubjectId && !hasNodeScope && <p className="text-xs mt-1">Chọn khối để lọc theo chủ đề tri thức.</p>}
           </div>
 
           {/* Type Filter */}

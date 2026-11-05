@@ -38,17 +38,18 @@ public sealed class ArchivedLearningScopeTests : IDisposable
     public void Dispose()=>db.Dispose();
     private async Task Seed(bool withCurrent=true)
     {
-        db.Students.Add(new Student{CenterId=center,StudentId=student,FullName="Synthetic",CreatedAt=now,UpdatedAt=now});
+        db.Students.Add(new Student{CenterId=center,StudentId=student,FullName="Synthetic",GradeLevel=10,CreatedAt=now,UpdatedAt=now});
         db.Subjects.Add(new Subject{CenterId=center,SubjectId=subject,SubjectCode="M",SubjectName="Math",IsActive=true,CreatedAt=now,UpdatedAt=now});
+        var version = GraphScopeFixture.Approve(db, center, subject, 10, 1, 2);
         foreach(var (id,archived,node) in new[]{(oldClass,true,1ul),(currentClass,false,2ul)})
         {
             db.KnowledgeNodes.Add(new KnowledgeNode{CenterId=center,SubjectId=subject,NodeId=node,NodeCode=node.ToString(),NodeName="Topic",NodeType=NodeType.Topic,IsActive=true,CreatedAt=now,UpdatedAt=now});
             if(!withCurrent&&!archived)continue;
-            db.Classes.Add(new Class{CenterId=center,ClassId=id,SubjectId=subject,TeacherId=teacher,ClassName=id.ToString(),AcademicYear="2026",Status=archived?ClassStatus.Archived:ClassStatus.Active,
+            db.Classes.Add(new Class{CenterId=center,ClassId=id,SubjectId=subject,TeacherId=teacher,ClassName=id.ToString(),AcademicYear="2026",GradeLevel=10,Status=archived?ClassStatus.Archived:ClassStatus.Active,
                 LearningScope=archived?ClassLearningScope.History:ClassLearningScope.Current,CreatedAt=now,UpdatedAt=now});
             db.ClassStudents.Add(new ClassStudent{CenterId=center,ClassId=id,StudentId=student,Status=ClassStudentStatus.Active,JoinedAt=now.AddDays(-10)});
             var curriculum=Guid.NewGuid();
-            db.Curriculums.Add(new Curriculum{CenterId=center,CurriculumId=curriculum,TeacherId=teacher,SubjectId=subject,Title="Synthetic",ReviewStatus=ReviewStatus.Published,CreatedAt=now,UpdatedAt=now});
+            db.Curriculums.Add(new Curriculum{CenterId=center,CurriculumId=curriculum,TeacherId=teacher,SubjectId=subject,GradeLevel=10,GraphVersionId=version,Title="Synthetic",ReviewStatus=ReviewStatus.Published,CreatedAt=now,UpdatedAt=now});
             db.CurriculumNodes.Add(new CurriculumNode{CenterId=center,CurriculumId=curriculum,NodeId=node,OrderIndex=1,CreatedAt=now});
             db.ClassCurriculumApplications.Add(new(){CenterId=center,ApplicationId=Guid.NewGuid(),ClassId=id,CurriculumId=curriculum,SubjectId=subject,AssignedBy=teacher,StartedAt=now});
         }
@@ -105,11 +106,11 @@ public sealed class ArchivedLearningScopeTests : IDisposable
     public async Task CachedQuestionMustStillBelongToCurrentCurriculum()
     {
         await Seed();var engine=new Mock<IRecommendationEngine>();
-        engine.Setup(e=>e.GetNextQuestionAsync(center,student,subject,It.IsAny<DateTime>(),It.IsAny<CancellationToken>()))
+        engine.Setup(e=>e.GetNextForClassAsync(center,student,subject,currentClass,It.IsAny<DateTime>(),It.IsAny<CancellationToken>()))
             .ReturnsAsync(new NextQuestionDto{Topic=new(1,"Old",0)});
         var next=new GetNextQuestionUseCase(db,tenant,engine.Object,TimeProvider.System);
         Assert.True((await next.ExecuteAsync(subject,currentClass,false,default)).NotFound);
-        engine.Setup(e=>e.GetNextQuestionAsync(center,student,subject,It.IsAny<DateTime>(),It.IsAny<CancellationToken>()))
+        engine.Setup(e=>e.GetNextForClassAsync(center,student,subject,currentClass,It.IsAny<DateTime>(),It.IsAny<CancellationToken>()))
             .ReturnsAsync(new NextQuestionDto{Topic=new(2,"Current",0)});
         Assert.True((await next.ExecuteAsync(subject,currentClass,false,default)).IsSuccess);
     }
@@ -143,7 +144,7 @@ public sealed class ArchivedLearningScopeTests : IDisposable
     {
         await Seed();db.ClassStudents.RemoveRange(await db.ClassStudents.ToListAsync());await db.SaveChangesAsync();
         var scope=await StudentLearningScope.ResolveAsync(db,center,student,subject,null,false,default);
-        Assert.True(scope.Allowed);Assert.Null(scope.TopicIds);
+        Assert.True(scope.Allowed);Assert.Equal(new HashSet<ulong>{1,2}, scope.TopicIds);
         Assert.False((await StudentLearningScope.ResolveAsync(db,center,student,subject,oldClass,false,default)).Allowed);
     }
 
@@ -153,7 +154,7 @@ public sealed class ArchivedLearningScopeTests : IDisposable
         await Seed();
         db.Users.Add(new User{CenterId=center,UserId=student,Username="synthetic",DisplayName="Synthetic",PasswordHash="H",RoleName=UserRole.Student,Status=UserStatus.Active,CreatedAt=now,UpdatedAt=now});
         foreach(var node in new[]{1ul,2ul})
-            db.Questions.Add(new Question{CenterId=center,QuestionId=100+node,SubjectId=subject,PrimaryTopicNodeId=node,CreatedByTeacherId=teacher,
+            db.Questions.Add(new Question{CenterId=center,QuestionId=100+node,SubjectId=subject,PrimaryTopicNodeId=node,GradeLevel=10,CreatedByTeacherId=teacher,
                 QuestionType=QuestionType.ShortAnswer,QuestionText="Synthetic",CorrectAnswer="x",Solution="Synthetic",LanguageCode="vi",Status=QuestionStatus.Active,MaxScore=10,CreatedAt=now,UpdatedAt=now});
         await db.SaveChangesAsync();
         var validator=new AttemptSubmissionValidator(db,tenant,new PreliminaryGraderFactory(new MultipleChoiceGrader(),new ShortAnswerGrader(),new EssayGrader()));
@@ -210,7 +211,7 @@ public sealed class ArchivedLearningScopeTests : IDisposable
     {
         await Seed();
         var pathId = Guid.NewGuid(); var sid = $"{pathId:D}-w01-s01";
-        db.Questions.Add(new Question { CenterId=center, QuestionId=900, SubjectId=subject, PrimaryTopicNodeId=2, CreatedByTeacherId=teacher,
+        db.Questions.Add(new Question { CenterId=center, QuestionId=900, SubjectId=subject, PrimaryTopicNodeId=2,GradeLevel=10, CreatedByTeacherId=teacher,
             QuestionText="Synthetic", CorrectAnswer="2", Solution="Explanation", LanguageCode="vi", Status=QuestionStatus.Active,
             QuestionType=QuestionType.ShortAnswer, MaxScore=10, Difficulty=1, EstimatedTimeSeconds=30, CreatedAt=now, UpdatedAt=now });
         var path = new LearningPath { CenterId=center, LearningPathId=pathId, StudentId=student, SubjectId=subject, Status=LearningPathStatus.Active,
@@ -271,7 +272,7 @@ public sealed class ArchivedLearningScopeTests : IDisposable
         await Seed();
         var pathId = Guid.NewGuid(); var sid = $"{pathId:D}-w01-s01";
         foreach (var id in new[] { 900ul, 901ul })
-            db.Questions.Add(new Question { CenterId=center,QuestionId=id,SubjectId=subject,PrimaryTopicNodeId=2,CreatedByTeacherId=teacher,
+            db.Questions.Add(new Question { CenterId=center,QuestionId=id,SubjectId=subject,PrimaryTopicNodeId=2,GradeLevel=10,CreatedByTeacherId=teacher,
                 QuestionText="Synthetic",CorrectAnswer="2",Solution="Explanation",LanguageCode="vi",Status=QuestionStatus.Active,
                 QuestionType=QuestionType.ShortAnswer,AnswerEvaluationMode=QuestionAnswerEvaluationMode.NumericRational,MaxScore=10,Difficulty=1,
                 EstimatedTimeSeconds=30,CreatedAt=now,UpdatedAt=now });
@@ -305,7 +306,7 @@ public sealed class ArchivedLearningScopeTests : IDisposable
     public async Task SessionWithNoEligibleQuestions_RequiresExplicitActivityAcknowledgement()
     {
         await Seed(); var pathId=Guid.NewGuid(); var sid=$"{pathId:D}-w01-s01";
-        db.Questions.Add(new Question{CenterId=center,QuestionId=901,SubjectId=subject,PrimaryTopicNodeId=2,CreatedByTeacherId=teacher,
+        db.Questions.Add(new Question{CenterId=center,QuestionId=901,SubjectId=subject,PrimaryTopicNodeId=2,GradeLevel=10,CreatedByTeacherId=teacher,
             QuestionText="Synthetic",CorrectAnswer="2",Solution="Explanation",LanguageCode="vi",Status=QuestionStatus.Archived,
             QuestionType=QuestionType.ShortAnswer,MaxScore=10,CreatedAt=now,UpdatedAt=now});
         var path=new LearningPath{CenterId=center,LearningPathId=pathId,StudentId=student,SubjectId=subject,Status=LearningPathStatus.Active,
@@ -327,7 +328,7 @@ public sealed class ArchivedLearningScopeTests : IDisposable
     {
         await Seed();
         foreach(var (id,status) in new[]{(901ul,QuestionStatus.Draft),(902ul,QuestionStatus.Active),(903ul,QuestionStatus.Archived),(904ul,QuestionStatus.Active)})
-            db.Questions.Add(new Question{CenterId=center,QuestionId=id,SubjectId=subject,PrimaryTopicNodeId=2,CreatedByTeacherId=teacher,QuestionText="Synthetic",CorrectAnswer="2",
+            db.Questions.Add(new Question{CenterId=center,QuestionId=id,SubjectId=subject,PrimaryTopicNodeId=2,GradeLevel=10,CreatedByTeacherId=teacher,QuestionText="Synthetic",CorrectAnswer="2",
                 Solution="Explanation",LanguageCode="vi",Status=status,QuestionType=id==904 ? QuestionType.Essay : QuestionType.ShortAnswer,
                 AnswerEvaluationMode=id==904 ? QuestionAnswerEvaluationMode.Manual : QuestionAnswerEvaluationMode.TextExact,
                 MaxScore=10,Difficulty=1,EstimatedTimeSeconds=30,CreatedAt=now,UpdatedAt=now});

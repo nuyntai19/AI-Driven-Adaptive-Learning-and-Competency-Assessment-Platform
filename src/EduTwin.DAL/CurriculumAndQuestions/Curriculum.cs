@@ -17,6 +17,7 @@ public class Curriculum : IMutableTenantAggregate
     public string? SourceFile { get; set; }
     public ReviewStatus ReviewStatus { get; set; }
     public byte? GradeLevel { get; set; }
+    public Guid? GraphVersionId { get; set; }
 
     // Audit and MTA
     public DateTime CreatedAt { get; set; }

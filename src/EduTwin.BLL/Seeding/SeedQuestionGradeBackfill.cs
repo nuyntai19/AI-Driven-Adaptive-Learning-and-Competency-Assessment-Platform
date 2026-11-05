@@ -21,7 +21,8 @@ public sealed class SeedQuestionGradeBackfill(EduTwinDbContext db, TimeProvider 
                     !q.IsDeleted && q.GradeLevel == null).ToArrayAsync(ct);
             foreach (var question in candidates)
             {
-                var template = seed.Questions.Single(q => q.QuestionId == question.QuestionId);
+                var template = seed.Questions.FirstOrDefault(q => q.QuestionId == question.QuestionId);
+                if (template is null) continue;
                 if (question.SubjectId != template.SubjectId || question.PrimaryTopicNodeId != template.PrimaryTopicNodeId ||
                     question.CreatedByTeacherId != template.CreatedByTeacherId || question.QuestionText != template.QuestionText)
                     continue;

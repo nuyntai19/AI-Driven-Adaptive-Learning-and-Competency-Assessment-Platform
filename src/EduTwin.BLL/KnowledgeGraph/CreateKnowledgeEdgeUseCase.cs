@@ -92,6 +92,14 @@ public class CreateKnowledgeEdgeUseCase : ICreateKnowledgeEdgeUseCase
             return CreateKnowledgeEdgeResult.Failure(ErrorCodes.ResourceNotFound);
 
         await using var transaction = await GraphMutationTransaction.BeginAsync(_dbContext, _tenantContext.CenterId.Value, request.SubjectId, cancellationToken);
+        var scopedAuthoring = false;
+        if (request.GraphVersionId.HasValue)
+        {
+            scopedAuthoring = await _dbContext.KnowledgeGraphVersions.AnyAsync(v => v.CenterId == _tenantContext.CenterId.Value &&
+                v.GraphVersionId == request.GraphVersionId && v.SubjectId == request.SubjectId && v.Status == "Draft" &&
+                !v.IsLegacy && v.CreatedBy == _tenantContext.UserId, cancellationToken);
+            if (!scopedAuthoring) return CreateKnowledgeEdgeResult.Failure(ErrorCodes.ResourceNotFound);
+        }
 
         var sourceNode = await _dbContext.KnowledgeNodes.AsNoTracking()
             .FirstOrDefaultAsync(n => n.CenterId == _tenantContext.CenterId!.Value && n.NodeId == sourceNodeId && n.SubjectId == request.SubjectId && !n.IsDeleted, cancellationToken);
@@ -117,9 +125,12 @@ public class CreateKnowledgeEdgeUseCase : ICreateKnowledgeEdgeUseCase
         {
             return CreateKnowledgeEdgeResult.Failure(ErrorCodes.DuplicateResource);
         }
+        if (existingEdge != null && existingEdge.IsDeleted && scopedAuthoring)
+            return CreateKnowledgeEdgeResult.Failure(ErrorCodes.InvalidStateTransition,
+                "Liên kết này đã được lưu trữ. Hãy xử lý việc áp dụng giáo trình liên quan trước khi khôi phục, hoặc chọn một liên kết đang hoạt động cho phiên bản nháp.");
 
         var usages = await AcademicDependencyGuards.NodeUsageAsync(_dbContext, _tenantContext.CenterId.Value, sourceNodeId, targetNodeId, cancellationToken);
-        if (usages.Count > 0)
+        if (usages.Count > 0 && !scopedAuthoring)
             return CreateKnowledgeEdgeResult.Failure(ErrorCodes.InvalidStateTransition, AcademicDependencyGuards.ClassBlockMessage(usages));
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
@@ -167,7 +178,7 @@ public class CreateKnowledgeEdgeUseCase : ICreateKnowledgeEdgeUseCase
 
         try
         {
-            _validator.ValidateDag(existingGraphEdges);
+            if (!scopedAuthoring) _validator.ValidateDag(existingGraphEdges);
         }
         catch (InvalidOperationException)
         {

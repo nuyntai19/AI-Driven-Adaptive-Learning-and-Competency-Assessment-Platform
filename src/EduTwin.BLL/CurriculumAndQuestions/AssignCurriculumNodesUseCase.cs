@@ -102,6 +102,14 @@ public class AssignCurriculumNodesUseCase : IAssignCurriculumNodesUseCase
             }
         }
 
+        if (curriculum.GradeLevel is not (>= 10 and <= 12))
+            return AssignCurriculumNodesResult.Failure(ErrorCodes.AcademicScopeConflict,
+                new CurriculumScopeConflictDto { Message = "Hãy chọn khối hợp lệ trước khi gán chủ đề." });
+        var graphScope = await CurriculumGraphScopeGuard.ResolveAsync(_dbContext, centerId, curriculum.SubjectId,
+            curriculum.GradeLevel.Value, request.GraphVersionId, curriculum.GraphVersionId, parsedNodeIds, true, cancellationToken);
+        if (graphScope.Conflict is not null)
+            return AssignCurriculumNodesResult.Failure(ErrorCodes.AcademicScopeConflict, graphScope.Conflict);
+
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
         var existingNodes = await _dbContext.CurriculumNodes
@@ -112,6 +120,8 @@ public class AssignCurriculumNodesUseCase : IAssignCurriculumNodesUseCase
         try
         {
             _dbContext.CurriculumNodes.RemoveRange(existingNodes);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            curriculum.GraphVersionId = graphScope.GraphVersionId;
 
             var newNodes = new List<CurriculumNode>();
             for (int i = 0; i < parsedNodeIds.Count; i++)
@@ -161,6 +171,8 @@ public class AssignCurriculumNodesUseCase : IAssignCurriculumNodesUseCase
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             Visibility = curriculum.Visibility.ToString(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            GraphVersionId = curriculum.GraphVersionId?.ToString("D"),
+            GradeLevel = curriculum.GradeLevel,
             Title = curriculum.Title,
             Description = curriculum.Description,
             SourceFile = curriculum.SourceFile,
@@ -169,6 +181,9 @@ public class AssignCurriculumNodesUseCase : IAssignCurriculumNodesUseCase
             NodeIds = parsedNodeIds.Select(id => id.ToString(CultureInfo.InvariantCulture)).ToList(),
             RowVersion = curriculum.RowVersion.ToString(CultureInfo.InvariantCulture)
         };
+
+        dto.ApplicationClasses = (await CurriculumClassScopeQuery.ReadAsync(_dbContext, centerId, actorId, curriculumId, cancellationToken))
+            .Select(a => a.ToDto()).ToList();
 
         return AssignCurriculumNodesResult.Success(dto);
     }

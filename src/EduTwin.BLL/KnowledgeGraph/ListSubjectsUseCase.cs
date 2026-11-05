@@ -55,6 +55,10 @@ public class ListSubjectsUseCase : IListSubjectsUseCase
             .AsNoTracking()
             .Where(s => s.CenterId == _tenantContext.CenterId && !s.IsDeleted);
 
+        if (_tenantContext.Role == nameof(UserRole.Teacher))
+            dbQuery = dbQuery.Where(s => _dbContext.Classes.Any(c => c.CenterId == s.CenterId &&
+                c.SubjectId == s.SubjectId && c.TeacherId == _tenantContext.UserId && !c.IsDeleted));
+
         if (query.IsActive.HasValue)
         {
             dbQuery = dbQuery.Where(s => s.IsActive == query.IsActive.Value);

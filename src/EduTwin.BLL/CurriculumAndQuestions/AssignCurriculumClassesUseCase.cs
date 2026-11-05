@@ -168,6 +168,7 @@ public class AssignCurriculumClassesUseCase : IAssignCurriculumClassesUseCase
             TeacherId = curriculum.TeacherId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
             Visibility = curriculum.Visibility.ToString(),
             SubjectId = curriculum.SubjectId.ToString("D", CultureInfo.InvariantCulture).ToLowerInvariant(),
+            GraphVersionId = curriculum.GraphVersionId?.ToString("D"),
             GradeLevel = curriculum.GradeLevel,
             Title = curriculum.Title,
             Description = curriculum.Description,
@@ -177,6 +178,9 @@ public class AssignCurriculumClassesUseCase : IAssignCurriculumClassesUseCase
             NodeIds = nodes.Select(id => id.ToString(CultureInfo.InvariantCulture)).ToList(),
             RowVersion = curriculum.RowVersion.ToString(CultureInfo.InvariantCulture)
         };
+
+        dto.ApplicationClasses = (await CurriculumClassScopeQuery.ReadAsync(_dbContext, centerId, actorId, curriculumId, cancellationToken))
+            .Select(a => a.ToDto()).ToList();
 
         return AssignCurriculumClassesResult.Success(dto);
     }

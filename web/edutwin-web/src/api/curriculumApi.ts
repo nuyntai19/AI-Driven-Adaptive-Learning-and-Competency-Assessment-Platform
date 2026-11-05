@@ -21,7 +21,7 @@ export const curriculumApi = {
     return response.data;
   },
 
-  getAll: async (params?: { subjectId?: string; status?: ReviewStatus; gradeLevel?: number }) => {
+  getAll: async (params?: { subjectId?: string; status?: ReviewStatus; gradeLevel?: number; classId?: string; academicYear?: string; history?: boolean }) => {
     const response = await httpClient.get<ApiCollectionResponse<Curriculum>>(BASE_URL, { params });
     return response.data;
   },

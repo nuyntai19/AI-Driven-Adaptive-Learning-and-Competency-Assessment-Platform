@@ -129,9 +129,13 @@ public sealed class LearningPathV4ExecutionTests
     public async Task MissingNewQuestions_ExplainsShortage_InsteadOfReusingExposedQuestions()
     {
         using var f = new LearningPathV4Fixture(); var mission = await f.Activate("IndependentCheck", "101");
-        for (ulong i = 1; i <= 9; i++) await f.RecordEvidence(101, i);
+        // Tiered eligibility (6aa0c60): a check falls back to answered questions, so it only
+        // refuses when the whole eligible pool is under the floor of 3. Shrink the bank to
+        // two questions and answer both: nothing fresh, two reusable, still short.
+        f.Db.Questions.RemoveRange(f.Db.Questions.Where(q => q.PrimaryTopicNodeId == 101 && q.QuestionId > 10102)); await f.Db.SaveChangesAsync();
+        for (ulong i = 1; i <= 2; i++) await f.RecordEvidence(101, i);
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId)));
-        Assert.Contains("3/5", error.Message); Assert.Empty(await f.Db.LearningPathSessionRuns.ToListAsync());
+        Assert.Contains("2/3", error.Message); Assert.Empty(await f.Db.LearningPathSessionRuns.ToListAsync());
     }
     [Fact]
     public async Task CannotSkipAheadToSubmitLaterActivity()

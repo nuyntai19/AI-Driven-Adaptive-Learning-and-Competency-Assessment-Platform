@@ -6,7 +6,7 @@ export function SkillScopeSelector({ skills, selected, onChange, placement = fal
 }) {
   const groups = groupLearningSkills(skills);
   return <fieldset className="space-y-3"><legend className="text-sm font-semibold">{placement ? "Em muốn kiểm tra những phần nào?" : "Em muốn học những phần nào?"}</legend>
-    <p className="text-xs text-slate-500">{placement ? "Chọn một, vài hoặc tất cả các phần. Phần không chọn được ghi là \u201cTự đánh giá đã vững\u201d: không tính là đã chứng minh, và lộ trình sẽ có một bài ôn ngắn ở cuối để xác nhận." : "Chọn những phần em muốn học hoặc còn yếu. Với nền tảng đã học ở trường, em có thể xác nhận để bỏ qua trước khi lập tuyến."}</p>
+    <p className="text-xs text-slate-500">{placement ? "Chọn một, vài hoặc tất cả các phần. Phần không chọn giữ trạng thái chưa được đánh giá; hệ thống không tự coi là đã vững." : "Chọn những phần em muốn học hoặc còn yếu. Với nền tảng đã học ở trường, em có thể xác nhận để bỏ qua trước khi lập tuyến."}</p>
     <div className="flex gap-4 text-xs font-medium text-indigo-600"><button type="button" onClick={() => onChange(skills.map(s => s.skillId))}>Chọn tất cả</button>
       <button type="button" onClick={() => onChange([])}>Bỏ chọn tất cả</button></div>
     <div className="max-h-72 space-y-3 overflow-y-auto">{groups.map(group => {

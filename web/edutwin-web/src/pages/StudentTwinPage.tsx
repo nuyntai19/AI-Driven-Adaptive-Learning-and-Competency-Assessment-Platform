@@ -300,8 +300,8 @@ export const StudentTwinPage: React.FC = () => {
                   Vị trí hiện tại (Current)
                 </span>
                 <span className="text-3xl sm:text-4xl font-extrabold font-mono text-stone-900 dark:text-stone-100">
-                  {goal.currentPredictedScore.toFixed(1)}
-                  <span className="text-sm text-stone-400 font-normal"> / 10</span>
+                  {goal.hasPrediction === false ? "—" : goal.currentPredictedScore.toFixed(1)}
+                  {goal.hasPrediction !== false && <span className="text-sm text-stone-400 font-normal"> / 10</span>}
                 </span>
               </div>
 
@@ -321,21 +321,21 @@ export const StudentTwinPage: React.FC = () => {
 
             {/* Custom Large Dual-Node Route Track */}
             <div className="relative h-3 w-full bg-stone-100 dark:bg-stone-800 rounded-full overflow-visible">
-              <div
+              {goal.hasPrediction !== false && <div
                 className="absolute top-0 bottom-0 rounded-full transition-all duration-700"
                 style={{
                   width: `${Math.min(100, Math.max(0, (goal.currentPredictedScore / 10) * 100))}%`,
                   backgroundColor: subjectTheme.color,
                 }}
-              />
+              />}
               {/* Current Node */}
-              <div
+              {goal.hasPrediction !== false && <div
                 className="absolute top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 border-white dark:border-slate-900 shadow-sm transition-all duration-700"
                 style={{
                   left: `calc(${Math.min(100, (goal.currentPredictedScore / 10) * 100)}% - 10px)`,
                   backgroundColor: subjectTheme.color,
                 }}
-              />
+              />}
               {/* Target Node */}
               {goal.hasGoal && (
                 <div
@@ -346,9 +346,10 @@ export const StudentTwinPage: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-between text-xs text-stone-500 dark:text-stone-400 pt-1">
-              <span>{goal.hasGoal ? `Còn lại: ${goal.remainingDays} ngày` : "Bạn chưa đặt mục tiêu cho môn này"}</span>
-              <span>{goal.hasGoal ? `Cần thêm: +${(goal.targetScore - goal.currentPredictedScore).toFixed(1)} điểm` : "Hãy chọn Đặt mục tiêu"}</span>
+              <span>{goal.hasDeadline === false ? "Chưa đặt ngày đích" : goal.hasGoal ? `Còn lại: ${goal.remainingDays} ngày` : "Bạn chưa đặt mục tiêu cho môn này"}</span>
+              <span>{goal.hasPrediction === false ? "Chưa đủ dữ liệu dự báo" : goal.hasGoal ? `Cần thêm: ${Math.max(0, goal.targetScore - goal.currentPredictedScore).toFixed(1)} điểm` : "Hãy chọn Đặt mục tiêu"}</span>
             </div>
+            {goal.forecastMessage && <p className="text-xs text-stone-500 dark:text-stone-400">{goal.forecastMessage}</p>}
           </div>
         </div>
       </div>

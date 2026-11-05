@@ -9,6 +9,8 @@ using EduTwin.Contracts.Recommendations;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.DAL.Persistence;
 using EduTwin.DAL.Recommendations;
+using EduTwin.BLL.Organization;
+using EduTwin.BLL.Recommendations.Planning;
 
 namespace EduTwin.BLL.Recommendations.UseCases;
 
@@ -83,7 +85,11 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
 
         if (dbSession is not null)
         {
-            if (dbSession.PolicyVersion == Planning.LearningPathV4Data.Policy)
+            var sessionScope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, center,
+                student, subjectId, classId ?? dbSession.ClassId, history, ct);
+            if (!sessionScope.Includes(dbSession.TopicNodeId) || classId.HasValue && dbSession.ClassId != classId)
+                return GetNextQuestionResult.FailNotFound("Buổi học không thuộc phạm vi giáo trình của lớp đang xem.");
+            if (Planning.LearningPathV4Data.IsV4Policy(dbSession.PolicyVersion))
                 return GetNextQuestionResult.FailNotFound("Nhiệm vụ này mở trong không gian lộ trình, không phải luyện tập tự do.");
             var activeRun = await _dbContext.LearningPathSessionRuns
                 .FirstOrDefaultAsync(r => r.CenterId == center && r.StudentId == student &&
@@ -106,7 +112,7 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
                     q.QuestionType != QuestionType.Essay &&
                     q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual, ct);
 
-                if (question is null)
+                if (question is null || !sessionScope.IncludesQuestion(question.PrimaryTopicNodeId, question.GradeLevel))
                 {
                     return GetNextQuestionResult.FailNotFound("Câu hỏi hiện tại không còn khả dụng hoặc đã bị lưu trữ.");
                 }
@@ -198,16 +204,25 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
         var utcNow = _timeProvider.GetUtcNow().UtcDateTime;
         var scope = await EduTwin.BLL.Organization.StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, subjectId, classId, history, cancellationToken);
         if (!scope.Allowed) return GetNextQuestionResult.FailForbidden(scope.Reason!);
-        var nextQuestion = await _recommendationEngine.GetNextQuestionAsync(
+        var nextQuestion = await _recommendationEngine.GetNextForClassAsync(
             centerId,
             studentId,
             subjectId,
+            classId,
             utcNow,
             cancellationToken);
 
         if (nextQuestion is null)
         {
-            return GetNextQuestionResult.FailNotFound("No next question or recommendation available for this subject.");
+            // The legacy recommendation engine only serves students who still hold an
+            // active legacy recommendation; students on the V4 path have none, which
+            // made free practice return 404 for everyone. Fall back to a direct pick
+            // from the V4 question pool: weakest topic first, reuse delay respected.
+            nextQuestion = await BuildFreePracticeQuestionAsync(centerId, studentId, subjectId, classId, scope, utcNow, cancellationToken);
+            if (nextQuestion is null)
+            {
+                return GetNextQuestionResult.FailNotFound("No next question or recommendation available for this subject.");
+            }
         }
 
         if (scope.TopicIds is not null && (nextQuestion.Topic is null || !scope.Includes(nextQuestion.Topic.NodeId)))
@@ -215,4 +230,70 @@ public sealed class GetNextQuestionUseCase : IGetNextQuestionUseCase
 
         return GetNextQuestionResult.Success(nextQuestion);
     }
+
+    private async Task<NextQuestionDto?> BuildFreePracticeQuestionAsync(
+        Guid centerId, Guid studentId, Guid subjectId, Guid? classId,
+        StudentLearningScopeResult scope, DateTime utcNow, CancellationToken ct)
+    {
+        var candidateNodeIds = scope.TopicIds is not null
+            ? scope.TopicIds.ToList()
+            : await _dbContext.Questions.AsNoTracking()
+                .Where(q => q.CenterId == centerId && q.SubjectId == subjectId && !q.IsDeleted)
+                .Select(q => q.PrimaryTopicNodeId).Distinct().ToListAsync(ct);
+        if (candidateNodeIds.Count == 0) return null;
+
+        var twins = await _dbContext.KnowledgeTwins.AsNoTracking()
+            .Where(k => k.CenterId == centerId && k.StudentId == studentId && k.SubjectId == subjectId && !k.IsDeleted)
+            .ToListAsync(ct);
+        var masteryByNode = twins.GroupBy(k => k.TopicNodeId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(k => k.UpdatedAt).First().MasteryPercentage);
+        var orderedNodes = candidateNodeIds
+            .OrderBy(id => masteryByNode.TryGetValue(id, out var m) ? m : 0m)
+            .ThenBy(id => id).ToList();
+
+        var cooling = await LearningPathV4Data.RecentQuestionIdsAsync(_dbContext, centerId, studentId, utcNow, 2, ct);
+        var answeredSet = (await _dbContext.Attempts.AsNoTracking()
+            .Where(a => a.CenterId == centerId && a.StudentId == studentId)
+            .Select(a => a.QuestionId).Distinct().ToListAsync(ct)).ToHashSet();
+        var lastAnsweredId = await _dbContext.Attempts.AsNoTracking()
+            .Where(a => a.CenterId == centerId && a.StudentId == studentId)
+            .OrderByDescending(a => a.CreatedAt).ThenByDescending(a => a.AttemptId)
+            .Select(a => (ulong?)a.QuestionId).FirstOrDefaultAsync(ct);
+
+        // Pass 1 respects the reuse delay. If every usable question is cooling down
+        // (an active student on a small bank), pass 2 ignores the delay - free
+        // practice must not dead-end - but never serves the very last question again.
+        foreach (var pass in new[] { 1, 2 })
+        foreach (var nodeId in orderedNodes)
+        {
+            var pool = await LearningPathV4Data.QuestionsAsync(_dbContext, centerId, studentId, subjectId, new[] { nodeId }, classId, ct);
+            var usable = pass == 1
+                ? pool.Where(q => !cooling.Contains(q.QuestionId)).ToList()
+                : pool.Where(q => q.QuestionId != lastAnsweredId).ToList();
+            if (usable.Count == 0) continue;
+            var picked = usable
+                .OrderBy(q => answeredSet.Contains(q.QuestionId) ? 1 : 0)
+                .ThenBy(q => Math.Abs(q.Difficulty - 3))
+                .ThenBy(q => q.QuestionId)
+                .First();
+            var node = await _dbContext.KnowledgeNodes.AsNoTracking()
+                .FirstOrDefaultAsync(n => n.CenterId == centerId && n.NodeId == nodeId, ct);
+            var options = await _dbContext.QuestionOptions.AsNoTracking()
+                .Where(o => o.CenterId == centerId && o.QuestionId == picked.QuestionId)
+                .OrderBy(o => o.OrderIndex)
+                .Select(o => new StudentQuestionOptionDto { OptionId = o.OptionId.ToString(), Label = o.OptionLabel, Text = o.OptionText, OrderIndex = o.OrderIndex })
+                .ToListAsync(ct);
+            return new NextQuestionDto
+            {
+                Strategy = LearningPathStrategy.OpportunityGap,
+                Topic = new NextQuestionTopicDto(nodeId, node?.NodeName ?? "Chủ đề", masteryByNode.TryGetValue(nodeId, out var mm) ? mm : 0m),
+                Explanation = "Luyện tự do ngoài lộ trình: hệ thống ưu tiên chủ đề bạn đang yếu nhất và tránh lặp lại câu vừa làm.",
+                Question = new NextQuestionQuestionDto(picked.QuestionId, picked.QuestionType, picked.Difficulty, picked.QuestionText,
+                    picked.MaxScore, picked.EstimatedTimeSeconds, picked.ReasoningRequired, picked.LanguageCode, options,
+                    picked.AnswerEvaluationMode, picked.HasImage)
+            };
+        }
+        return null;
+    }
 }
+

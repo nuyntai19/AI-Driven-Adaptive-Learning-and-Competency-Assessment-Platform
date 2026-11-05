@@ -34,11 +34,24 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
         var pending = ids.Count > 0 && await db.AIAnalysisJobs.AnyAsync(j => j.CenterId == centerId && ids.Contains(j.AttemptId) &&
             (j.Status == AIJobStatus.Pending || j.Status == AIJobStatus.Processing), cancellationToken);
         var independent = activities.Where(a => a.ActivityType is "IndependentCheck" or "TransferChallenge").SelectMany(a => a.IssuedItems).ToList();
+        var baseline = run.PolicySnapshot?.RootElement.TryGetProperty("isPlacement", out var baselineFlag) == true && baselineFlag.ValueKind == JsonValueKind.True;
+        if (baseline)
+        {
+            var questionIds = independent.Where(i => i.QuestionId.HasValue).Select(i => i.QuestionId!.Value).ToList();
+            var targetIds = await db.Questions.Where(q => q.CenterId == centerId && questionIds.Contains(q.QuestionId) && q.PrimaryTopicNodeId == run.Session.TopicNodeId)
+                .Select(q => q.QuestionId).ToListAsync(cancellationToken);
+            independent = independent.Where(i => i.QuestionId.HasValue && targetIds.Contains(i.QuestionId.Value)).ToList();
+        }
         var allDone = activities.Count > 0 && activities.All(a => a.Status is "Completed" or "Submitted");
         var result = new V4SessionEvaluationResultDto { SessionRunId = sessionRunId, SessionId = run.SessionId,
             TotalActivities = (uint)activities.Count, CompletedActivities = (uint)activities.Count(a => a.Status is "Completed" or "Submitted"), EvaluatedAt = now };
         string reason;
-        if (!allDone)
+        if (!allDone && LearningAssessmentPolicy.ExpiresAt(run.PolicySnapshot, run.StartedAt) is { } expiry && now >= expiry)
+        {
+            result.Outcome = "TimedOut";
+            reason = "Đã hết giờ. Giữ các câu đã nộp; phần chưa làm chưa đủ bằng chứng để kết luận. Lộ trình sẽ bổ sung rèn lại theo kết quả từng kỹ năng.";
+        }
+        else if (!allDone)
         {
             result.Outcome = "InsufficientEvidence";
             reason = "Chưa hoàn thành đủ hoạt động của nhiệm vụ. Tiến độ đã được lưu để tiếp tục.";
@@ -51,6 +64,11 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
         // Learning path auto-approve: teacher review evidence is treated as provisionally valid.
         // Evidence metadata (RequiresTeacherReview, NeedsTeacherReview) is preserved for audit,
         // but the student's learning path is not blocked waiting for teacher action.
+        else if (independent.Any(i => i.Attempt?.Skipped == true))
+        {
+            result.Outcome = "Inconclusive";
+            reason = "Có câu đã bỏ qua nên phần này chưa đủ bằng chứng để kết luận đạt. Các câu đã nộp được giữ; tiếp tục học và kiểm tra bổ sung bằng câu khác.";
+        }
         else if (independent.Count == 0)
         {
             result.Outcome = "ActivityOnlyCompleted";
@@ -70,7 +88,8 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
                 i.Attempt != null && !i.Attempt.IsPostFeedback && !i.Attempt.Skipped && i.Attempt.SolutionExposedAt == null &&
                 latest.TryGetValue(i.Attempt.AttemptId, out var _))
                 .GroupBy(i => i.QuestionId).Select(g => g.First()).ToList();
-            if (valid.Count < 5 || valid.Count != independent.Count)
+            var shortProbe = run.PolicySnapshot?.RootElement.TryGetProperty("minimumIndependentQuestions", out var minimum) == true && minimum.GetInt32() == 3;
+            if (valid.Count < (shortProbe ? 3 : 5) || valid.Count != independent.Count)
             {
                 result.Outcome = "InsufficientEvidence";
                 reason = $"Có {valid.Count}/5 câu độc lập đủ bằng chứng. Không kết luận đạt khi chưa có đánh giá hợp lệ.";
@@ -80,26 +99,57 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
                 var correct = valid.Count(i => analyses.FirstOrDefault(a => a.AttemptId == i.AttemptId)?.OverrideIsCorrect ?? i.Attempt!.IsCorrect ?? false);
                 var questionIds = valid.Select(i => i.QuestionId!.Value).ToList();
                 var types = await db.Questions.AsNoTracking().Where(q => q.CenterId == centerId && questionIds.Contains(q.QuestionId))
-                    .Select(q => new { q.QuestionType, q.Difficulty }).ToListAsync(cancellationToken);
+                    .Select(q => new { q.QuestionId, q.PrimaryTopicNodeId, q.QuestionType, q.Difficulty }).ToListAsync(cancellationToken);
                 // Multiple choice can be guessed: when most items are multiple choice, every answer must be correct.
                 var guessable = types.Count(t => t.QuestionType == Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice) * 2 > valid.Count;
-                var required = guessable ? valid.Count : (int)Math.Ceiling(valid.Count * .8m);
-                result.Outcome = correct >= required ? "Passed" : "NeedsSupport";
-                reason = $"Tự kiểm tra: đúng {correct}/{valid.Count} câu, cần {required}/{valid.Count}{(guessable ? " vì phần lớn là trắc nghiệm" : "")}.";
+                var required = guessable && !baseline ? valid.Count : (int)Math.Ceiling(valid.Count * .8m);
+                var classification = baseline ? LearningAssessmentPolicy.ClassifyPlacement(valid.Count, correct)
+                    : LearningAssessmentPolicy.Classify(valid.Count, correct, guessable);
+                // A run whose policy floor is 3 (small bank: the snapshot records the
+                // effective minimum) may conclude on 3-4 valid answers - the agenda
+                // already promises a low-confidence conclusion for such samples.
+                // Without this, a skill whose bank holds fewer than 5 check-eligible
+                // questions could never be confirmed and the route could never close.
+                result.Outcome = baseline ? classification == "Strong" ? "Passed" : classification == "NeedsSupport" ? "NeedsSupport" : "Inconclusive"
+                    : valid.Count < 5 && !shortProbe ? "Inconclusive" : correct >= required ? "Passed" : "NeedsSupport";
+                if (!baseline && valid.Count < 5 && !shortProbe)
+                {
+                    var accumulated = await LearningPathV4Data.MapAsync(db, centerId, studentId, run.Session.LearningPath.SubjectId, run.Session.ClassId, now, cancellationToken);
+                    if (accumulated.Skills.Any(s => s.SkillId == run.Session.TopicNodeId.ToString() && s.State == "Confirmed")) result.Outcome = "Passed";
+                }
+                reason = $"Tự kiểm tra: đúng {correct}/{valid.Count} câu, cần {required}/{valid.Count}{(guessable && !baseline ? " vì phần lớn là trắc nghiệm" : "")}.";
+                if (!baseline && shortProbe && valid.Count < 5) reason += $" Mẫu nhỏ ({valid.Count} câu) nên kết luận có độ tin cậy thấp.";
                 if (!types.Any(t => t.Difficulty >= 3)) reason += " Bộ này chưa có câu mức vừa/khó nên chỉ xác nhận mức cơ bản.";
                 // Auto-approved AI evidence keeps the route moving, but the result stays provisional until a teacher confirms it.
                 result.IsProvisional = result.Outcome == "Passed" && valid.Any(i => latest[i.Attempt!.AttemptId].RequiresTeacherReview);
                 if (result.IsProvisional) reason += " Tạm đạt: còn câu chờ giáo viên xác nhận, kết quả có thể thay đổi.";
-                if (result.Outcome == "Passed") result.ProvenSkills.Add(run.Session.TopicNodeId.ToString());
+                var isExam = run.PolicySnapshot?.RootElement.TryGetProperty("isMilestoneExam", out var examFlag) == true && examFlag.ValueKind == JsonValueKind.True;
+                if (isExam)
+                {
+                    foreach (var skillGroup in types.GroupBy(q => q.PrimaryTopicNodeId))
+                    {
+                        var skillQuestions = skillGroup.Select(q => q.QuestionId).ToHashSet();
+                        var skillAnswers = valid.Where(i => i.QuestionId.HasValue && skillQuestions.Contains(i.QuestionId.Value)).ToList();
+                        var skillCorrect = skillAnswers.Count(i => analyses.FirstOrDefault(a => a.AttemptId == i.AttemptId)?.OverrideIsCorrect ?? i.Attempt!.IsCorrect ?? false);
+                        var state = LearningAssessmentPolicy.Classify(skillAnswers.Count, skillCorrect, skillGroup.Count(q => q.QuestionType == Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice) * 2 > skillAnswers.Count);
+                        if (state == "Strong") result.ProvenSkills.Add(skillGroup.Key.ToString()); else result.SkillsNeedingSupport.Add(skillGroup.Key.ToString());
+                    }
+                    var definition = JsonSerializer.Deserialize<PathProposalDto>(run.Session.LearningPath.PlanJson!.RootElement.GetRawText(), LearningPathV4Data.Json);
+                    // Never pass an exam milestone below 80%; a higher target score raises the bar.
+                    var reference = Math.Max(.8m, (definition?.TargetScore ?? 8m) / 10m);
+                    result.Outcome = correct / (decimal)valid.Count >= reference ? "Passed" : "NeedsSupport";
+                    reason = $"Mốc thi: đúng {correct}/{valid.Count} câu; đối chiếu điểm mục tiêu {definition?.TargetScore ?? 8m}/10. Mức vững được kết luận riêng theo từng kỹ năng, không lấy điểm tổng để xác nhận tất cả.";
+                }
+                else if (result.Outcome == "Passed") result.ProvenSkills.Add(run.Session.TopicNodeId.ToString());
                 else result.SkillsNeedingSupport.Add(run.Session.TopicNodeId.ToString());
             }
         }
         result.DecisionReasons.Add(reason);
-        var terminal = result.Outcome is "Passed" or "NeedsSupport" or "ActivityOnlyCompleted";
+        var terminal = result.Outcome is "Passed" or "NeedsSupport" or "Inconclusive" or "TimedOut" or "ActivityOnlyCompleted";
         var targetStatus = terminal ? SessionRunStatus.Completed : result.Outcome == "PendingGrading" ? SessionRunStatus.Grading :
             result.Outcome == "PendingTeacherReview" ? SessionRunStatus.NeedsReview : SessionRunStatus.InProgress;
-        var outcome = result.Outcome == "Passed" ? SessionRunOutcome.Passed : result.Outcome == "NeedsSupport" ? SessionRunOutcome.NotPassed :
-            result.Outcome == "InsufficientEvidence" ? SessionRunOutcome.InsufficientEvidence : SessionRunOutcome.None;
+        var outcome = result.Outcome == "Passed" ? SessionRunOutcome.Passed : result.Outcome is "NeedsSupport" or "TimedOut" ? SessionRunOutcome.NotPassed :
+            result.Outcome is "InsufficientEvidence" or "Inconclusive" ? SessionRunOutcome.InsufficientEvidence : SessionRunOutcome.None;
         var last = await db.PathDecisions.AsNoTracking().Where(d => d.CenterId == centerId && d.SessionRunId == sessionRunId &&
             d.TriggerType == "MissionEvaluation").OrderByDescending(d => d.DecisionId).FirstOrDefaultAsync(cancellationToken);
         var summary = $"{result.Outcome}: {reason}";
@@ -110,7 +160,7 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
             run.EvaluationStatus = result.HasPendingReview ? SessionRunEvaluationStatus.AwaitingTeacher :
                 result.Outcome == "PendingGrading" ? SessionRunEvaluationStatus.Processing : terminal ? SessionRunEvaluationStatus.Completed : SessionRunEvaluationStatus.NotStarted;
             run.Session.Status = result.Outcome is "Passed" or "ActivityOnlyCompleted" ? LearningPathSessionStatus.Completed :
-                result.Outcome is "NeedsSupport" or "PendingTeacherReview" ? LearningPathSessionStatus.NeedsReview : LearningPathSessionStatus.InProgress;
+                result.Outcome is "NeedsSupport" or "PendingTeacherReview" or "TimedOut" or "Inconclusive" ? LearningPathSessionStatus.NeedsReview : LearningPathSessionStatus.InProgress;
             if (terminal && run.Session.LearningPath.PlanJson?.RootElement.TryGetProperty("isPlacement", out var placement) == true && placement.ValueKind == JsonValueKind.True)
                 run.Session.Status = LearningPathSessionStatus.Completed;
             run.Session.UpdatedAt = now; run.Session.RowVersion++;
@@ -119,10 +169,11 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
                 ReasonCodes = JsonSerializer.SerializeToDocument(new[] { result.Outcome }), EvidenceReferenceIds = JsonSerializer.SerializeToDocument(latest.Values.Select(e => e.EvidenceAssessmentId)),
                 CreatedAt = now, UpdatedAt = now, RowVersion = 1 });
             await LearningPathFollowUp.AddAsync(db, run, result.Outcome, now, cancellationToken, result.PracticeAccuracy);
+            if (terminal) await new DigitalTwin.StudentGoalRiskUpdater(db).UpdateAsync(centerId, studentId, run.Session.LearningPath.SubjectId, now, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
         }
         var followUp = $"FollowUp:{sessionRunId}:";
-        result.NextStep = await db.PathDecisions.AsNoTracking().Where(d => d.CenterId == centerId && d.TriggerType.StartsWith(followUp))
+        result.NextStep = await db.PathDecisions.AsNoTracking().Where(d => d.CenterId == centerId && (d.TriggerType.StartsWith(followUp) || d.TriggerType == $"ExamFollowUp:{sessionRunId}"))
             .OrderByDescending(d => d.DecisionId).Select(d => d.DecisionSummary).FirstOrDefaultAsync(cancellationToken);
         await tx.CommitAsync(cancellationToken);
         // Next missions come from the real accepted route/agenda. No fabricated math mission and no direct Twin writes.
