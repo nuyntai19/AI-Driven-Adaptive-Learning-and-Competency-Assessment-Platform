@@ -1,0 +1,9 @@
+{
+  "teacher": {
+    "questionText": "Giải phương trình x^2 - 5x + 6 = 0.",
+    "questionType": "ShortAnswer", "answerEvaluationMode": "Manual",
+    "correctAnswer": "x = 2 hoặc x = 3", "solution": "Dùng công thức nghiệm: delta = 25 - 24 = 1, suy ra x = (5 ± 1)/2, được 2 hoặc 3.",
+    "knowledgeTopics": ["Phương trình bậc hai"]
+  },
+  "student": { "finalAnswer": "x=2 hoặc x=3", "reasoningText": "Phân tích x^2-5x+6=(x-2)(x-3). Tích bằng 0 nên x=2 hoặc x=3.", "confidence": 90 }
+}

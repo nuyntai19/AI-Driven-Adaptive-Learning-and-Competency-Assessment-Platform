@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using EduTwin.BLL.Organization;
+using EduTwin.API.Security;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.IdentityAndTenancy;
 using EduTwin.Contracts.Organization;
@@ -44,6 +45,7 @@ public class TeacherStudentNotesController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Policy = CompositePermissionPolicies.TeacherStudentNotesRead)]
     public async Task<IActionResult> ListNotes([FromQuery] TeacherStudentNoteListQuery query, CancellationToken cancellationToken)
     {
         var result = await _listUseCase.ExecuteAsync(query, cancellationToken);
@@ -69,6 +71,7 @@ public class TeacherStudentNotesController : ControllerBase
     }
 
     [HttpGet("my-notes")]
+    [Authorize(Policy = CompositePermissionPolicies.TeacherStudentNotesRead)]
     public async Task<IActionResult> GetMyNotes(CancellationToken cancellationToken)
     {
         var result = await _listUseCase.GetMyNotesAsync(cancellationToken);
@@ -94,6 +97,7 @@ public class TeacherStudentNotesController : ControllerBase
     }
 
     [HttpGet("{noteId:guid}")]
+    [Authorize(Policy = CompositePermissionPolicies.TeacherStudentNotesRead)]
     public async Task<IActionResult> GetNote(Guid noteId, CancellationToken cancellationToken)
     {
         var result = await _getUseCase.ExecuteAsync(noteId, cancellationToken);
@@ -115,6 +119,7 @@ public class TeacherStudentNotesController : ControllerBase
     }
 
     [HttpGet("student/{studentId:guid}")]
+    [Authorize(Policy = CompositePermissionPolicies.TeacherStudentNotesRead)]
     public async Task<IActionResult> GetNoteForStudent(Guid studentId, CancellationToken cancellationToken)
     {
         var result = await _getUseCase.GetForStudentAsync(studentId, cancellationToken);
@@ -136,6 +141,7 @@ public class TeacherStudentNotesController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Policy = CompositePermissionPolicies.TeacherStudentNotesManage)]
     public async Task<IActionResult> CreateNote([FromBody] CreateTeacherStudentNoteRequest request, CancellationToken cancellationToken)
     {
         var result = await _createUseCase.ExecuteAsync(request, cancellationToken);
@@ -157,6 +163,7 @@ public class TeacherStudentNotesController : ControllerBase
     }
 
     [HttpPut("{noteId:guid}")]
+    [Authorize(Policy = CompositePermissionPolicies.TeacherStudentNotesManage)]
     public async Task<IActionResult> UpdateNote(Guid noteId, [FromBody] UpdateTeacherStudentNoteRequest request, CancellationToken cancellationToken)
     {
         var result = await _updateUseCase.ExecuteAsync(noteId, request, cancellationToken);
@@ -178,6 +185,7 @@ public class TeacherStudentNotesController : ControllerBase
     }
 
     [HttpPut("student/{studentId:guid}")]
+    [Authorize(Policy = CompositePermissionPolicies.TeacherStudentNotesManage)]
     public async Task<IActionResult> UpsertNoteForStudent(Guid studentId, [FromBody] UpsertTeacherStudentNoteRequest request, CancellationToken cancellationToken)
     {
         var result = await _upsertUseCase.ExecuteAsync(studentId, request, cancellationToken);
@@ -199,6 +207,7 @@ public class TeacherStudentNotesController : ControllerBase
     }
 
     [HttpDelete("{noteId:guid}")]
+    [Authorize(Policy = CompositePermissionPolicies.TeacherStudentNotesManage)]
     public async Task<IActionResult> DeleteNote(Guid noteId, [FromQuery] string? rowVersion, CancellationToken cancellationToken)
     {
         var result = await _deleteUseCase.ExecuteAsync(noteId, rowVersion, cancellationToken);

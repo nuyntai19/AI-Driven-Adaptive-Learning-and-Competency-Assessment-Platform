@@ -1,0 +1,9 @@
+{
+  "teacher": {
+    "questionText": "Cho y = 2x + 1. Tính y tại x = 3.",
+    "questionType": "ShortAnswer", "answerEvaluationMode": "NumericRational",
+    "correctAnswer": "7", "solution": "Thực hiện phép nhân trước phép cộng: 2 × 3 + 1 = 7.",
+    "knowledgeTopics": ["Thứ tự thực hiện phép tính"]
+  },
+  "student": { "finalAnswer": "8", "reasoningText": "Em cộng 3+1=4 trước rồi nhân với 2 được 8.", "confidence": 80, "timeSpentSeconds": 30 }
+}

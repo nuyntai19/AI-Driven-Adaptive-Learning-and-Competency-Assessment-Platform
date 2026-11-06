@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using EduTwin.Contracts.Common;
 using EduTwin.Contracts.CurriculumAndQuestions;
@@ -33,7 +34,7 @@ public sealed class AdaptivePracticeProposalDto
     public IReadOnlyList<AdaptivePracticeTopicOptionDto> AvailableTopics { get; set; } = [];
 }
 
-public sealed class CreateAdaptivePracticeSessionRequest
+public sealed class CreateAdaptivePracticeSessionRequest : IValidatableObject
 {
     public Guid SubjectId { get; set; }
 
@@ -47,6 +48,25 @@ public sealed class CreateAdaptivePracticeSessionRequest
 
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString)]
     public ulong? LearningPathItemId { get; set; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (SubjectId == Guid.Empty)
+            yield return new("Môn học là bắt buộc.", [nameof(SubjectId)]);
+        if (TopicNodeId == 0)
+            yield return new("Chủ đề luyện tập là bắt buộc.", [nameof(TopicNodeId)]);
+        if (!Enum.IsDefined(PracticeMode))
+            yield return new("Chế độ luyện tập không hợp lệ.", [nameof(PracticeMode)]);
+        // These are the three budgets offered by AdaptivePracticeOverviewPage.
+        if (TimeBudgetMinutes is not (10 or 15 or 20))
+            yield return new("Thời lượng luyện tập phải là 10, 15 hoặc 20 phút.", [nameof(TimeBudgetMinutes)]);
+        if (CustomTargetMastery is < 0m or > 100m)
+            yield return new("Mục tiêu năng lực phải nằm trong khoảng 0 đến 100.", [nameof(CustomTargetMastery)]);
+        if (LearningPathId == Guid.Empty)
+            yield return new("Mã lộ trình học không hợp lệ.", [nameof(LearningPathId)]);
+        if (LearningPathItemId == 0)
+            yield return new("Mã mục lộ trình học không hợp lệ.", [nameof(LearningPathItemId)]);
+    }
 }
 
 public sealed class AdaptivePracticeSessionDto

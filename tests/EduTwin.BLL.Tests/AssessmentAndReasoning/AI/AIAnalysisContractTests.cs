@@ -59,7 +59,7 @@ public sealed class AIAnalysisContractTests
             ("PreliminaryIsCorrect", typeof(bool?), NullabilityState.Nullable, false),
             ("ReasoningText", typeof(string), NullabilityState.Nullable, false),
             ("TimeSpentSeconds", typeof(uint), NullabilityState.NotNull, false),
-            ("Confidence", typeof(decimal), NullabilityState.NotNull, false),
+            ("Confidence", typeof(decimal?), NullabilityState.Nullable, false),
             ("AnswerChanges", typeof(uint), NullabilityState.NotNull, false),
             ("ImageParts", typeof(IReadOnlyList<AnalyzeReasoningImagePart>), NullabilityState.NotNull, false));
         AssertExactProperties(

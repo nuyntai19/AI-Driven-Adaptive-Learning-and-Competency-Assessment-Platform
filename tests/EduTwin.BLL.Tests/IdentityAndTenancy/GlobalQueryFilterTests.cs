@@ -35,7 +35,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantOwnedEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(61, entityTypes.Count); // prior 58 + 3 knowledge grade scope entities
+        Assert.Equal(65, entityTypes.Count); // 61 + 3 Adaptive Practice entities + TeacherStudentNote
 
         foreach (var entityType in entityTypes)
         {
@@ -49,7 +49,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(IMutableTenantAggregate).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(29, entityTypes.Count); // prior 23 + 6 learning path v4 entities
+        Assert.Equal(32, entityTypes.Count); // 29 + Adaptive Practice session/summary + TeacherStudentNote
 
         foreach (var entityType in entityTypes)
         {
@@ -67,7 +67,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantAppendOnlyEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(14, entityTypes.Count); // prior 10 + immutable notification event/message
+        Assert.Equal(15, entityTypes.Count); // 14 + AdaptivePracticeSessionItem
 
         foreach (var entityType in entityTypes)
         {

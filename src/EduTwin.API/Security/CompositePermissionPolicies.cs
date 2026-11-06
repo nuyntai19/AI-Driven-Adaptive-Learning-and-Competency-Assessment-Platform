@@ -19,10 +19,14 @@ public static class CompositePermissionPolicies
     public const string ActivityRead = "permissions:any:activity.read";
     public const string NotificationOperationsRead = "permissions:any:notifications.dispatches.read";
     public const string NotificationOperationsRedrive = "permissions:any:notifications.dispatches.redrive";
+    public const string TeacherStudentNotesRead = "permissions:any:teacher_student_notes.read";
+    public const string TeacherStudentNotesManage = "permissions:any:teacher_student_notes.manage";
 
     public static IReadOnlyDictionary<string, string[]> GetAnyPermissionPolicies() =>
         new Dictionary<string, string[]>
         {
+            [TeacherStudentNotesRead] = ["twin.student.read_scoped", "dashboards.center.read"],
+            [TeacherStudentNotesManage] = ["twin.student.update_scoped", "organization.students.update"],
             [ActivityRead] = ["activity.history.read_own", "activity.history.read_scoped", "activity.history.read_administrative", "platform.activity.read"],
             [NotificationOperationsRead] = ["notifications.dispatches.read", "platform.notifications.read_dispatches"],
             [NotificationOperationsRedrive] = ["notifications.dispatches.redrive", "platform.notifications.redrive"],

@@ -42,6 +42,7 @@ public sealed class DynamicPermissionEndpointCoverageTests
             {
                 var policies = method
                     .GetCustomAttributes<AuthorizeAttribute>()
+                    .Concat(controllerType.GetCustomAttributes<AuthorizeAttribute>(inherit: true))
                     .Select(attribute => attribute.Policy)
                     .Where(policy => !string.IsNullOrWhiteSpace(policy))
                     .Cast<string>()

@@ -1,0 +1,9 @@
+{
+  "teacher": {
+    "questionText": "Cho A(0;0), B(1;4). Tìm tọa độ trung điểm M của AB.",
+    "questionType": "ShortAnswer", "answerEvaluationMode": "Coordinate2D",
+    "correctAnswer": "(1/2;2)", "solution": "Trung điểm có tọa độ ((0+1)/2;(0+4)/2)=(1/2;2).",
+    "knowledgeTopics": ["Tọa độ trung điểm"]
+  },
+  "student": { "finalAnswer": "(0.5;2)", "answerDisplayLatex": "(\\frac{1}{2};2)", "reasoningText": "Lấy trung bình tọa độ hai đầu mút: M=((0+1)/2;(0+4)/2)=(0.5;2).", "confidence": 80 }
+}

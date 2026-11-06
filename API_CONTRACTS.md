@@ -3246,3 +3246,23 @@ Update: recommendation preview auto-creates a draft goal/proposal through the sa
 - Activity DTOs include `stage` and optional `learningFeedback`. Practice submission/read returns persisted canonical preliminary correctness, authored answer/solution, method guidance and next step immediately after submission. Status distinguishes Preliminary, Pending, PendingTeacherReview and Reviewed. Content is not generated from an unverified AI diagnosis. No unpublished rubric is returned.
 - IndependentCheck/TransferChallenge feedback is null until all activities in the run have been submitted. Submission idempotency, ownership and issued-item guards apply to feedback reads as well.
 - Under the existing evaluator lock/transaction, Passed schedules recall after two days; a completed recall schedules the next one after seven days; NeedsSupport appends targeted practice. Reasoned PathDecision entries make follow-up creation idempotent per source run/outcome. Not-yet-due recall is blocked server-side. Recall practice does not itself certify mastery.
+
+## 93. Adaptive Practice input validation repair — 06/11/2026
+
+Existing route and response DTO remain `POST /api/v1/adaptive-practice/sessions` and `201 AdaptivePracticeSessionDto`.
+`GET /api/v1/adaptive-practice/active-session` returns `200` with the owned active session, or `204` with no body when none exists (the existing ASP.NET null-output behavior).
+This repair enforces the existing overview's three time-budget choices and the model's percentage scale at the server boundary:
+
+- `subjectId`: nonempty GUID; `topicNodeId`: positive unsigned integer (JSON number or numeric string).
+- `practiceMode`: defined AdaptivePracticeMode; JSON enum integers remain rejected by the existing API serializer.
+- `timeBudgetMinutes`: exactly 10, 15 or 20, preserving the existing 4–8, 5–12 and 6–15 question limits.
+- `customTargetMastery`: optional decimal in 0–100 inclusive; null retains the existing diagnostic/default target calculation.
+- Optional `learningPathId` and `learningPathItemId` cannot be empty/zero when supplied.
+- Subject and topic must be active, nondeleted, in the current center, and the topic must belong to the requested subject.
+
+Malformed fields return `400 VALIDATION_FAILED` through the existing ProblemDetails boundary. Unavailable subject/topic returns the existing `400 CREATE_SESSION_FAILED` with a generic message, without exposing query/provider details.
+Validation runs before the active/paused-session shortcut: a rejected request must not create or resume a session. A valid existing session continues to use the existing resume behavior. Authentication, permission and tenant rules are unchanged.
+
+### 93.1. Existing teacher/student notes permission boundary
+
+All `/teacher-student-notes` GET actions require the existing teacher capability `twin.student.read_scoped` or manager capability `dashboards.center.read`. POST/PUT/DELETE actions require `twin.student.update_scoped` or `organization.students.update`. These are composite policies over the existing catalog; no new permission or role is created. Existing tenant, class/student ownership and author checks remain in BLL. Student and PlatformAdmin accounts cannot read or mutate these teacher/manager notes through these policies.

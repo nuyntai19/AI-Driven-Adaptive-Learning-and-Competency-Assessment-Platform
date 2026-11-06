@@ -266,9 +266,10 @@ public sealed partial class AIAnalysisJobProcessorTests
         Assert.Equal(AnalysisProvider.RuleBased, fallback.Provider);
         var evidence = Assert.Single(persisted.Evidence);
         Assert.Equal(EvidenceSourceType.RuleFallback, evidence.SourceType);
-        Assert.Equal(EvidenceTrustLevel.Reduced, evidence.TrustLevel);
+        Assert.Equal(EvidenceTrustLevel.Trusted, evidence.TrustLevel);
         Assert.Equal(EvidenceDecisionMode.DeterministicOnly, evidence.DecisionMode);
-        Assert.Equal(0.3m, evidence.ReasoningWeight);
+        Assert.Equal(1m, evidence.ReasoningWeight);
+        Assert.Contains(EvidenceReasonCodes.DeterministicCorrectness, evidence.ReasonCodes.RootElement.EnumerateArray().Select(code => code.GetString()));
         Assert.True(evidence.RequiresTeacherReview);
     }
 

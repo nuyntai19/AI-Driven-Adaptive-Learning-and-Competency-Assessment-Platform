@@ -1,0 +1,8 @@
+{
+  "teacher": {
+    "questionText": "Tính 3 + 4. Không bắt buộc giải thích.",
+    "questionType": "ShortAnswer", "answerEvaluationMode": "NumericRational",
+    "correctAnswer": "7", "solution": "3 + 4 = 7.", "knowledgeTopics": ["Phép cộng"]
+  },
+  "student": { "finalAnswer": "7", "reasoningText": "khum", "confidence": 20 }
+}

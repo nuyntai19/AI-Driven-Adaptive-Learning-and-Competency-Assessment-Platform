@@ -1,0 +1,17 @@
+{
+  "teacher": {
+    "questionText": "Rewrite using the present perfect continuous: I started learning English in 2020.",
+    "questionType": "Essay", "answerEvaluationMode": "Manual", "contentLanguage": "en",
+    "correctAnswer": "I have been learning English since 2020.",
+    "solution": "Dùng have been learning cho hành động tiếp diễn đến hiện tại; dùng since trước mốc thời gian 2020.",
+    "knowledgeTopics": ["Present perfect continuous"], "maxScore": 2,
+    "gradingCriteria": {
+      "requiredIdeas": ["have been learning", "since 2020"],
+      "criteria": [
+        {"criterionId":"tense","title":"Cấu trúc thì","description":"Dùng đúng have been learning.","maxScore":1},
+        {"criterionId":"time","title":"Mốc thời gian","description":"Dùng since với mốc 2020.","maxScore":1}
+      ]
+    }
+  },
+  "student": { "finalAnswer": "I have been learning English since 2020.", "reasoningText": "Hành động bắt đầu trong quá khứ và vẫn tiếp diễn nên dùng have been learning. Since đi với mốc 2020.", "confidence": 90 }
+}

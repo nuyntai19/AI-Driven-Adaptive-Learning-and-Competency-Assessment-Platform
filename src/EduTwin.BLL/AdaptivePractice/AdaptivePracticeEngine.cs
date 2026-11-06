@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json;
@@ -154,6 +155,21 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         DateTime utcNow,
         CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        // Validate before the existing-session shortcut: invalid input must not
+        // resume a paused session or perform any database write.
+        if (request.Validate(new ValidationContext(request)).Any())
+            throw new InvalidOperationException("Thông tin phiên luyện tập không hợp lệ.");
+
+        var subject = await _dbContext.Subjects
+            .SingleOrDefaultAsync(s => s.CenterId == centerId && s.SubjectId == request.SubjectId && s.IsActive && !s.IsDeleted, ct)
+            ?? throw new InvalidOperationException("Môn học không khả dụng.");
+
+        var topic = await _dbContext.KnowledgeNodes
+            .SingleOrDefaultAsync(kn => kn.CenterId == centerId && kn.SubjectId == request.SubjectId
+                && kn.NodeId == request.TopicNodeId && kn.IsActive && !kn.IsDeleted, ct)
+            ?? throw new InvalidOperationException("Chủ đề không khả dụng trong môn học đã chọn.");
+
         // BR-04: Check if student has an existing active or paused session for this subject
         var existingSession = await _dbContext.AdaptivePracticeSessions
             .Include(s => s.Subject)
@@ -175,14 +191,6 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             }
             return MapToSessionDto(existingSession, utcNow);
         }
-
-        var subject = await _dbContext.Subjects
-            .SingleOrDefaultAsync(s => s.CenterId == centerId && s.SubjectId == request.SubjectId && !s.IsDeleted, ct)
-            ?? throw new InvalidOperationException($"Subject '{request.SubjectId}' not found.");
-
-        var topic = await _dbContext.KnowledgeNodes
-            .SingleOrDefaultAsync(kn => kn.CenterId == centerId && kn.NodeId == request.TopicNodeId && !kn.IsDeleted, ct)
-            ?? throw new InvalidOperationException($"TopicNode '{request.TopicNodeId}' not found.");
 
         var twin = await _dbContext.KnowledgeTwins
             .AsNoTracking()

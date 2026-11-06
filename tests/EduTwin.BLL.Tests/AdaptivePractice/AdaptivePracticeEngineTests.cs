@@ -213,6 +213,116 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
         Assert.True(session.IsDiagnosticMode);
     }
 
+    [Theory]
+    [InlineData(10, 4, 8)]
+    [InlineData(15, 5, 12)]
+    [InlineData(20, 6, 15)]
+    public async Task CreateSession_OfferedBudgets_RetainDesignedQuestionLimits(int minutes, int minimum, int maximum)
+    {
+        var request = new CreateAdaptivePracticeSessionRequest
+        {
+            SubjectId = _subjectId, TopicNodeId = _mainTopicId, TimeBudgetMinutes = minutes
+        };
+        var session = await _engine.CreateSessionAsync(_centerId, _studentId, request, _utcNow, default);
+        Assert.Equal(minimum, session.MinimumQuestions);
+        Assert.Equal(maximum, session.MaximumQuestions);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(9)]
+    [InlineData(11)]
+    [InlineData(21)]
+    [InlineData(int.MaxValue)]
+    public async Task CreateSession_UnofferedBudget_RejectsBeforePersistence(int minutes)
+    {
+        var request = new CreateAdaptivePracticeSessionRequest
+        {
+            SubjectId = _subjectId, TopicNodeId = _mainTopicId, TimeBudgetMinutes = minutes
+        };
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _engine.CreateSessionAsync(_centerId, _studentId, request, _utcNow, default));
+        Assert.Empty(await _dbContext.AdaptivePracticeSessions.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("-0.01")]
+    [InlineData("100.01")]
+    public async Task CreateSession_OutOfRangeMastery_RejectsBeforePersistence(string target)
+    {
+        var request = new CreateAdaptivePracticeSessionRequest
+        {
+            SubjectId = _subjectId, TopicNodeId = _mainTopicId,
+            CustomTargetMastery = decimal.Parse(target, System.Globalization.CultureInfo.InvariantCulture)
+        };
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _engine.CreateSessionAsync(_centerId, _studentId, request, _utcNow, default));
+        Assert.Empty(await _dbContext.AdaptivePracticeSessions.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(100)]
+    public async Task CreateSession_MasterBoundary_IsAccepted(int target)
+    {
+        var request = new CreateAdaptivePracticeSessionRequest
+        {
+            SubjectId = _subjectId, TopicNodeId = _mainTopicId, CustomTargetMastery = target
+        };
+        var session = await _engine.CreateSessionAsync(_centerId, _studentId, request, _utcNow, default);
+        Assert.Equal(target, session.TargetMastery);
+    }
+
+    [Fact]
+    public async Task CreateSession_InvalidRequest_DoesNotResumePausedSession()
+    {
+        var request = new CreateAdaptivePracticeSessionRequest { SubjectId = _subjectId, TopicNodeId = _mainTopicId };
+        var session = await _engine.CreateSessionAsync(_centerId, _studentId, request, _utcNow, default);
+        await _engine.PauseSessionAsync(_centerId, _studentId, session.SessionId, _utcNow.AddMinutes(1), default);
+        request.TimeBudgetMinutes = 0;
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _engine.CreateSessionAsync(_centerId, _studentId, request, _utcNow.AddMinutes(2), default));
+        var saved = await _dbContext.AdaptivePracticeSessions.SingleAsync();
+        Assert.Equal(AdaptivePracticeSessionStatus.Paused, saved.Status);
+        Assert.Equal(_utcNow.AddMinutes(1), saved.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task CreateSession_TopicFromOtherSubject_DoesNotResumeExistingSession()
+    {
+        var request = new CreateAdaptivePracticeSessionRequest { SubjectId = _subjectId, TopicNodeId = _mainTopicId };
+        var session = await _engine.CreateSessionAsync(_centerId, _studentId, request, _utcNow, default);
+        await _engine.PauseSessionAsync(_centerId, _studentId, session.SessionId, _utcNow.AddMinutes(1), default);
+        var otherSubject = Guid.NewGuid();
+        _dbContext.KnowledgeNodes.Add(new KnowledgeNode
+        {
+            CenterId = _centerId, SubjectId = otherSubject, NodeId = 999, NodeName = "Other subject",
+            NodeCode = "OTHER", IsActive = true, CreatedAt = _utcNow, UpdatedAt = _utcNow
+        });
+        await _dbContext.SaveChangesAsync();
+        request.TopicNodeId = 999;
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _engine.CreateSessionAsync(_centerId, _studentId, request, _utcNow.AddMinutes(2), default));
+        var saved = await _dbContext.AdaptivePracticeSessions.SingleAsync();
+        Assert.Equal(AdaptivePracticeSessionStatus.Paused, saved.Status);
+        Assert.Equal(_mainTopicId, saved.TopicNodeId);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CreateSession_InactiveAcademicResource_IsRejected(bool disableSubject)
+    {
+        if (disableSubject) (await _dbContext.Subjects.SingleAsync()).IsActive = false;
+        else (await _dbContext.KnowledgeNodes.SingleAsync(n => n.NodeId == _mainTopicId)).IsActive = false;
+        await _dbContext.SaveChangesAsync();
+        var request = new CreateAdaptivePracticeSessionRequest { SubjectId = _subjectId, TopicNodeId = _mainTopicId };
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _engine.CreateSessionAsync(_centerId, _studentId, request, _utcNow, default));
+        Assert.Empty(await _dbContext.AdaptivePracticeSessions.ToListAsync());
+    }
+
     [Fact]
     public async Task CreateSession_ExistingActiveSession_ResumesAndReturnsSameSession()
     {
