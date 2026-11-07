@@ -264,6 +264,11 @@ const PracticePlayerPage = () => {
   const focusedStepIndexRef = useRef<number | null>(null);
   const [stepFocusRequest, setStepFocusRequest] = useState<number | null>(null);
   const [finalStepOverride, setFinalStepOverride] = useState<{ qId: string; index: number } | null>(null);
+  // Local mirror of the step list for the current question. Steps are derived
+  // from reasoningText (one step per line), but an all-empty step list encodes
+  // to the same "" as no steps at all — the mirror keeps a freshly added empty
+  // step alive until it is typed into or the question changes.
+  const [stepsMirror, setStepsMirror] = useState<{ qId: string; steps: string[] } | null>(null);
 
   // After a step split/add, move focus into the freshly created step card.
   useEffect(() => {
@@ -2386,7 +2391,12 @@ const PracticePlayerPage = () => {
   const boardFlowActive = mathToolsEnabled && !isReadOnly;
   const isMcqQuestion = question?.questionType === "MultipleChoice";
   // One step per line of reasoningText — the stored format does not change.
-  const solutionSteps = reasoningText === "" ? [] : reasoningText.split("\n");
+  const solutionSteps =
+    stepsMirror && stepsMirror.qId === String(question?.questionId ?? "")
+      ? stepsMirror.steps
+      : reasoningText === ""
+        ? []
+        : reasoningText.split("\n");
   const finalStepIndex = ((): number => {
     if (solutionSteps.length === 0) return -1;
     if (
@@ -2409,6 +2419,7 @@ const PracticePlayerPage = () => {
   // always through the existing handlers so draft autosave is untouched.
   const commitSteps = (nextSteps: string[], markerIndex: number) => {
     if (isReadOnly) return;
+    setStepsMirror({ qId: String(question?.questionId ?? ""), steps: nextSteps });
     const joined = nextSteps.join("\n");
     handleReasoningChange(joined);
     if (!isMcqQuestion) {
