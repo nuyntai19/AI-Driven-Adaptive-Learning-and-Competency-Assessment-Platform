@@ -103,7 +103,7 @@ test("receipt shows recorded duration and submission, without a running/expired 
 
 const page = fs.readFileSync(new URL("../src/pages/LearningPlayerPage.tsx", import.meta.url), "utf8");
 const startEffect = page.slice(page.indexOf("  // Start only unsubmitted work"), page.indexOf("  // Initialize or update activeQuestionId"));
-function runStartEffect(detail: StudentAssignmentDetailDto, loading = false) {
+function runStartEffect(detail: StudentAssignmentDetailDto, loading = false, gateConfirmed = true) {
   let resolve!: (value: unknown) => void;
   let reject!: (error: unknown) => void;
   const request = new Promise((res, rej) => { resolve = res; reject = rej; });
@@ -112,6 +112,7 @@ function runStartEffect(detail: StudentAssignmentDetailDto, loading = false) {
   const state = {
     assignmentId: detail.assignmentId, assignmentDraftKey: "scope", assignmentLoading: loading,
     assignment: detail, canStartAssignment: shouldStartAssignment(detail),
+    startGateConfirmedFor: gateConfirmed ? detail.assignmentId : null,
     isAssignmentSubmitted: isAssignmentWorkSubmitted(detail),
     assignmentReviewRef: { current: isAssignmentWorkSubmitted(detail) },
     currentUser: { centerId: "center", userId: "student" },
@@ -126,6 +127,10 @@ function runStartEffect(detail: StudentAssignmentDetailDto, loading = false) {
   return { state, errors, cache, resolve, reject, calls: () => calls, refetches: () => refetches,
     flush: async () => { await new Promise<void>(done => setImmediate(done)); } };
 }
+
+test("start effect never fires before the student confirms on the start gate", () => {
+  assert.equal(runStartEffect(assignment({ startedAt: null }), false, false).calls(), 0);
+});
 
 test("actual start effect waits for detail and never restarts completed assignments", () => {
   assert.equal(runStartEffect(assignment({ startedAt: null }), true).calls(), 0);

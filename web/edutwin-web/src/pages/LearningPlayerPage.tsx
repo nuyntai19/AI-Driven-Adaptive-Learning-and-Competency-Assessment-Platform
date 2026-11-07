@@ -273,6 +273,10 @@ const PracticePlayerPage = () => {
   // non-empty step renders as formatted math via RichMathText; clicking a
   // rendered step swaps it back to its textarea for correction.
   const [editingStep, setEditingStep] = useState<{ qId: string; index: number } | null>(null);
+  // The step range produced by the latest handwriting scan (per question).
+  // A rescan replaces this block in place when it is still untouched, so
+  // scanning an updated board updates the steps instead of duplicating them.
+  const [transcribedBlock, setTranscribedBlock] = useState<{ qId: string; start: number; lines: string[] } | null>(null);
 
   // After a step split/add, move focus into the freshly created step card.
   useEffect(() => {
@@ -311,6 +315,12 @@ const PracticePlayerPage = () => {
   const [submissionSaveError, setSubmissionSaveError] = useState<string | null>(null);
   const [canRetrySubmission, setCanRetrySubmission] = useState<boolean>(false);
   const [startAssignmentError, setStartAssignmentError] = useState<string | null>(null);
+  // Start gate: the player must never auto-start an assignment (and thereby
+  // reveal its questions) just because the page was opened. The student has
+  // to confirm on the gate screen first; only then may the effect below call
+  // the start endpoint. Keyed by assignmentId so switching assignments
+  // re-arms the gate.
+  const [startGateConfirmedFor, setStartGateConfirmedFor] = useState<string | null>(null);
   const targetEndTimestampRef = useRef<number | null>(null);
 
   // Asynchronous AI Analysis Banner state (completely separate from submission status)
@@ -555,7 +565,8 @@ const PracticePlayerPage = () => {
   // Start only unsubmitted work, after the detail query has established its state.
   useEffect(() => {
     if (!assignmentId || !assignmentDraftKey || assignmentLoading ||
-        assignment?.assignmentId !== assignmentId || !canStartAssignment) return;
+        assignment?.assignmentId !== assignmentId || !canStartAssignment ||
+        startGateConfirmedFor !== assignmentId) return;
     let cancelled = false;
     startStudentAssignment(assignmentId)
       .then((res) => {
@@ -576,6 +587,7 @@ const PracticePlayerPage = () => {
       });
     return () => { cancelled = true; };
   }, [assignmentId, assignmentDraftKey, assignmentLoading, assignment?.assignmentId, canStartAssignment,
+    startGateConfirmedFor,
     isAssignmentSubmitted, queryClient, currentUser?.centerId, currentUser?.userId, refetchAssignment]);
 
 
@@ -1830,20 +1842,42 @@ const PracticePlayerPage = () => {
         setHandwritingTranscribeError("Không đọc được chữ viết trong ảnh. Hãy vẽ rõ hơn hoặc gõ trực tiếp vào các bước giải bên dưới.");
         return;
       }
-      const merged = reasoningText.trim() ? `${reasoningText.trimEnd()}\n${text}` : text;
+      const qId = String(question?.questionId ?? "");
+      const newLines = text.split("\n");
+      const currentSteps = solutionSteps;
+      // Quét lại = cập nhật: nếu các bước do lần quét trước tạo ra vẫn còn
+      // nguyên (học sinh chưa sửa tay), thay thế đúng khối đó bằng bản quét
+      // mới; nếu đã sửa tay thì nối thêm ở cuối để không ghi đè bài sửa.
+      let blockStart = currentSteps.length;
+      let nextSteps = [...currentSteps, ...newLines];
+      let replaced = false;
+      if (transcribedBlock && transcribedBlock.qId === qId &&
+          currentSteps.slice(transcribedBlock.start, transcribedBlock.start + transcribedBlock.lines.length).join("\n") === transcribedBlock.lines.join("\n")) {
+        blockStart = transcribedBlock.start;
+        nextSteps = [
+          ...currentSteps.slice(0, blockStart),
+          ...newLines,
+          ...currentSteps.slice(blockStart + transcribedBlock.lines.length),
+        ];
+        replaced = true;
+      }
+      const merged = nextSteps.join("\n");
       handleReasoningChange(merged);
-      setStepsMirror({ qId: String(question?.questionId ?? ""), steps: merged.split("\n") });
+      setStepsMirror({ qId, steps: nextSteps });
       setEditingStep(null);
+      setTranscribedBlock({ qId, start: blockStart, lines: newLines });
       // Câu tự luận/ngắn: bước cuối của bản chép là đáp án cuối (học sinh có
       // thể đổi dấu chọn sang bước khác). Trắc nghiệm giữ nguyên lựa chọn.
       if (question?.questionType !== "MultipleChoice") {
-        const lines = merged.split("\n");
-        const conclusion = lines[lines.length - 1] ?? "";
+        const conclusionIndex = blockStart + newLines.length - 1;
+        const conclusion = nextSteps[conclusionIndex] ?? "";
         if (conclusion !== finalAnswer) handleAnswerChange(conclusion, "");
         persistCurrentAnswer(conclusion, merged, undefined, "");
-        setFinalStepOverride({ qId: String(question?.questionId ?? ""), index: lines.length - 1 });
+        setFinalStepOverride({ qId, index: conclusionIndex });
       }
-      setHandwritingTranscribeNotice("Đã chép chữ viết thành các bước giải bên dưới. Đây là bản chép tự động — hãy kiểm tra và sửa lại cho đúng trước khi nộp bài.");
+      setHandwritingTranscribeNotice(replaced
+        ? "Đã quét lại và cập nhật các bước từ ảnh mới nhất. Hãy kiểm tra và sửa lại cho đúng trước khi nộp bài."
+        : "Đã chép chữ viết thành các bước giải bên dưới. Đây là bản chép tự động — hãy kiểm tra và sửa lại cho đúng trước khi nộp bài.");
     } catch (error) {
       const errObj = error as { response?: { data?: { detail?: string } }; message?: string };
       setHandwritingTranscribeError(errObj?.response?.data?.detail || "Không thể nhận dạng chữ viết lúc này. Hãy thử lại hoặc gõ trực tiếp vào các bước giải bên dưới.");
@@ -2596,6 +2630,52 @@ const PracticePlayerPage = () => {
       </div>
     );
   }
+  // Start gate screen: assignment not started yet and the student has not
+  // confirmed. Nothing about the questions is shown here — the detail DTO
+  // already withholds question content until the start call succeeds.
+  if (assignmentId && assignment?.assignmentId === assignmentId && !assignmentError &&
+      canStartAssignment && !assignment.startedAt && startGateConfirmedFor !== assignmentId) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] p-6 text-slate-800 dark:text-slate-100 flex items-center justify-center">
+        <div className="mx-auto max-w-xl w-full rounded-3xl bg-white dark:bg-[#0f172a] p-8 sm:p-10 shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-5">
+          <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-2xl">
+            📝
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">{assignment.title}</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+              Bài làm có {assignment.progress?.totalQuestionCount ?? assignment.questions.length} câu hỏi
+              {assignment.timeLimitMinutes ? ` · Thời gian làm bài: ${assignment.timeLimitMinutes} phút` : ""}
+              {assignment.dueAt ? ` · Hạn nộp: ${new Date(assignment.dueAt).toLocaleString("vi-VN")}` : ""}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm leading-relaxed text-amber-800 dark:text-amber-200">
+            Nội dung câu hỏi chỉ hiển thị <strong>sau khi bạn bắt đầu làm bài</strong>. Ngay khi bấm
+            “Bắt đầu làm bài”, hệ thống sẽ ghi nhận thời gian bắt đầu{assignment.timeLimitMinutes ? " và đồng hồ tính giờ sẽ chạy" : ""}.
+            Hãy chỉ bắt đầu khi đã sẵn sàng — không thể xem trước đề rồi quay lại sau.
+          </div>
+          {assignment.instructions && (
+            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">{assignment.instructions}</p>
+          )}
+          <div className="pt-2 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => setStartGateConfirmedFor(assignmentId)}
+              className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white shadow-xs hover:bg-indigo-500 transition-colors cursor-pointer"
+            >
+              Bắt đầu làm bài →
+            </button>
+            <Link
+              to={studentScopeUrl(`/hoc-tap/bai-tap/${assignmentId}`, searchParams)}
+              className="rounded-xl bg-slate-100 dark:bg-slate-800 px-5 py-2.5 text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            >
+              ← Quay lại
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (questionLoading || (assignmentId && assignment?.assignmentId === assignmentId && !assignmentError && !isAssignmentSubmitted && !isLocallySubmitted && (!draftHydrated || (!assignment.startedAt && canStartAssignment && !startAssignmentError)))) {
     return (
       <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] p-6 text-slate-800 dark:text-slate-100 flex items-center justify-center">
@@ -2865,6 +2945,7 @@ const PracticePlayerPage = () => {
           clientSubmissionId={getClientSubmissionId()}
           isAttached={Boolean(attachedSnapshotDataUrl)}
           isReadOnly={false}
+          backgroundImageUrl={attachedSnapshotDataUrl}
           onAttachSnapshot={handleAttachSnapshot}
         />
       </div>
