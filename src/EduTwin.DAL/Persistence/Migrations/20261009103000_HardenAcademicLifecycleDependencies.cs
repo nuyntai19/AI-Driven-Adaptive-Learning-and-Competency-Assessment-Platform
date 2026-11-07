@@ -31,7 +31,7 @@ public sealed class HardenAcademicLifecycleDependencies : Migration
         migrationBuilder.Sql($"""
             CREATE TRIGGER tr_knowledge_node_lifecycle BEFORE UPDATE ON knowledge_nodes FOR EACH ROW
             BEGIN
-              IF (NOT(NEW.node_name <=> OLD.node_name) OR NOT(NEW.description <=> OLD.description) OR NOT(NEW.parent_node_id <=> OLD.parent_node_id)
+              IF (NOT(NEW.node_name <=> OLD.node_name) OR (OLD.description IS NOT NULL AND OLD.description<>'' AND NOT(NEW.description <=> OLD.description)) OR NOT(NEW.parent_node_id <=> OLD.parent_node_id)
                   OR NOT(NEW.subject_id <=> OLD.subject_id) OR NOT(NEW.node_code <=> OLD.node_code) OR NOT(NEW.node_type <=> OLD.node_type))
                 AND EXISTS (SELECT 1 FROM curriculum_nodes cn JOIN curriculums cu ON cu.center_id=cn.center_id AND cu.curriculum_id=cn.curriculum_id
                   WHERE cn.center_id=OLD.center_id AND cn.node_id=OLD.node_id AND cu.review_status IN ('Published','Archived'))

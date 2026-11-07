@@ -58,6 +58,7 @@ public sealed class ExpandedDemoSeedBackfill(EduTwinDbContext db, TimeProvider c
                 var toDescribe = undescribed.Where(n => descriptionByNode.ContainsKey(n.NodeId)).ToList();
                 if (missingQuestions.Length > 0 || toDescribe.Count > 0)
                 {
+                    if (toDescribe.Count > 0) await AllowInitialNodeDescriptionFillOnMySqlAsync(ct);
                     var topUpNow = clock.GetUtcNow().UtcDateTime;
                     await using var topUp = await db.Database.BeginTransactionAsync(ct);
                     foreach (var node in toDescribe) { node.Description = descriptionByNode[node.NodeId]; node.UpdatedAt = topUpNow; }
@@ -129,6 +130,36 @@ public sealed class ExpandedDemoSeedBackfill(EduTwinDbContext db, TimeProvider c
             db.QuestionKnowledgeNodes.AddRange(seed.QuestionNodes.Where(m => newQuestions.Any(q => q.QuestionId == m.QuestionId)));
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
+        }
+    }
+
+    private async Task AllowInitialNodeDescriptionFillOnMySqlAsync(CancellationToken ct)
+    {
+        if (db.Database.ProviderName?.Contains("MySql", StringComparison.OrdinalIgnoreCase) != true) return;
+        const string oldCheck = "NOT(NEW.description <=> OLD.description)";
+        const string newCheck = "(OLD.description IS NOT NULL AND OLD.description<>'' AND NOT(NEW.description <=> OLD.description))";
+        var connection = db.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open) await connection.OpenAsync(ct);
+        foreach (var trigger in new[] { "tr_knowledge_node_lifecycle", "tr_canonical_node_graph_freeze" })
+        {
+            string? statement;
+            await using (var cmd = connection.CreateCommand())
+            {
+                cmd.CommandText = $"SELECT ACTION_STATEMENT FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND TRIGGER_NAME = '{trigger}'";
+                statement = (await cmd.ExecuteScalarAsync(ct)) as string;
+            }
+            if (string.IsNullOrWhiteSpace(statement) || statement.Contains("OLD.description IS NOT NULL", StringComparison.Ordinal) ||
+                !statement.Contains(oldCheck, StringComparison.Ordinal)) continue;
+            await using (var drop = connection.CreateCommand())
+            {
+                drop.CommandText = $"DROP TRIGGER IF EXISTS {trigger};";
+                await drop.ExecuteNonQueryAsync(ct);
+            }
+            await using (var create = connection.CreateCommand())
+            {
+                create.CommandText = $"CREATE TRIGGER {trigger} BEFORE UPDATE ON knowledge_nodes FOR EACH ROW {statement.Replace(oldCheck, newCheck, StringComparison.Ordinal)}";
+                await create.ExecuteNonQueryAsync(ct);
+            }
         }
     }
 }
