@@ -42,6 +42,7 @@ import { StudentSubjectRequiredState } from "../components/student/StudentSubjec
 import { areSubmittedAnalysesTerminal, isAIProcessingPending } from "../utils/aiProcessingNotice";
 import { AttemptFeedbackHierarchy } from "../components/student/AttemptFeedbackHierarchy";
 import { AttemptScratchpadAttachment } from "../components/student/AttemptScratchpadAttachment";
+import { transcribeHandwriting } from "../api/handwritingApi";
 import { AssignmentReviewReceipt } from "../components/student/AssignmentReviewReceipt";
 import { isAssignmentWorkSubmitted, shouldStartAssignment, getAssignmentReviewTiming, isActiveAssignmentExpired } from "../utils/assignmentReviewTiming";
 import { getAttemptFeedbackPresentation, normalizeQuestionScore, fallbackAssignmentGrade } from "../utils/attemptFeedbackPresentation";
@@ -245,6 +246,11 @@ const PracticePlayerPage = () => {
   // Assistant tools state
   const [activeSideTool, setActiveSideTool] = useState<AssistantToolTab | null>(null);
   const [drawingUploadToken, setDrawingUploadToken] = useState<string | null>(null);
+
+  // Handwriting transcription (bản chép gợi ý từ ảnh nháp, học sinh tự xác nhận)
+  const [isTranscribingHandwriting, setIsTranscribingHandwriting] = useState(false);
+  const [handwritingTranscribeError, setHandwritingTranscribeError] = useState<string | null>(null);
+  const [handwritingTranscribeNotice, setHandwritingTranscribeNotice] = useState<string | null>(null);
 
   // Input refs and cursor management
   const reasoningTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1727,6 +1733,8 @@ const PracticePlayerPage = () => {
 
   const handleRemoveSnapshot = () => {
     if (isReadOnly) return;
+    setHandwritingTranscribeError(null);
+    setHandwritingTranscribeNotice(null);
     setAttachedSnapshotBlob(null);
     setAttachedSnapshotDataUrl(null);
     setAttachedSnapshotTime(null);
@@ -1751,6 +1759,30 @@ const PracticePlayerPage = () => {
         writeAssignmentDraft(assignmentDraftScope, JSON.stringify(next));
         return next;
       });
+    }
+  };
+
+  // Nhận dạng chữ viết: chép ảnh nháp thành văn bản trong ô lập luận.
+  // Đây chỉ là bản chép gợi ý — học sinh kiểm tra, sửa lại rồi mới nộp,
+  // đúng nguyên tắc "AI chép, học sinh xác nhận" của luồng viết tay.
+  const handleTranscribeHandwriting = async () => {
+    if (!attachedSnapshotDataUrl || isTranscribingHandwriting || isReadOnly) return;
+    setIsTranscribingHandwriting(true);
+    setHandwritingTranscribeError(null);
+    setHandwritingTranscribeNotice(null);
+    try {
+      const text = await transcribeHandwriting(attachedSnapshotDataUrl);
+      if (!text.trim()) {
+        setHandwritingTranscribeError("Không đọc được chữ viết trong ảnh. Hãy vẽ rõ hơn hoặc gõ trực tiếp vào ô lập luận.");
+        return;
+      }
+      handleReasoningChange(reasoningText.trim() ? `${reasoningText.trimEnd()}\n${text}` : text);
+      setHandwritingTranscribeNotice("Đã chép chữ viết vào ô lập luận bên trên. Đây là bản chép tự động — hãy kiểm tra và sửa lại cho đúng trước khi nộp bài.");
+    } catch (error) {
+      const errObj = error as { response?: { data?: { detail?: string } }; message?: string };
+      setHandwritingTranscribeError(errObj?.response?.data?.detail || "Không thể nhận dạng chữ viết lúc này. Hãy thử lại hoặc gõ trực tiếp vào ô lập luận.");
+    } finally {
+      setIsTranscribingHandwriting(false);
     }
   };
 
@@ -3476,6 +3508,7 @@ const PracticePlayerPage = () => {
                   (assignmentQuestion?.hasAttachment || reviewFeedbackQuery.data?.studentSubmission?.attachmentUrl || immediateQuestionFeedback?.studentSubmission?.attachmentUrl) ? (
                   <AttemptScratchpadAttachment attemptId={reviewAttemptId} />
                 ) : !isCurrentQuestionSubmitted && attachedSnapshotDataUrl ? (
+                  <>
                   <div className="mt-4 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 p-4 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <img
@@ -3512,6 +3545,17 @@ const PracticePlayerPage = () => {
                       {!isReadOnly && (
                         <button
                           type="button"
+                          onClick={() => void handleTranscribeHandwriting()}
+                          disabled={isTranscribingHandwriting}
+                          className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-xs cursor-pointer"
+                          title="Chép chữ viết tay trong ảnh thành văn bản trong ô lập luận để bạn kiểm tra và sửa lại"
+                        >
+                          {isTranscribingHandwriting ? "Đang nhận dạng…" : "📝 Nhận dạng chữ viết"}
+                        </button>
+                      )}
+                      {!isReadOnly && (
+                        <button
+                          type="button"
                           onClick={handleRemoveSnapshot}
                           className="px-2 py-1.5 rounded-lg text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-950/40 font-bold text-xs cursor-pointer"
                           title="Gỡ ảnh đính kèm này"
@@ -3521,6 +3565,17 @@ const PracticePlayerPage = () => {
                       )}
                     </div>
                   </div>
+                  {handwritingTranscribeNotice && (
+                    <p role="status" className="mt-2 text-xs font-medium text-indigo-700 dark:text-indigo-300">
+                      {handwritingTranscribeNotice}
+                    </p>
+                  )}
+                  {handwritingTranscribeError && (
+                    <p role="alert" className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-300">
+                      {handwritingTranscribeError}
+                    </p>
+                  )}
+                  </>
                 ) : null}
               </div>
 
