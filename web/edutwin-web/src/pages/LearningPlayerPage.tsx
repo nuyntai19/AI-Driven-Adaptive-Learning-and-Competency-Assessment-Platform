@@ -55,6 +55,7 @@ import { RichMathEditor, type RichMathEditorRef } from "../components/math/RichM
 import { ModeAwareAnswerEditor } from "../components/math/answer-editor/ModeAwareAnswerEditor";
 import type { AnswerEditorRef } from "../components/math/answer-editor/answerEditorHelpers";
 import { SideAssistantWorkspace, type AssistantToolTab } from "../components/math/SideAssistantWorkspace";
+import { ScratchpadInlinePanel, type ScratchpadInlinePanelHandle } from "../components/math/ScratchpadInlinePanel";
 import {
   clearAttemptSessionId,
   createClientSubmissionId,
@@ -251,6 +252,29 @@ const PracticePlayerPage = () => {
   const [isTranscribingHandwriting, setIsTranscribingHandwriting] = useState(false);
   const [handwritingTranscribeError, setHandwritingTranscribeError] = useState<string | null>(null);
   const [handwritingTranscribeNotice, setHandwritingTranscribeNotice] = useState<string | null>(null);
+
+  // Board-centric flow (Cách A): the inline board is the primary writing
+  // surface; reasoningText is stored as one step per line and rendered as
+  // editable step cards. These refs/state only steer that presentation —
+  // finalAnswer/reasoningText remain the single source of truth.
+  const boardPanelRef = useRef<ScratchpadInlinePanelHandle>(null);
+  const boardInsertHandlerRef = useRef<((text: string) => void) | null>(null);
+  const boardSectionRef = useRef<HTMLDivElement>(null);
+  const stepTextareaRefs = useRef<Array<HTMLTextAreaElement | null>>([]);
+  const focusedStepIndexRef = useRef<number | null>(null);
+  const [stepFocusRequest, setStepFocusRequest] = useState<number | null>(null);
+  const [finalStepOverride, setFinalStepOverride] = useState<{ qId: string; index: number } | null>(null);
+
+  // After a step split/add, move focus into the freshly created step card.
+  useEffect(() => {
+    if (stepFocusRequest === null) return;
+    const el = stepTextareaRefs.current[stepFocusRequest];
+    if (el) {
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    }
+    setStepFocusRequest(null);
+  }, [stepFocusRequest]);
 
   // Input refs and cursor management
   const reasoningTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1647,6 +1671,13 @@ const PracticePlayerPage = () => {
   const insertTextAtCursor = (textToInsert: string) => {
     if (isReadOnly) return;
 
+    // Board-centric flow: there is no separate answer/reasoning editor, so
+    // tool results land in the step card the student is working on.
+    if (boardInsertHandlerRef.current) {
+      boardInsertHandlerRef.current(textToInsert);
+      return;
+    }
+
     if (activeInputTarget === "answer") {
       if (answerEditorRef.current?.insertAtCursor) {
         answerEditorRef.current.insertAtCursor(textToInsert);
@@ -1762,25 +1793,49 @@ const PracticePlayerPage = () => {
     }
   };
 
-  // Nhận dạng chữ viết: chép ảnh nháp thành văn bản trong ô lập luận.
+  // Nhận dạng chữ viết: chép nét vẽ HIỆN TẠI trên bảng thành các bước giải.
   // Đây chỉ là bản chép gợi ý — học sinh kiểm tra, sửa lại rồi mới nộp,
   // đúng nguyên tắc "AI chép, học sinh xác nhận" của luồng viết tay.
+  // Ảnh bảng đồng thời được đính kèm làm bằng chứng qua đúng cơ chế snapshot
+  // sẵn có, nên học sinh không cần bấm "Đính kèm" riêng trước khi nhận dạng.
   const handleTranscribeHandwriting = async () => {
-    if (!attachedSnapshotDataUrl || isTranscribingHandwriting || isReadOnly) return;
+    if (isTranscribingHandwriting || isReadOnly) return;
     setIsTranscribingHandwriting(true);
     setHandwritingTranscribeError(null);
     setHandwritingTranscribeNotice(null);
     try {
-      const text = await transcribeHandwriting(attachedSnapshotDataUrl);
-      if (!text.trim()) {
-        setHandwritingTranscribeError("Không đọc được chữ viết trong ảnh. Hãy vẽ rõ hơn hoặc gõ trực tiếp vào ô lập luận.");
+      let imageDataUrl = attachedSnapshotDataUrl;
+      const snapshot = boardPanelRef.current ? await boardPanelRef.current.exportSnapshot() : null;
+      if (snapshot) {
+        if (snapshot.dataUrl !== attachedSnapshotDataUrl) {
+          handleAttachSnapshot(snapshot.blob, snapshot.dataUrl);
+        }
+        imageDataUrl = snapshot.dataUrl;
+      }
+      if (!imageDataUrl) {
+        setHandwritingTranscribeError("Hãy viết bài giải lên bảng trước, hoặc gõ trực tiếp vào các bước giải bên dưới.");
         return;
       }
-      handleReasoningChange(reasoningText.trim() ? `${reasoningText.trimEnd()}\n${text}` : text);
-      setHandwritingTranscribeNotice("Đã chép chữ viết vào ô lập luận bên trên. Đây là bản chép tự động — hãy kiểm tra và sửa lại cho đúng trước khi nộp bài.");
+      const text = await transcribeHandwriting(imageDataUrl);
+      if (!text.trim()) {
+        setHandwritingTranscribeError("Không đọc được chữ viết trong ảnh. Hãy vẽ rõ hơn hoặc gõ trực tiếp vào các bước giải bên dưới.");
+        return;
+      }
+      const merged = reasoningText.trim() ? `${reasoningText.trimEnd()}\n${text}` : text;
+      handleReasoningChange(merged);
+      // Câu tự luận/ngắn: bước cuối của bản chép là đáp án cuối (học sinh có
+      // thể đổi dấu chọn sang bước khác). Trắc nghiệm giữ nguyên lựa chọn.
+      if (question?.questionType !== "MultipleChoice") {
+        const lines = merged.split("\n");
+        const conclusion = lines[lines.length - 1] ?? "";
+        if (conclusion !== finalAnswer) handleAnswerChange(conclusion, "");
+        persistCurrentAnswer(conclusion, merged, undefined, "");
+        setFinalStepOverride({ qId: String(question?.questionId ?? ""), index: lines.length - 1 });
+      }
+      setHandwritingTranscribeNotice("Đã chép chữ viết thành các bước giải bên dưới. Đây là bản chép tự động — hãy kiểm tra và sửa lại cho đúng trước khi nộp bài.");
     } catch (error) {
       const errObj = error as { response?: { data?: { detail?: string } }; message?: string };
-      setHandwritingTranscribeError(errObj?.response?.data?.detail || "Không thể nhận dạng chữ viết lúc này. Hãy thử lại hoặc gõ trực tiếp vào ô lập luận.");
+      setHandwritingTranscribeError(errObj?.response?.data?.detail || "Không thể nhận dạng chữ viết lúc này. Hãy thử lại hoặc gõ trực tiếp vào các bước giải bên dưới.");
     } finally {
       setIsTranscribingHandwriting(false);
     }
@@ -2325,6 +2380,94 @@ const PracticePlayerPage = () => {
     isAssignmentExpired ||
     Boolean(assignmentQuestion?.isVoided);
 
+  // ── Board-centric answering flow (Cách A) ──────────────────────────────
+  // Active for math-enabled questions while the student can still write.
+  // Read-only review and non-math subjects keep the classic editors below.
+  const boardFlowActive = mathToolsEnabled && !isReadOnly;
+  const isMcqQuestion = question?.questionType === "MultipleChoice";
+  // One step per line of reasoningText — the stored format does not change.
+  const solutionSteps = reasoningText === "" ? [] : reasoningText.split("\n");
+  const finalStepIndex = ((): number => {
+    if (solutionSteps.length === 0) return -1;
+    if (
+      finalStepOverride &&
+      finalStepOverride.qId === String(question?.questionId) &&
+      finalStepOverride.index < solutionSteps.length &&
+      solutionSteps[finalStepOverride.index] === finalAnswer
+    ) {
+      return finalStepOverride.index;
+    }
+    if (finalAnswer) {
+      const match = solutionSteps.map((s) => s.trim()).lastIndexOf(finalAnswer.trim());
+      if (match >= 0) return match;
+    }
+    return solutionSteps.length - 1;
+  })();
+
+  // Single write path for every step-card operation: joins the steps back
+  // into reasoningText and (non-MCQ) points finalAnswer at the marked step,
+  // always through the existing handlers so draft autosave is untouched.
+  const commitSteps = (nextSteps: string[], markerIndex: number) => {
+    if (isReadOnly) return;
+    const joined = nextSteps.join("\n");
+    handleReasoningChange(joined);
+    if (!isMcqQuestion) {
+      const conclusion = nextSteps.length === 0 ? "" : (nextSteps[Math.min(markerIndex, nextSteps.length - 1)] ?? "");
+      if (conclusion !== finalAnswer) handleAnswerChange(conclusion, "");
+      persistCurrentAnswer(conclusion, joined, undefined, "");
+      setFinalStepOverride({
+        qId: String(question?.questionId ?? ""),
+        index: nextSteps.length === 0 ? 0 : Math.min(markerIndex, nextSteps.length - 1),
+      });
+    }
+  };
+
+  const handleStepEdit = (index: number, value: string) => {
+    // Enter (or a pasted multi-line block) splits one card into several steps.
+    const parts = value.split("\n");
+    const nextSteps = [...solutionSteps.slice(0, index), ...parts, ...solutionSteps.slice(index + 1)];
+    let marker = finalStepIndex;
+    if (index < marker) marker += parts.length - 1;
+    else if (index === marker) marker = index + parts.length - 1;
+    commitSteps(nextSteps, marker);
+    if (parts.length > 1) setStepFocusRequest(index + parts.length - 1);
+  };
+
+  const handleStepDelete = (index: number) => {
+    const nextSteps = solutionSteps.filter((_, i) => i !== index);
+    let marker = finalStepIndex;
+    if (index < marker) marker -= 1;
+    else if (index === marker) marker = Math.min(index, nextSteps.length - 1);
+    commitSteps(nextSteps, Math.max(0, marker));
+  };
+
+  const handleStepAdd = () => {
+    commitSteps([...solutionSteps, ""], finalStepIndex < 0 ? 0 : finalStepIndex);
+    setStepFocusRequest(solutionSteps.length);
+  };
+
+  const handleStepMarkFinal = (index: number) => {
+    commitSteps(solutionSteps, index);
+  };
+
+  // Casio/graph results are inserted into the step being edited (or the last
+  // one) — assigned every render so insertTextAtCursor stays untouched.
+  boardInsertHandlerRef.current = boardFlowActive
+    ? (text: string) => {
+        if (solutionSteps.length === 0) {
+          commitSteps([text], 0);
+          return;
+        }
+        const target = Math.min(
+          Math.max(focusedStepIndexRef.current ?? solutionSteps.length - 1, 0),
+          solutionSteps.length - 1
+        );
+        const nextSteps = [...solutionSteps];
+        nextSteps[target] = nextSteps[target] + text;
+        commitSteps(nextSteps, finalStepIndex < 0 ? nextSteps.length - 1 : finalStepIndex);
+      }
+    : null;
+
   // Guard: if adaptive mode and no subject selected
   if (!assignmentId && !subjectId) {
     return <StudentSubjectRequiredState onSelect={(id) => setSearchParams({ subjectId: id })} />;
@@ -2683,6 +2826,128 @@ const PracticePlayerPage = () => {
       </div>
     );
   }
+
+  // Board + step cards: the shared body of the board-centric flow.
+  // withFinalMarker (câu tự luận/ngắn) — one card carries the "Đáp án cuối"
+  // marker and feeds finalAnswer; without it (trắc nghiệm) the steps are the
+  // explanation only and the selected option stays the final answer.
+  const renderBoardWork = (withFinalMarker: boolean) => (
+    <div className="space-y-4">
+      <div ref={boardSectionRef} className="h-[430px] sm:h-[500px]">
+        <ScratchpadInlinePanel
+          ref={boardPanelRef}
+          centerId={currentUser?.centerId ?? ""}
+          userId={currentUser?.userId ?? ""}
+          clientSubmissionId={getClientSubmissionId()}
+          isAttached={Boolean(attachedSnapshotDataUrl)}
+          isReadOnly={false}
+          onAttachSnapshot={handleAttachSnapshot}
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => void handleTranscribeHandwriting()}
+          disabled={isTranscribingHandwriting}
+          className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-sm cursor-pointer shadow-sm shadow-indigo-600/30"
+          title="Chép chữ viết trên bảng thành các bước giải để bạn kiểm tra và sửa lại"
+        >
+          {isTranscribingHandwriting ? "Đang nhận dạng…" : "📝 Nhận dạng chữ viết trên bảng"}
+        </button>
+        <span className="text-xs text-slate-500 dark:text-slate-400">
+          Viết bài giải lên bảng rồi nhận dạng, hoặc gõ trực tiếp vào từng bước bên dưới.
+        </span>
+      </div>
+      {handwritingTranscribeNotice && (
+        <p role="status" className="text-xs font-medium text-indigo-700 dark:text-indigo-300">
+          {handwritingTranscribeNotice}
+        </p>
+      )}
+      {handwritingTranscribeError && (
+        <p role="alert" className="text-xs font-medium text-rose-700 dark:text-rose-300">
+          {handwritingTranscribeError}
+        </p>
+      )}
+
+      <div className="space-y-2">
+        {solutionSteps.length === 0 && (
+          <p className="text-sm text-slate-400 border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl px-4 py-3">
+            Chưa có bước giải nào. Viết lên bảng rồi bấm “Nhận dạng chữ viết”, hoặc thêm bước và gõ trực tiếp.
+          </p>
+        )}
+        {solutionSteps.map((step, i) => {
+          const isFinalStep = withFinalMarker && i === finalStepIndex;
+          return (
+            <div
+              key={i}
+              className={`flex items-start gap-2.5 rounded-2xl border p-2.5 transition-colors ${
+                isFinalStep
+                  ? "border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/30 ring-1 ring-emerald-500/40"
+                  : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/60"
+              }`}
+            >
+              <span
+                className={`w-6 h-6 rounded-full font-bold text-[11px] flex items-center justify-center shrink-0 mt-1 ${
+                  isFinalStep
+                    ? "bg-emerald-600 text-white"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300"
+                }`}
+              >
+                {i + 1}
+              </span>
+              <textarea
+                ref={(el) => {
+                  stepTextareaRefs.current[i] = el;
+                }}
+                aria-label={`Bước giải ${i + 1}`}
+                value={step}
+                rows={1}
+                onFocus={() => {
+                  focusedStepIndexRef.current = i;
+                  setActiveInputTarget("reasoning");
+                }}
+                onChange={(e) => handleStepEdit(i, e.target.value)}
+                placeholder={`Bước ${i + 1}…`}
+                className="flex-1 min-w-0 resize-none bg-transparent outline-none text-sm leading-relaxed text-slate-800 dark:text-slate-100 placeholder:text-slate-400 py-1"
+              />
+              {withFinalMarker &&
+                (isFinalStep ? (
+                  <span className="shrink-0 mt-1 px-2 py-1 rounded-lg bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wide">
+                    Đáp án cuối
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleStepMarkFinal(i)}
+                    className="shrink-0 mt-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300 text-[10px] font-bold uppercase tracking-wide hover:border-emerald-500 hover:text-emerald-600 cursor-pointer"
+                    title="Dùng bước này làm đáp án cuối"
+                  >
+                    Đáp án cuối?
+                  </button>
+                ))}
+              <button
+                type="button"
+                onClick={() => handleStepDelete(i)}
+                aria-label={`Xóa bước ${i + 1}`}
+                title="Xóa bước này"
+                className="shrink-0 mt-1 px-1.5 py-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          );
+        })}
+        <button
+          type="button"
+          onClick={handleStepAdd}
+          className="px-3.5 py-2 rounded-xl border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-300 font-bold text-xs hover:border-indigo-400 hover:text-indigo-600 cursor-pointer"
+        >
+          + Thêm bước
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-stone-50/50 dark:bg-[#101623] text-stone-800 dark:text-stone-100 flex flex-col antialiased student-shell">
@@ -3334,12 +3599,20 @@ const PracticePlayerPage = () => {
                       </div>
                     </button>}
 
-                    {/* Button 2: Bảng nháp vẽ tay */}
+                    {/* Button 2: Bảng nháp vẽ tay — ở luồng bảng trung tâm, bảng
+                        đã nằm ngay trong bài làm nên nút này cuộn tới bảng thay
+                        vì mở thêm một bảng thứ hai ở khung trợ lý. */}
                     <button
                       type="button"
-                      onClick={() => setActiveSideTool(activeSideTool === "scratchpad" ? null : "scratchpad")}
+                      onClick={() => {
+                        if (boardFlowActive) {
+                          boardSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                        } else {
+                          setActiveSideTool(activeSideTool === "scratchpad" ? null : "scratchpad");
+                        }
+                      }}
                       className={`flex items-center gap-2.5 p-3 rounded-xl font-medium text-xs sm:text-sm transition-all border text-left cursor-pointer ${
-                        activeSideTool === "scratchpad"
+                        !boardFlowActive && activeSideTool === "scratchpad"
                           ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 ring-1 ring-emerald-500"
                           : "border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/50 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300"
                       }`}
@@ -3348,7 +3621,7 @@ const PracticePlayerPage = () => {
                       <div className="min-w-0">
                         <div className="font-bold text-xs text-stone-900 dark:text-stone-100">Bảng vẽ nháp</div>
                         <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">
-                          {attachedSnapshotDataUrl ? "✓ Đã đính kèm ảnh" : "Thu phóng & vẽ tự do"}
+                          {attachedSnapshotDataUrl ? "✓ Đã đính kèm ảnh" : boardFlowActive ? "Đang ở ngay trong bài làm ↓" : "Thu phóng & vẽ tự do"}
                         </div>
                       </div>
                     </button>
@@ -3377,7 +3650,7 @@ const PracticePlayerPage = () => {
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                      Đáp án của bạn
+                      {boardFlowActive && !isMcqQuestion ? "Bài làm — viết tay trên bảng" : "Đáp án của bạn"}
                     </span>
                     {isAssignmentSubmitted && (
                       <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
@@ -3426,6 +3699,11 @@ const PracticePlayerPage = () => {
                             <span className="text-sm font-semibold truncate block">
                               <RichMathText content={option.text} />
                             </span>
+                            {isSelected && boardFlowActive && (
+                              <span className="inline-block text-[10px] font-black uppercase tracking-wide text-white bg-emerald-600 px-1.5 py-0.5 rounded-md mt-1">
+                                Đáp án cuối
+                              </span>
+                            )}
                             {isSelected && isAssignmentSubmitted && (
                               <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 block mt-0.5">
                                 ✓ Đáp án bạn đã nộp
@@ -3436,6 +3714,8 @@ const PracticePlayerPage = () => {
                       );
                     })}
                   </fieldset>
+                ) : boardFlowActive ? (
+                  renderBoardWork(true)
                 ) : (
                   <div>
                     {!mathToolsEnabled ? <textarea aria-label="Đáp án của bạn" value={finalAnswer} disabled={isReadOnly} onChange={e => handleAnswerChange(e.target.value, "")} placeholder="Nhập câu trả lời..." className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <ModeAwareAnswerEditor
@@ -3468,8 +3748,12 @@ const PracticePlayerPage = () => {
                 )}
               </div>
 
-              {/* 5. Reasoning / Solution Section (DUY NHẤT 1 Ô VĂN BẢN, KHÔNG TRÙNG LẶP) */}
+              {/* 5. Reasoning / Solution Section — ở luồng bảng trung tâm:
+                  câu tự luận đã gộp bảng + bước giải vào mục 4 nên mục này chỉ
+                  còn thẻ ảnh đính kèm; câu trắc nghiệm hiển thị bảng + các
+                  bước giải (phần lập luận) tại đây. */}
               <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
+                {!(boardFlowActive && !isMcqQuestion) && (
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-400">
                     Lập luận tư duy & Trình bày các bước giải
@@ -3484,8 +3768,11 @@ const PracticePlayerPage = () => {
                     </span>
                   ) : null}
                 </div>
+                )}
 
-                {!mathToolsEnabled ? <textarea aria-label="Lập luận của bạn" value={reasoningText} disabled={isReadOnly} onChange={e => handleReasoningChange(e.target.value)} placeholder="Trình bày lập luận của bạn..." className="w-full min-h-32 rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <RichMathEditor
+                {boardFlowActive ? (
+                  isMcqQuestion ? renderBoardWork(false) : null
+                ) : !mathToolsEnabled ? <textarea aria-label="Lập luận của bạn" value={reasoningText} disabled={isReadOnly} onChange={e => handleReasoningChange(e.target.value)} placeholder="Trình bày lập luận của bạn..." className="w-full min-h-32 rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <RichMathEditor
                   ref={reasoningEditorRef}
                   variant="student"
                   value={reasoningText}
@@ -3542,7 +3829,7 @@ const PracticePlayerPage = () => {
                       >
                         🔍 Xem to
                       </button>
-                      {!isReadOnly && (
+                      {!isReadOnly && !boardFlowActive && (
                         <button
                           type="button"
                           onClick={() => void handleTranscribeHandwriting()}
@@ -3565,12 +3852,12 @@ const PracticePlayerPage = () => {
                       )}
                     </div>
                   </div>
-                  {handwritingTranscribeNotice && (
+                  {!boardFlowActive && handwritingTranscribeNotice && (
                     <p role="status" className="mt-2 text-xs font-medium text-indigo-700 dark:text-indigo-300">
                       {handwritingTranscribeNotice}
                     </p>
                   )}
-                  {handwritingTranscribeError && (
+                  {!boardFlowActive && handwritingTranscribeError && (
                     <p role="alert" className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-300">
                       {handwritingTranscribeError}
                     </p>
@@ -3722,7 +4009,8 @@ const PracticePlayerPage = () => {
             <div className="lg:col-span-4 xl:col-span-4 sticky top-4 max-h-[calc(100vh-2rem)] flex flex-col">
               <SideAssistantWorkspace
                 mathToolsEnabled={mathToolsEnabled}
-                activeTab={mathToolsEnabled ? activeSideTool : "scratchpad"}
+                hideScratchpadTab={boardFlowActive}
+                activeTab={boardFlowActive && activeSideTool === "scratchpad" ? "casio" : mathToolsEnabled ? activeSideTool : "scratchpad"}
                 onChangeTab={(tab) => setActiveSideTool(tab)}
                 onClose={() => setActiveSideTool(null)}
                 onInsertResult={!isReadOnly ? (val) => insertTextAtCursor(val) : undefined}
