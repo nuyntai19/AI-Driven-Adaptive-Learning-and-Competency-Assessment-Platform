@@ -22,7 +22,7 @@ import {
   renderPng,
 } from "../../utils/scratchpadRenderer";
 import { scratchpadPoint, scratchpadTransform } from "../../utils/scratchpadViewport";
-import { readScratchpadPng } from "../../utils/scratchpadPngImport";
+import { readScratchpadPng, readScratchpadPhoto } from "../../utils/scratchpadPngImport";
 
 const MAX_HISTORY_STATES = 30;
 
@@ -44,6 +44,9 @@ export interface ScratchpadInlinePanelProps {
   clientSubmissionId: string;
   isAttached?: boolean;
   isReadOnly?: boolean;
+  /** Image shown under the ink layer (previous snapshot / notebook photo) so
+   *  the student can keep working on top of the old page and rescan it. */
+  backgroundImageUrl?: string | null;
   onExportPng?: (blob: Blob) => void;
   onAttachSnapshot?: (blob: Blob, dataUrl: string) => void;
 }
@@ -62,11 +65,25 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
   clientSubmissionId,
   isAttached = false,
   isReadOnly = false,
+  backgroundImageUrl = null,
   onExportPng,
   onAttachSnapshot,
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Background page (previous snapshot or notebook photo) drawn under the ink.
+  const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
+  const [bgDismissedFor, setBgDismissedFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!backgroundImageUrl) { setBgImage(null); return; }
+    let active = true;
+    const img = new Image();
+    img.onload = () => { if (active) setBgImage(img); };
+    img.onerror = () => { if (active) setBgImage(null); };
+    img.src = backgroundImageUrl;
+    return () => { active = false; };
+  }, [backgroundImageUrl]);
+  const activeBgImage = backgroundImageUrl && bgDismissedFor !== backgroundImageUrl ? bgImage : null;
   const [isImporting, setIsImporting] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const inkCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -196,6 +213,13 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     drawGrid(context, grid, CANVAS_WIDTH, CANVAS_HEIGHT);
+    if (activeBgImage) {
+      const iw = activeBgImage.naturalWidth || CANVAS_WIDTH;
+      const ih = activeBgImage.naturalHeight || CANVAS_HEIGHT;
+      const s = Math.min(CANVAS_WIDTH / iw, CANVAS_HEIGHT / ih);
+      const w = iw * s, h = ih * s;
+      context.drawImage(activeBgImage, (CANVAS_WIDTH - w) / 2, (CANVAS_HEIGHT - h) / 2, w, h);
+    }
     const inkCanvas = inkCanvasRef.current ?? document.createElement("canvas");
     if (!inkCanvasRef.current) {
       inkCanvas.width = CANVAS_WIDTH;
@@ -222,7 +246,7 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
     }
     context.drawImage(inkCanvas, 0, 0);
     context.restore();
-  }, [colour, grid, lineWidth, pan, strokes, tool, zoom, viewport]);
+  }, [colour, grid, lineWidth, pan, strokes, tool, zoom, viewport, activeBgImage]);
 
   useEffect(() => {
     redraw();
@@ -371,8 +395,8 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
   };
 
   const buildSnapshot = useCallback(async (): Promise<{ blob: Blob; dataUrl: string } | null> => {
-    if (strokes.length === 0) return null;
-    const blob = await renderPng(strokes, grid);
+    if (strokes.length === 0 && !activeBgImage) return null;
+    const blob = await renderPng(strokes, grid, undefined, undefined, activeBgImage);
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result as string);
@@ -380,7 +404,7 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
       reader.readAsDataURL(blob);
     });
     return { blob, dataUrl };
-  }, [strokes, grid]);
+  }, [strokes, grid, activeBgImage]);
 
   useImperativeHandle(ref, () => ({
     exportSnapshot: buildSnapshot,
@@ -389,7 +413,7 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
 
   const handleAttachSnapshot = async () => {
     if (isReadOnly) return;
-    if (strokes.length === 0) {
+    if (strokes.length === 0 && !activeBgImage) {
       setExportStatus("Vui lòng vẽ nét nháp trước khi đính kèm.");
       setTimeout(() => setExportStatus(null), 2500);
       return;
@@ -561,6 +585,16 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
           isSpaceHeld ? "cursor-grab" : isReadOnly ? "cursor-default" : tool === "eraser" ? "cursor-cell" : "cursor-crosshair"
         }`}
       >
+        {activeBgImage && !isReadOnly && (
+          <button
+            type="button"
+            onClick={() => setBgDismissedFor(backgroundImageUrl ?? null)}
+            className="absolute top-2 right-2 z-20 px-2.5 py-1 rounded-full bg-slate-900/85 backdrop-blur-md text-white text-[11px] font-bold shadow-lg border border-slate-700/70 cursor-pointer"
+            title="Ẩn ảnh nền (ảnh bài làm cũ hoặc ảnh vở) khỏi bảng vẽ"
+          >
+            ✕ Bỏ ảnh nền
+          </button>
+        )}
         {/* Floating Zoom and Pan Control Bar (Chuẩn theo hình ảnh mockup) */}
         <div className="absolute top-2 left-2 z-20 flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/85 backdrop-blur-md text-white text-xs shadow-lg border border-slate-700/70 select-none">
           <span className="text-slate-300 text-[11px] font-medium hidden sm:inline">
@@ -628,22 +662,24 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
             </span>
           ) : (
             <>
-            <input ref={fileInputRef} type="file" accept="image/png" className="hidden" aria-label="Chọn ảnh nháp PNG có sẵn"
+            <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" aria-label="Chọn ảnh bài làm trên giấy hoặc PNG có sẵn"
               onChange={async e => {
                 const file = e.currentTarget.files?.[0]; e.currentTarget.value = '';
                 if (!file || isReadOnly || isImporting) return;
-                setIsImporting(true); setExportStatus('Đang kiểm tra ảnh PNG…');
+                setIsImporting(true); setExportStatus('Đang kiểm tra ảnh…');
                 try {
-                  const image = await readScratchpadPng(file);
+                  const image = file.type === 'image/png' && file.size <= 5_242_880
+                    ? await readScratchpadPng(file)
+                    : await readScratchpadPhoto(file);
                   onAttachSnapshot?.(image.blob, image.dataUrl); onExportPng?.(image.blob);
-                  setExportStatus('Đã đính kèm PNG gốc; nét vẽ trên bảng không đổi.');
-                } catch (error) { setExportStatus(error instanceof Error ? error.message : 'Không thể đọc ảnh PNG.'); }
+                  setExportStatus('Đã đính kèm ảnh vào bài làm và đặt lên bảng; bấm “Nhận dạng chữ viết” để chép thành bước giải.');
+                } catch (error) { setExportStatus(error instanceof Error ? error.message : 'Không thể đọc ảnh.'); }
                 finally { setIsImporting(false); }
               }} />
             <button type="button" disabled={isImporting} onClick={() => fileInputRef.current?.click()}
               className="rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 disabled:opacity-50"
-              title="Đính kèm PNG nguyên bản vào bài làm, không thay đổi nét vẽ trên bảng">
-              Đính kèm PNG có sẵn
+              title="Chụp hoặc chọn ảnh bài làm trên giấy (vở) hay PNG có sẵn để đính kèm; ảnh sẽ hiện trên bảng và có thể nhận dạng thành bước giải">
+              📷 Đính kèm ảnh vở / PNG
             </button>
             <button
               type="button"

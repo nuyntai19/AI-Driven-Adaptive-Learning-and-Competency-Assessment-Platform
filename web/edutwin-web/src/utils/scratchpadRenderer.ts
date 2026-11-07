@@ -122,7 +122,8 @@ export async function renderPng(
   strokes: readonly ScratchpadStroke[],
   grid: ScratchpadGrid,
   width: number = DEFAULT_CANVAS_WIDTH,
-  height: number = DEFAULT_CANVAS_HEIGHT
+  height: number = DEFAULT_CANVAS_HEIGHT,
+  backgroundImage?: HTMLImageElement | null
 ): Promise<Blob> {
   const background = document.createElement("canvas");
   background.width = width;
@@ -137,6 +138,13 @@ export async function renderPng(
   backgroundContext.fillStyle = "#ffffff";
   backgroundContext.fillRect(0, 0, width, height);
   drawGrid(backgroundContext, grid, width, height);
+  if (backgroundImage) {
+    const iw = backgroundImage.naturalWidth || width;
+    const ih = backgroundImage.naturalHeight || height;
+    const s = Math.min(width / iw, height / ih);
+    const w = iw * s, h = ih * s;
+    backgroundContext.drawImage(backgroundImage, (width - w) / 2, (height - h) / 2, w, h);
+  }
   drawStrokes(overlayContext, strokes);
   backgroundContext.drawImage(overlay, 0, 0);
 

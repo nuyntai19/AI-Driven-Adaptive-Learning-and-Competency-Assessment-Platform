@@ -58,7 +58,8 @@ test("actual canvas redraw paints white paper and applies a uniform transform; e
   vm.runInNewContext(code, { exports, canvasRef: { current: { width: 450, height: 650, getContext: () => display } },
     inkCanvasRef: { current: null }, document: { createElement: () => ({ getContext: () => ink }) },
     viewport: { width: 450, height: 650 }, zoom: 1, pan: { x: 0, y: 0 }, CANVAS_WIDTH: 1200, CANVAS_HEIGHT: 800,
-    scratchpadTransform, drawGrid, drawStrokes, strokes: [], grid: "math_grid", isDrawingRef: { current: false } });
+    scratchpadTransform, drawGrid, drawStrokes, strokes: [], grid: "math_grid", isDrawingRef: { current: false },
+    activeBgImage: null });
   exports.redraw();
   assert.deepEqual(display.calls.find((c: any[]) => c[0] === "scale").slice(1), [0.375, 0.375]);
   assert.ok(display.calls.some((c: any[]) => c[0] === "fillRect" && c[1] === "#ffffff" && c[4] === 1200 && c[5] === 800));
