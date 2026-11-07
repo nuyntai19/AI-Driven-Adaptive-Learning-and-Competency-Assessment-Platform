@@ -1,0 +1,9 @@
+{
+  "teacher": {
+    "questionText": "Tính 3 + 4. Không bắt buộc trình bày lập luận.",
+    "questionType": "ShortAnswer", "answerEvaluationMode": "NumericRational",
+    "correctAnswer": "7", "solution": "Cộng 3 và 4 được 7.",
+    "knowledgeTopics": ["Phép cộng"]
+  },
+  "student": { "finalAnswer": "7", "reasoningText": "", "confidence": 60 }
+}

@@ -7,6 +7,13 @@ public class Subject : IMutableTenantAggregate
     public Guid SubjectId { get; set; }
     public string SubjectCode { get; set; } = null!;
     public string SubjectName { get; set; } = null!;
+    // Compatibility alias; the persisted value remains subject_name.
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string Name
+    {
+        get => SubjectName;
+        set => SubjectName = value;
+    }
     public string? Description { get; set; }
     public bool IsActive { get; set; }
 

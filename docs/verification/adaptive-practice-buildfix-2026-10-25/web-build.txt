@@ -1,0 +1,215 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 592B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/node:22-alpine
+#2 DONE 0.1s
+
+#3 [internal] load metadata for docker.io/library/nginx:alpine
+#3 ...
+
+#4 [auth] library/nginx:pull token for registry-1.docker.io
+#4 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/nginx:alpine
+#3 DONE 10.8s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 87B 0.0s done
+#5 DONE 0.0s
+
+#6 [build 1/6] FROM docker.io/library/node:22-alpine@sha256:b6f26b36c8ff49624cfdac716b8ea1138d606df02586a77d364bb5536a634f85
+#6 resolve docker.io/library/node:22-alpine@sha256:b6f26b36c8ff49624cfdac716b8ea1138d606df02586a77d364bb5536a634f85 0.0s done
+#6 DONE 0.0s
+
+#7 [stage-1 1/4] FROM docker.io/library/nginx:alpine@sha256:a3554c0d0b48177b1413c26e01f695334428020d9df01243fbae3e11cfd17417
+#7 resolve docker.io/library/nginx:alpine@sha256:a3554c0d0b48177b1413c26e01f695334428020d9df01243fbae3e11cfd17417 0.0s done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 53.57kB 0.0s done
+#8 DONE 0.0s
+
+#9 [stage-1 2/4] RUN rm /etc/nginx/conf.d/default.conf
+#9 CACHED
+
+#10 [stage-1 3/4] COPY nginx.conf /etc/nginx/conf.d/
+#10 CACHED
+
+#11 [build 2/6] WORKDIR /app
+#11 CACHED
+
+#12 [build 3/6] COPY package.json package-lock.json ./
+#12 CACHED
+
+#13 [build 4/6] RUN npm ci
+#13 CACHED
+
+#14 [build 5/6] COPY . .
+#14 DONE 0.2s
+
+#15 [build 6/6] RUN npm run build
+#15 0.419 
+#15 0.419 > edutwin-web@0.1.0 build
+#15 0.419 > tsc -b && vite build
+#15 0.419 
+#15 22.42 vite v6.4.3 building for production...
+#15 22.46 transforming...
+#15 29.30 ✓ 1003 modules transformed.
+#15 31.22 rendering chunks...
+#15 31.37 computing gzip size...
+#15 31.40 dist/index.html                                          1.37 kB │ gzip:   0.63 kB
+#15 31.40 dist/assets/KaTeX_Size3-Regular-CTq5MqoE.woff            4.42 kB
+#15 31.40 dist/assets/KaTeX_Size4-Regular-Dl5lxZxV.woff2           4.93 kB
+#15 31.40 dist/assets/KaTeX_Size2-Regular-Dy4dx90m.woff2           5.21 kB
+#15 31.40 dist/assets/KaTeX_Size1-Regular-mCD8mA8B.woff2           5.47 kB
+#15 31.40 dist/assets/KaTeX_Size4-Regular-BF-4gkZK.woff            5.98 kB
+#15 31.40 dist/assets/KaTeX_Size2-Regular-oD1tc_U0.woff            6.19 kB
+#15 31.40 dist/assets/KaTeX_Size1-Regular-C195tn64.woff            6.50 kB
+#15 31.40 dist/assets/KaTeX_Caligraphic-Regular-Di6jR-x-.woff2     6.91 kB
+#15 31.40 dist/assets/KaTeX_Caligraphic-Bold-Dq_IR9rO.woff2        6.91 kB
+#15 31.40 dist/assets/KaTeX_Size3-Regular-DgpXs0kz.ttf             7.59 kB
+#15 31.40 dist/assets/KaTeX_Caligraphic-Regular-CTRA-rTL.woff      7.66 kB
+#15 31.40 dist/assets/KaTeX_Caligraphic-Bold-BEiXGLvX.woff         7.72 kB
+#15 31.40 dist/assets/KaTeX_Script-Regular-D3wIWfF6.woff2          9.64 kB
+#15 31.40 dist/assets/KaTeX_SansSerif-Regular-DDBCnlJ7.woff2      10.34 kB
+#15 31.40 dist/assets/KaTeX_Size4-Regular-DWFBv043.ttf            10.36 kB
+#15 31.40 dist/assets/KaTeX_Script-Regular-D5yQViql.woff          10.59 kB
+#15 31.40 dist/assets/KaTeX_Fraktur-Regular-CTYiF6lA.woff2        11.32 kB
+#15 31.40 dist/assets/KaTeX_Fraktur-Bold-CL6g_b3V.woff2           11.35 kB
+#15 31.40 dist/assets/KaTeX_Size2-Regular-B7gKUWhC.ttf            11.51 kB
+#15 31.40 dist/assets/KaTeX_SansSerif-Italic-C3H0VqGB.woff2       12.03 kB
+#15 31.40 dist/assets/KaTeX_SansSerif-Bold-D1sUS0GD.woff2         12.22 kB
+#15 31.40 dist/assets/KaTeX_Size1-Regular-Dbsnue_I.ttf            12.23 kB
+#15 31.40 dist/assets/KaTeX_SansSerif-Regular-CS6fqUqJ.woff       12.32 kB
+#15 31.40 dist/assets/KaTeX_Caligraphic-Regular-wX97UBjC.ttf      12.34 kB
+#15 31.40 dist/assets/KaTeX_Caligraphic-Bold-ATXxdsX0.ttf         12.37 kB
+#15 31.40 dist/assets/KaTeX_Fraktur-Regular-Dxdc4cR9.woff         13.21 kB
+#15 31.40 dist/assets/KaTeX_Fraktur-Bold-BsDP51OF.woff            13.30 kB
+#15 31.40 dist/assets/KaTeX_Typewriter-Regular-CO6r4hn1.woff2     13.57 kB
+#15 31.40 dist/assets/KaTeX_SansSerif-Italic-DN2j7dab.woff        14.11 kB
+#15 31.40 dist/assets/KaTeX_SansSerif-Bold-DbIhKOiC.woff          14.41 kB
+#15 31.40 dist/assets/KaTeX_Typewriter-Regular-C0xS9mPB.woff      16.03 kB
+#15 31.40 dist/assets/KaTeX_Math-BoldItalic-CZnvNsCZ.woff2        16.40 kB
+#15 31.40 dist/assets/KaTeX_Math-Italic-t53AETM-.woff2            16.44 kB
+#15 31.40 dist/assets/KaTeX_Script-Regular-C5JkGWo-.ttf           16.65 kB
+#15 31.40 dist/assets/KaTeX_Main-BoldItalic-DxDJ3AOS.woff2        16.78 kB
+#15 31.40 dist/assets/KaTeX_Main-Italic-NWA7e6Wa.woff2            16.99 kB
+#15 31.40 dist/assets/KaTeX_Math-BoldItalic-iY-2wyZ7.woff         18.67 kB
+#15 31.40 dist/assets/KaTeX_Math-Italic-DA0__PXp.woff             18.75 kB
+#15 31.40 dist/assets/KaTeX_Main-BoldItalic-SpSLRI95.woff         19.41 kB
+#15 31.40 dist/assets/KaTeX_SansSerif-Regular-BNo7hRIc.ttf        19.44 kB
+#15 31.40 dist/assets/KaTeX_Fraktur-Regular-CB_wures.ttf          19.57 kB
+#15 31.40 dist/assets/KaTeX_Fraktur-Bold-BdnERNNW.ttf             19.58 kB
+#15 31.40 dist/assets/KaTeX_Main-Italic-BMLOBm91.woff             19.68 kB
+#15 31.40 dist/assets/KaTeX_SansSerif-Italic-YYjJ1zSn.ttf         22.36 kB
+#15 31.40 dist/assets/KaTeX_SansSerif-Bold-CFMepnvq.ttf           24.50 kB
+#15 31.40 dist/assets/KaTeX_Main-Bold-Cx986IdX.woff2              25.32 kB
+#15 31.40 dist/assets/KaTeX_Main-Regular-B22Nviop.woff2           26.27 kB
+#15 31.40 dist/assets/KaTeX_Typewriter-Regular-D3Ib7_Hf.ttf       27.56 kB
+#15 31.40 dist/assets/KaTeX_AMS-Regular-BQhdFMY1.woff2            28.08 kB
+#15 31.40 dist/assets/KaTeX_Main-Bold-Jm3AIy58.woff               29.91 kB
+#15 31.40 dist/assets/KaTeX_Main-Regular-Dr94JaBh.woff            30.77 kB
+#15 31.40 dist/assets/KaTeX_Math-BoldItalic-B3XSjfu4.ttf          31.20 kB
+#15 31.40 dist/assets/KaTeX_Math-Italic-flOr_0UB.ttf              31.31 kB
+#15 31.40 dist/assets/KaTeX_Main-BoldItalic-DzxPMmG6.ttf          32.97 kB
+#15 31.40 dist/assets/KaTeX_AMS-Regular-DMm9YOAa.woff             33.52 kB
+#15 31.40 dist/assets/KaTeX_Main-Italic-3WenGoN9.ttf              33.58 kB
+#15 31.40 dist/assets/KaTeX_Main-Bold-waoOVXN0.ttf                51.34 kB
+#15 31.40 dist/assets/KaTeX_Main-Regular-ypZvNtVU.ttf             53.58 kB
+#15 31.40 dist/assets/KaTeX_AMS-Regular-DRggAlZN.ttf              63.63 kB
+#15 31.40 dist/assets/centerManagerDesignSystem-B9qfGJTF.css       6.50 kB │ gzip:   1.63 kB
+#15 31.40 dist/assets/teacherDesignSystem-xWq7gJcL.css            13.15 kB │ gzip:   2.51 kB
+#15 31.40 dist/assets/vendor-katex-BOvhZl6_.css                   30.25 kB │ gzip:   8.09 kB
+#15 31.40 dist/assets/index-BKwzlEcT.css                         262.11 kB │ gzip:  33.61 kB
+#15 31.40 dist/assets/vendor-runtime-Cpj98o6Y.js                   0.24 kB │ gzip:   0.18 kB
+#15 31.40 dist/assets/academicDisplay-D8BkhAc1.js                  0.28 kB │ gzip:   0.25 kB
+#15 31.40 dist/assets/useStudentAssignment-HUETAem_.js             0.35 kB │ gzip:   0.27 kB
+#15 31.40 dist/assets/CenterManagerThemeScope-CfEj6Wks.js          0.40 kB │ gzip:   0.28 kB
+#15 31.40 dist/assets/digitalTwinApi-BjWZLGSv.js                   0.42 kB │ gzip:   0.25 kB
+#15 31.40 dist/assets/questionDisplay-BmIfWuZa.js                  0.85 kB │ gzip:   0.55 kB
+#15 31.40 dist/assets/platformPresentation-gwITlMry.js             0.92 kB │ gzip:   0.51 kB
+#15 31.40 dist/assets/teacherReviewsApi-BxFd-bln.js                1.25 kB │ gzip:   0.51 kB
+#15 31.40 dist/assets/PlatformJournalPage-GB9rzq3f.js              1.26 kB │ gzip:   0.75 kB
+#15 31.40 dist/assets/adaptivePracticeApi-Bn9U76jz.js              1.54 kB │ gzip:   0.48 kB
+#15 31.40 dist/assets/StudentBadge-CqNesWjL.js                     1.63 kB │ gzip:   0.77 kB
+#15 31.40 dist/assets/assignmentsApi-CGcO4OB-.js                   1.65 kB │ gzip:   0.50 kB
+#15 31.40 dist/assets/ClassHistoryPanel-DWPPtxmS.js                1.78 kB │ gzip:   0.97 kB
+#15 31.40 dist/assets/StudentLearningReadOnlyNotice-Bs3MxOQY.js    2.19 kB │ gzip:   1.22 kB
+#15 31.40 dist/assets/QuestionImage-BtJk27Zo.js                    2.36 kB │ gzip:   1.15 kB
+#15 31.40 dist/assets/StudentRadarChart-BeQCFWOB.js                2.36 kB │ gzip:   1.25 kB
+#15 31.40 dist/assets/learningPathApi-lWP34SjJ.js                  2.48 kB │ gzip:   0.72 kB
+#15 31.40 dist/assets/subjectTheme-vAnaDIa8.js                     3.25 kB │ gzip:   1.09 kB
+#15 31.40 dist/assets/TeacherOverlays-D3jjdpUp.js                  3.41 kB │ gzip:   1.48 kB
+#15 31.40 dist/assets/CenterClassReportPage-DZn76FqU.js            3.42 kB │ gzip:   1.49 kB
+#15 31.40 dist/assets/CenterManagerPrimitives-D86rnt_9.js          3.71 kB │ gzip:   1.54 kB
+#15 31.40 dist/assets/RichMathText-Cnx_ZdeK.js                     3.78 kB │ gzip:   1.38 kB
+#15 31.40 dist/assets/StudentSubjectRequiredState-C1XjfLue.js      3.97 kB │ gzip:   1.63 kB
+#15 31.40 dist/assets/questionImportTemplate-ShjJ6iE0.js           4.43 kB │ gzip:   1.88 kB
+#15 31.40 dist/assets/mathExpression-C2Kth2hP.js                   5.40 kB │ gzip:   1.98 kB
+#15 31.40 dist/assets/TeacherPrimitives-Cyg4rzWQ.js                5.49 kB │ gzip:   2.04 kB
+#15 31.40 dist/assets/CenterManagerOverlays-CSk6tZbE.js            5.93 kB │ gzip:   2.01 kB
+#15 31.40 dist/assets/activityPresentation-CSbVJnOB.js             6.06 kB │ gzip:   2.20 kB
+#15 31.40 dist/assets/StudentSubjectPattern-DDku6YSj.js            6.43 kB │ gzip:   1.35 kB
+#15 31.40 dist/assets/teacherReportsHelpers-DYXSGFEu.js            6.85 kB │ gzip:   2.93 kB
+#15 31.40 dist/assets/questionImportV2Templates-JBYKPBQs.js        7.92 kB │ gzip:   3.44 kB
+#15 31.40 dist/assets/CenterProfilePage-KavQt0Kt.js                8.11 kB │ gzip:   3.05 kB
+#15 31.40 dist/assets/ActivityPage-mJcqSZvz.js                     8.76 kB │ gzip:   3.05 kB
+#15 31.40 dist/assets/AdaptivePracticeSummaryPage-DkRkTiKL.js     10.52 kB │ gzip:   2.97 kB
+#15 31.40 dist/assets/questionImportWorkbook-B9j4gArv.js          10.76 kB │ gzip:   4.81 kB
+#15 31.40 dist/assets/CenterManagerLayout-CNTaBqUd.js             10.81 kB │ gzip:   3.77 kB
+#15 31.40 dist/assets/AuthenticatedHomePage-DPH8Y6y4.js           11.36 kB │ gzip:   2.79 kB
+#15 31.40 dist/assets/TeacherLayout-BsHW_Pht.js                   11.57 kB │ gzip:   4.04 kB
+#15 31.40 dist/assets/StudentAssignmentDetailPage-qW2M4T4Q.js     12.46 kB │ gzip:   4.04 kB
+#15 31.40 dist/assets/TeacherStudentTwinView-DUk9fEUd.js          14.01 kB │ gzip:   4.15 kB
+#15 31.40 dist/assets/StudentAssignmentsPage-Bvv2lfci.js          14.26 kB │ gzip:   4.77 kB
+#15 31.40 dist/assets/AdaptivePracticeOverviewPage-C8PDDJfr.js    15.03 kB │ gzip:   4.40 kB
+#15 31.40 dist/assets/AdaptivePracticeSessionPage-BoS1Qg4O.js     16.27 kB │ gzip:   4.47 kB
+#15 31.40 dist/assets/teacherExcelReports-DTOAHIWR.js             17.25 kB │ gzip:   6.57 kB
+#15 31.40 dist/assets/PlatformOperationsPages-DQfJhiYu.js         20.46 kB │ gzip:   6.64 kB
+#15 31.40 dist/assets/StudentTwinPage-BRa3lKPV.js                 21.48 kB │ gzip:   5.49 kB
+#15 31.40 dist/assets/PlatformAuditLogsPage-CkDE8Voh.js           21.83 kB │ gzip:   5.60 kB
+#15 31.40 dist/assets/CenterDashboardPage-DXE489h8.js             23.12 kB │ gzip:   5.27 kB
+#15 31.40 dist/assets/StudentDashboardPage-pQceyil_.js            36.13 kB │ gzip:   9.35 kB
+#15 31.40 dist/assets/SubjectListPage-CfeiLUEF.js                 38.82 kB │ gzip:   7.57 kB
+#15 31.40 dist/assets/NotificationsPage-DRB_O1v3.js               40.20 kB │ gzip:  10.28 kB
+#15 31.40 dist/assets/TeacherStudentManagementView-8rUaa2-s.js    43.34 kB │ gzip:  10.36 kB
+#15 31.40 dist/assets/TeacherListPage-CEfbflz4.js                 47.88 kB │ gzip:   8.40 kB
+#15 31.40 dist/assets/PlatformCentersPage-iVVpNdpw.js             63.03 kB │ gzip:  12.40 kB
+#15 31.40 dist/assets/StudentListPage-Br2rn_lo.js                 64.54 kB │ gzip:  12.17 kB
+#15 31.40 dist/assets/ModeAwareAnswerEditor-Be4Izyni.js           68.32 kB │ gzip:  20.26 kB
+#15 31.40 dist/assets/AuthorizationManagementPage-C8GccolI.js     72.29 kB │ gzip:  16.17 kB
+#15 31.40 dist/assets/ClassListPage-CxllH24X.js                   72.45 kB │ gzip:  15.37 kB
+#15 31.40 dist/assets/vendor-query-BbbJZ6xY.js                    88.33 kB │ gzip:  30.05 kB
+#15 31.40 dist/assets/StudentLearningPathPage-DOg0CyKB.js         97.66 kB │ gzip:  26.86 kB
+#15 31.40 dist/assets/index-CV7ZFKey.js                          137.65 kB │ gzip:  35.63 kB
+#15 31.40 dist/assets/LearningPlayerPage-17aFUsvP.js             193.48 kB │ gzip:  49.06 kB
+#15 31.40 dist/assets/vendor-react-Ct-MmL1j.js                   232.96 kB │ gzip:  74.57 kB
+#15 31.40 dist/assets/vendor-katex-BxIvd7JO.js                   261.46 kB │ gzip:  77.81 kB
+#15 31.40 dist/assets/vendor-recharts-Djs0x1hG.js                363.81 kB │ gzip: 100.89 kB
+#15 31.40 dist/assets/index-8H0c0EhG.js                          371.62 kB │ gzip:  92.16 kB
+#15 31.40 dist/assets/vendor-xlsx-CkFp8p6R.js                    429.53 kB │ gzip: 143.08 kB
+#15 31.40 dist/assets/vendor-mathlive-BosAORP5.js                825.52 kB │ gzip: 228.04 kB
+#15 31.40 
+#15 31.40 (!) Some chunks are larger than 600 kB after minification. Consider:
+#15 31.40 - Using dynamic import() to code-split the application
+#15 31.40 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+#15 31.40 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#15 31.40 ✓ built in 8.97s
+#15 DONE 31.5s
+
+#16 [stage-1 4/4] COPY --from=build /app/dist /usr/share/nginx/html
+#16 DONE 0.1s
+
+#17 exporting to image
+#17 exporting layers
+#17 exporting layers 0.3s done
+#17 exporting manifest sha256:41f88f74d906e2d8fd8158ed482476f5569d11ae70956a130950ad76d205a7dd 0.0s done
+#17 exporting config sha256:904d0af26f3e4d172cc62f16bff8fc9544ed27e86aa595e6e49539ae98969695 0.0s done
+#17 exporting attestation manifest sha256:4c5732c8f0c9eeed8b5f1ea0a4e59f155986c58f25397ce2fed0c4a24f993e79 0.0s done
+#17 exporting manifest list sha256:65a07cfc421963b2da107f5c100942af2402a1331a3ae0b787e98f543985dad6 0.0s done
+#17 naming to docker.io/library/edutwin-adaptive-e2e-web:dd47b89-buildfix done
+#17 unpacking to docker.io/library/edutwin-adaptive-e2e-web:dd47b89-buildfix 0.1s done
+#17 DONE 0.4s

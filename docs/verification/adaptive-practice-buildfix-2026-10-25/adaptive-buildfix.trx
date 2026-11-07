@@ -1,0 +1,130 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="9a7576e7-237b-4c9d-bdb1-09111ffc5b94" name="@4747818d18c1 2026-10-25 13:59:32" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-10-25T13:59:32.7522867+00:00" queuing="2026-10-25T13:59:32.7522867+00:00" start="2026-10-25T13:59:28.5293333+00:00" finish="2026-10-25T13:59:33.2139374+00:00" />
+  <TestSettings name="default" id="be44f71f-00cf-4532-a030-04071767a0c5">
+    <Deployment runDeploymentRoot="_4747818d18c1_2026-10-25_13_59_32" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="0ceb0a38-f409-43bf-9f2e-bcfe7a834dbe" testId="81ac6c4f-0b89-1299-ffc9-5c91f0504f9f" testName="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.ProtectedQuestions_InPublishedAssignments_AreNotSelected" computerName="4747818d18c1" duration="00:00:00.0745828" startTime="2026-10-25T13:59:32.9768767+00:00" endTime="2026-10-25T13:59:33.0511124+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0ceb0a38-f409-43bf-9f2e-bcfe7a834dbe" />
+    <UnitTestResult executionId="ffe34d9c-dac0-4901-aa1e-675e32cea9fd" testId="322dade9-5bb7-fa7c-0b69-0e942a2d70c6" testName="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.SubmitAnswer_WithHintsUsed_GivesDiscountedMastery" computerName="4747818d18c1" duration="00:00:00.0426656" startTime="2026-10-25T13:59:32.9336658+00:00" endTime="2026-10-25T13:59:32.9764644+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="ffe34d9c-dac0-4901-aa1e-675e32cea9fd" />
+    <UnitTestResult executionId="7744ecbd-9bc5-4edc-b16d-5a404b62e7a9" testId="622bcb99-ac9e-8350-13c8-720f3fc2bf3f" testName="EduTwin.BLL.Tests.AdaptivePractice.ModelContractCompatibilityTests.SubjectResponse_ExposesCanonicalAndShortLabelsFromSameValues" computerName="4747818d18c1" duration="00:00:00.0135126" startTime="2026-10-25T13:59:30.4983102+00:00" endTime="2026-10-25T13:59:30.5108808+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7744ecbd-9bc5-4edc-b16d-5a404b62e7a9" />
+    <UnitTestResult executionId="7cfee634-c6d0-417a-a280-c3537f13119c" testId="c14b3c98-d0eb-ba68-bed4-4c8b782813fd" testName="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests.CreateNote_WithValidContent_PersistsToDatabase" computerName="4747818d18c1" duration="00:00:00.0195802" startTime="2026-10-25T13:59:30.7261141+00:00" endTime="2026-10-25T13:59:30.7455233+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7cfee634-c6d0-417a-a280-c3537f13119c" />
+    <UnitTestResult executionId="29f1fabe-06d9-4d33-99e7-698e57b6cc6b" testId="a41e18bb-81ee-ccd6-4cc2-813608560ecd" testName="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.CreateSession_CreatesValidSession_WithConfiguredLimits" computerName="4747818d18c1" duration="00:00:00.0035905" startTime="2026-10-25T13:59:33.1625005+00:00" endTime="2026-10-25T13:59:33.1659691+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="29f1fabe-06d9-4d33-99e7-698e57b6cc6b" />
+    <UnitTestResult executionId="52b6875c-2cc7-4f84-a138-967ff8e9925d" testId="ad997ab1-6889-7dbb-3a5c-ad4f2b7c5297" testName="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.CloseSession_GeneratesComprehensiveSummary_WithSkillsBreakdown" computerName="4747818d18c1" duration="00:00:00.0662140" startTime="2026-10-25T13:59:33.0512358+00:00" endTime="2026-10-25T13:59:33.1174964+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="52b6875c-2cc7-4f84-a138-967ff8e9925d" />
+    <UnitTestResult executionId="6fcd99fc-e21a-45ba-b3cd-c4561fbe9bb0" testId="d6f202d7-872d-d892-6b02-6860a3c91ddf" testName="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.GetNextQuestion_SelectsAppropriateQuestion_AndRegistersItem" computerName="4747818d18c1" duration="00:00:00.0050784" startTime="2026-10-25T13:59:33.1660514+00:00" endTime="2026-10-25T13:59:33.1711740+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6fcd99fc-e21a-45ba-b3cd-c4561fbe9bb0" />
+    <UnitTestResult executionId="f28b74cd-a97d-424b-bcca-7dcfabdb5860" testId="90015236-d1d6-8d28-a60d-a2a74bc27cd8" testName="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.SubmitAnswer_ConsecutiveErrors_ProbesPrerequisiteNode" computerName="4747818d18c1" duration="00:00:03.7229834" startTime="2026-10-25T13:59:29.2022837+00:00" endTime="2026-10-25T13:59:32.9274395+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f28b74cd-a97d-424b-bcca-7dcfabdb5860" />
+    <UnitTestResult executionId="570ebdfc-b4ec-474f-87ed-b0456b0d7a2d" testId="3215abf2-1e76-1c97-a234-e710012b9722" testName="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests.UpdateNote_WithStaleRowVersion_ReturnsConcurrencyConflict" computerName="4747818d18c1" duration="00:00:00.1504636" startTime="2026-10-25T13:59:30.4875821+00:00" endTime="2026-10-25T13:59:30.6308000+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="570ebdfc-b4ec-474f-87ed-b0456b0d7a2d" />
+    <UnitTestResult executionId="7da0fa95-2bba-4dae-b54b-e01257154f4f" testId="86cae22b-e6aa-8c26-8fee-e80b0c46a41c" testName="EduTwin.BLL.Tests.AdaptivePractice.ModelContractCompatibilityTests.NameCompatibilityAliases_DoNotIntroduceAdditionalDatabaseColumns" computerName="4747818d18c1" duration="00:00:01.2909536" startTime="2026-10-25T13:59:29.2030904+00:00" endTime="2026-10-25T13:59:30.4972945+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7da0fa95-2bba-4dae-b54b-e01257154f4f" />
+    <UnitTestResult executionId="af551af3-c1dd-4592-a105-72d5ef3d9405" testId="88a047f3-427c-feeb-3d2e-07dd23424520" testName="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.GetProposal_NoEvidence_ReturnsDiagnosticProposal" computerName="4747818d18c1" duration="00:00:00.0370582" startTime="2026-10-25T13:59:33.1252475+00:00" endTime="2026-10-25T13:59:33.1623317+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="af551af3-c1dd-4592-a105-72d5ef3d9405" />
+    <UnitTestResult executionId="d05d10d4-7ed4-44af-b3f6-42c7e0dbf158" testId="c4cbde10-e152-41f4-ea88-6696265508e5" testName="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests.UpsertNote_InsertsNew_ThenUpdatesExisting" computerName="4747818d18c1" duration="00:00:00.0583893" startTime="2026-10-25T13:59:30.6309052+00:00" endTime="2026-10-25T13:59:30.6893597+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d05d10d4-7ed4-44af-b3f6-42c7e0dbf158" />
+    <UnitTestResult executionId="24359332-70b4-4649-8666-52cf836903dc" testId="637be711-4b98-5e7e-62bd-c80f3f0d3d86" testName="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.CreateSession_ExistingActiveSession_ResumesAndReturnsSameSession" computerName="4747818d18c1" duration="00:00:00.0059003" startTime="2026-10-25T13:59:32.9275833+00:00" endTime="2026-10-25T13:59:32.9335035+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="24359332-70b4-4649-8666-52cf836903dc" />
+    <UnitTestResult executionId="5cd4f6c4-7840-48ca-b608-795589d38cd4" testId="3ca7a78f-14fc-5ea1-833d-59871a8ad5f9" testName="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.SubmitAnswer_Correct_UpdatesMasteryAndStreak" computerName="4747818d18c1" duration="00:00:00.0074872" startTime="2026-10-25T13:59:33.1176514+00:00" endTime="2026-10-25T13:59:33.1251219+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5cd4f6c4-7840-48ca-b608-795589d38cd4" />
+    <UnitTestResult executionId="d5d7723d-9186-444a-b39d-33c7e5e50b40" testId="46afae22-c09c-559c-4c78-44995e59f014" testName="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests.DeleteNote_SoftDeletes_AndExcludesFromSubsequentQueries" computerName="4747818d18c1" duration="00:00:00.0363105" startTime="2026-10-25T13:59:30.6894657+00:00" endTime="2026-10-25T13:59:30.7258343+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d5d7723d-9186-444a-b39d-33c7e5e50b40" />
+    <UnitTestResult executionId="282d239a-9266-41b1-884f-ab3f7b594e3d" testId="a2940a9a-f44f-bd6e-cfb0-6b808006a347" testName="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests.ListNotes_ForTeacher_ReturnsAllTeacherNotes" computerName="4747818d18c1" duration="00:00:00.0347625" startTime="2026-10-25T13:59:30.7456473+00:00" endTime="2026-10-25T13:59:30.7803924+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="282d239a-9266-41b1-884f-ab3f7b594e3d" />
+    <UnitTestResult executionId="352c660d-f84a-46e0-88e0-04481a89c5c6" testId="47f773dc-440f-2b88-f7d7-ae6749f62186" testName="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests.CreateNote_WhenContentExceedsMax_ReturnsValidationFailed" computerName="4747818d18c1" duration="00:00:01.2740662" startTime="2026-10-25T13:59:29.2031289+00:00" endTime="2026-10-25T13:59:30.4800699+00:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="352c660d-f84a-46e0-88e0-04481a89c5c6" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.SubmitAnswer_WithHintsUsed_GivesDiscountedMastery" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="322dade9-5bb7-fa7c-0b69-0e942a2d70c6">
+      <Execution id="ffe34d9c-dac0-4901-aa1e-675e32cea9fd" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests" name="SubmitAnswer_WithHintsUsed_GivesDiscountedMastery" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.AdaptivePractice.ModelContractCompatibilityTests.SubjectResponse_ExposesCanonicalAndShortLabelsFromSameValues" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="622bcb99-ac9e-8350-13c8-720f3fc2bf3f">
+      <Execution id="7744ecbd-9bc5-4edc-b16d-5a404b62e7a9" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.AdaptivePractice.ModelContractCompatibilityTests" name="SubjectResponse_ExposesCanonicalAndShortLabelsFromSameValues" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.SubmitAnswer_Correct_UpdatesMasteryAndStreak" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="3ca7a78f-14fc-5ea1-833d-59871a8ad5f9">
+      <Execution id="5cd4f6c4-7840-48ca-b608-795589d38cd4" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests" name="SubmitAnswer_Correct_UpdatesMasteryAndStreak" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.GetProposal_NoEvidence_ReturnsDiagnosticProposal" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="88a047f3-427c-feeb-3d2e-07dd23424520">
+      <Execution id="af551af3-c1dd-4592-a105-72d5ef3d9405" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests" name="GetProposal_NoEvidence_ReturnsDiagnosticProposal" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests.CreateNote_WithValidContent_PersistsToDatabase" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="c14b3c98-d0eb-ba68-bed4-4c8b782813fd">
+      <Execution id="7cfee634-c6d0-417a-a280-c3537f13119c" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests" name="CreateNote_WithValidContent_PersistsToDatabase" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.CreateSession_CreatesValidSession_WithConfiguredLimits" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="a41e18bb-81ee-ccd6-4cc2-813608560ecd">
+      <Execution id="29f1fabe-06d9-4d33-99e7-698e57b6cc6b" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests" name="CreateSession_CreatesValidSession_WithConfiguredLimits" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.CreateSession_ExistingActiveSession_ResumesAndReturnsSameSession" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="637be711-4b98-5e7e-62bd-c80f3f0d3d86">
+      <Execution id="24359332-70b4-4649-8666-52cf836903dc" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests" name="CreateSession_ExistingActiveSession_ResumesAndReturnsSameSession" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.ProtectedQuestions_InPublishedAssignments_AreNotSelected" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="81ac6c4f-0b89-1299-ffc9-5c91f0504f9f">
+      <Execution id="0ceb0a38-f409-43bf-9f2e-bcfe7a834dbe" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests" name="ProtectedQuestions_InPublishedAssignments_AreNotSelected" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests.CreateNote_WhenContentExceedsMax_ReturnsValidationFailed" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="47f773dc-440f-2b88-f7d7-ae6749f62186">
+      <Execution id="352c660d-f84a-46e0-88e0-04481a89c5c6" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests" name="CreateNote_WhenContentExceedsMax_ReturnsValidationFailed" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests.UpsertNote_InsertsNew_ThenUpdatesExisting" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="c4cbde10-e152-41f4-ea88-6696265508e5">
+      <Execution id="d05d10d4-7ed4-44af-b3f6-42c7e0dbf158" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests" name="UpsertNote_InsertsNew_ThenUpdatesExisting" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests.UpdateNote_WithStaleRowVersion_ReturnsConcurrencyConflict" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="3215abf2-1e76-1c97-a234-e710012b9722">
+      <Execution id="570ebdfc-b4ec-474f-87ed-b0456b0d7a2d" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests" name="UpdateNote_WithStaleRowVersion_ReturnsConcurrencyConflict" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.SubmitAnswer_ConsecutiveErrors_ProbesPrerequisiteNode" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="90015236-d1d6-8d28-a60d-a2a74bc27cd8">
+      <Execution id="f28b74cd-a97d-424b-bcca-7dcfabdb5860" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests" name="SubmitAnswer_ConsecutiveErrors_ProbesPrerequisiteNode" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests.DeleteNote_SoftDeletes_AndExcludesFromSubsequentQueries" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="46afae22-c09c-559c-4c78-44995e59f014">
+      <Execution id="d5d7723d-9186-444a-b39d-33c7e5e50b40" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests" name="DeleteNote_SoftDeletes_AndExcludesFromSubsequentQueries" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests.ListNotes_ForTeacher_ReturnsAllTeacherNotes" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="a2940a9a-f44f-bd6e-cfb0-6b808006a347">
+      <Execution id="282d239a-9266-41b1-884f-ab3f7b594e3d" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.Organization.TeacherStudentNotesUseCaseTests" name="ListNotes_ForTeacher_ReturnsAllTeacherNotes" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.AdaptivePractice.ModelContractCompatibilityTests.NameCompatibilityAliases_DoNotIntroduceAdditionalDatabaseColumns" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="86cae22b-e6aa-8c26-8fee-e80b0c46a41c">
+      <Execution id="7da0fa95-2bba-4dae-b54b-e01257154f4f" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.AdaptivePractice.ModelContractCompatibilityTests" name="NameCompatibilityAliases_DoNotIntroduceAdditionalDatabaseColumns" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.GetNextQuestion_SelectsAppropriateQuestion_AndRegistersItem" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="d6f202d7-872d-d892-6b02-6860a3c91ddf">
+      <Execution id="6fcd99fc-e21a-45ba-b3cd-c4561fbe9bb0" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests" name="GetNextQuestion_SelectsAppropriateQuestion_AndRegistersItem" />
+    </UnitTest>
+    <UnitTest name="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests.CloseSession_GeneratesComprehensiveSummary_WithSkillsBreakdown" storage="/tmp/adaptive-buildfix/bin/edutwin.bll.tests/debug/edutwin.bll.tests.dll" id="ad997ab1-6889-7dbb-3a5c-ad4f2b7c5297">
+      <Execution id="52b6875c-2cc7-4f84-a138-967ff8e9925d" />
+      <TestMethod codeBase="/tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="EduTwin.BLL.Tests.AdaptivePractice.AdaptivePracticeEngineTests" name="CloseSession_GeneratesComprehensiveSummary_WithSkillsBreakdown" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="81ac6c4f-0b89-1299-ffc9-5c91f0504f9f" executionId="0ceb0a38-f409-43bf-9f2e-bcfe7a834dbe" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="322dade9-5bb7-fa7c-0b69-0e942a2d70c6" executionId="ffe34d9c-dac0-4901-aa1e-675e32cea9fd" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="622bcb99-ac9e-8350-13c8-720f3fc2bf3f" executionId="7744ecbd-9bc5-4edc-b16d-5a404b62e7a9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c14b3c98-d0eb-ba68-bed4-4c8b782813fd" executionId="7cfee634-c6d0-417a-a280-c3537f13119c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a41e18bb-81ee-ccd6-4cc2-813608560ecd" executionId="29f1fabe-06d9-4d33-99e7-698e57b6cc6b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ad997ab1-6889-7dbb-3a5c-ad4f2b7c5297" executionId="52b6875c-2cc7-4f84-a138-967ff8e9925d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d6f202d7-872d-d892-6b02-6860a3c91ddf" executionId="6fcd99fc-e21a-45ba-b3cd-c4561fbe9bb0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="90015236-d1d6-8d28-a60d-a2a74bc27cd8" executionId="f28b74cd-a97d-424b-bcca-7dcfabdb5860" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3215abf2-1e76-1c97-a234-e710012b9722" executionId="570ebdfc-b4ec-474f-87ed-b0456b0d7a2d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="86cae22b-e6aa-8c26-8fee-e80b0c46a41c" executionId="7da0fa95-2bba-4dae-b54b-e01257154f4f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="88a047f3-427c-feeb-3d2e-07dd23424520" executionId="af551af3-c1dd-4592-a105-72d5ef3d9405" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c4cbde10-e152-41f4-ea88-6696265508e5" executionId="d05d10d4-7ed4-44af-b3f6-42c7e0dbf158" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="637be711-4b98-5e7e-62bd-c80f3f0d3d86" executionId="24359332-70b4-4649-8666-52cf836903dc" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3ca7a78f-14fc-5ea1-833d-59871a8ad5f9" executionId="5cd4f6c4-7840-48ca-b608-795589d38cd4" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="46afae22-c09c-559c-4c78-44995e59f014" executionId="d5d7723d-9186-444a-b39d-33c7e5e50b40" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a2940a9a-f44f-bd6e-cfb0-6b808006a347" executionId="282d239a-9266-41b1-884f-ab3f7b594e3d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="47f773dc-440f-2b88-f7d7-ae6749f62186" executionId="352c660d-f84a-46e0-88e0-04481a89c5c6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="17" executed="17" passed="17" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 10.0.12)
+[xUnit.net 00:00:00.11]   Discovering: EduTwin.BLL.Tests
+[xUnit.net 00:00:00.42]   Discovered:  EduTwin.BLL.Tests
+[xUnit.net 00:00:00.44]   Starting:    EduTwin.BLL.Tests
+[xUnit.net 00:00:04.43]   Finished:    EduTwin.BLL.Tests
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

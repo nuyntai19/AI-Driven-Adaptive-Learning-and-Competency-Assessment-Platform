@@ -1,0 +1,15 @@
+{
+  "teacher": {
+    "questionText": "Tam giác ABC vuông tại A, AB=3, AC=4. Tính BC. Đồng thời vẽ hình nháp và ghi đủ nhãn A, B, C để minh họa tam giác.",
+    "questionType": "ShortAnswer", "answerEvaluationMode": "NumericRational",
+    "correctAnswer": "5", "solution": "Áp dụng Pythagore: BC^2=AB^2+AC^2=9+16=25, BC=5 vì độ dài dương. Hình nháp phải có các nhãn A, B, C ở ba đỉnh.",
+    "knowledgeTopics": ["Định lý Pythagore"], "maxScore": 5,
+    "gradingCriteria": {
+      "criteria": [
+        {"criterionId":"calculation","title":"Tính cạnh huyền","description":"Dùng Pythagore, tính BC^2=25 và chọn BC=5 vì độ dài dương. Chấm độc lập với hình nháp.","maxScore":3},
+        {"criterionId":"diagram","title":"Hình minh họa có nhãn","description":"Vẽ tam giác ABC và ghi đủ ba nhãn A, B, C trong ảnh nháp.","maxScore":2,"visualRequirements":["Ảnh nháp có tam giác và ghi đủ nhãn A, B, C ở ba đỉnh."]}
+      ]
+    }
+  },
+  "student": {"finalAnswer":"5","reasoningText":"Vì ABC vuông tại A nên theo Pythagore BC^2=AB^2+AC^2=3^2+4^2=25. BC là độ dài dương nên BC=5. Em chưa nộp hình nháp.","confidence":90}
+}

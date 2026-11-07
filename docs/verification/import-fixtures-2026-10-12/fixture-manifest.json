@@ -1,0 +1,13 @@
+{
+  "csv": "Dòng thứ nhất\nDòng thứ hai",
+  "xlsx": "XLSX dòng thứ nhất\nXLSX dòng thứ hai",
+  "docx": "DOCX dòng thứ nhất\nDOCX dòng thứ hai",
+  "headers": [
+    "Nội dung câu hỏi",
+    "Loại câu hỏi",
+    "Đáp án đúng",
+    "Lời giải",
+    "MaxScore",
+    "ReasoningRequired"
+  ]
+}

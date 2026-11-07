@@ -261,9 +261,9 @@ public sealed class EvidenceGateIntegrationScenariosTests : IDisposable
         Assert.Equal(5u, result.KnowledgeTwin.EvidenceCount);
     }
 
-    // Case 4b: Gemini timeout -> Fallback for Auto-Gradable Correct -> Applies conservative mastery increase
+    // Case 4b: Gemini timeout does not reduce trust in independently deterministic correctness.
     [Fact]
-    public async Task Scenario4b_GeminiTimeoutFallback_AutoGradableCorrect_IncreasesMasteryConservatively()
+    public async Task Scenario4b_GeminiTimeoutFallback_AutoGradableCorrect_RetainsDeterministicEvidenceWeight()
     {
         var (attempt, question, analysis) = CreateSetup(isCorrect: true);
         analysis.IsFallback = true;
@@ -279,8 +279,8 @@ public sealed class EvidenceGateIntegrationScenariosTests : IDisposable
             _now,
             CancellationToken.None);
 
-        Assert.Equal(EvidenceTrustLevel.Reduced, result.Evidence.TrustLevel);
-        Assert.Equal(0.30m, result.Evidence.ReasoningWeight);
+        Assert.Equal(EvidenceTrustLevel.Trusted, result.Evidence.TrustLevel);
+        Assert.Equal(1m, result.Evidence.ReasoningWeight);
         Assert.True(result.KnowledgeTwin.MasteryPercentage > 0m);
         Assert.Equal(1u, result.KnowledgeTwin.EvidenceCount);
     }

@@ -19,6 +19,433 @@ namespace EduTwin.DAL.Persistence.Migrations
                 .HasAnnotation("ProductVersion", "10.0.7")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
+            modelBuilder.Entity("EduTwin.DAL.AdaptivePractice.AdaptivePracticeSession", b =>
+                {
+                    b.Property<string>("SessionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("session_id");
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<string>("CloseReason")
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("close_reason");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("completed_at");
+
+                    b.Property<int>("ConsecutiveCorrect")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("consecutive_correct");
+
+                    b.Property<int>("ConsecutiveIncorrect")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("consecutive_incorrect");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<byte>("CurrentDifficulty")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint unsigned")
+                        .HasDefaultValue((byte)2)
+                        .HasColumnName("current_difficulty");
+
+                    b.Property<decimal>("CurrentMastery")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("current_mastery");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<int>("DiagnosticQuestionsCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("diagnostic_questions_count");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_deleted");
+
+                    b.Property<bool>("IsDiagnosticMode")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_diagnostic_mode");
+
+                    b.Property<string>("LearningPathId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("learning_path_id");
+
+                    b.Property<ulong?>("LearningPathItemId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("learning_path_item_id");
+
+                    b.Property<int>("MaximumQuestions")
+                        .HasColumnType("int")
+                        .HasColumnName("maximum_questions");
+
+                    b.Property<int>("MinimumQuestions")
+                        .HasColumnType("int")
+                        .HasColumnName("minimum_questions");
+
+                    b.Property<DateTime?>("PausedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("paused_at");
+
+                    b.Property<string>("PolicyVersion")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(16)")
+                        .HasDefaultValue("1.0")
+                        .HasColumnName("policy_version");
+
+                    b.Property<string>("PracticeMode")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("practice_mode");
+
+                    b.Property<ulong?>("PrerequisiteTestedNodeId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("prerequisite_tested_node_id");
+
+                    b.Property<int>("QuestionCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("question_count");
+
+                    b.Property<ulong>("RowVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("row_version");
+
+                    b.Property<string>("SelectionReason")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("selection_reason");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("started_at");
+
+                    b.Property<decimal>("StartingMastery")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("starting_mastery");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("student_id");
+
+                    b.Property<string>("SubjectId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("subject_id");
+
+                    b.Property<decimal>("TargetMastery")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("target_mastery");
+
+                    b.Property<string>("TargetSkillIds")
+                        .HasColumnType("text")
+                        .HasColumnName("target_skill_ids");
+
+                    b.Property<int>("TimeBudgetMinutes")
+                        .HasColumnType("int")
+                        .HasColumnName("time_budget_minutes");
+
+                    b.Property<ulong>("TopicNodeId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("topic_node_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("SessionId")
+                        .HasName("pk_adaptive_practice_sessions");
+
+                    b.HasAlternateKey("CenterId", "SessionId")
+                        .HasName("ux_adaptive_practice_sessions_center_id_session_id");
+
+                    b.HasIndex("LearningPathId");
+
+                    b.HasIndex("CenterId", "SubjectId");
+
+                    b.HasIndex("CenterId", "TopicNodeId");
+
+                    b.HasIndex("CenterId", "StudentId", "Status")
+                        .HasDatabaseName("ix_adaptive_practice_sessions_center_student_status");
+
+                    b.HasIndex("CenterId", "StudentId", "SubjectId")
+                        .HasDatabaseName("ix_adaptive_practice_sessions_center_student_subject");
+
+                    b.ToTable("adaptive_practice_sessions", (string)null);
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.AdaptivePractice.AdaptivePracticeSessionItem", b =>
+                {
+                    b.Property<ulong>("SessionItemId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("session_item_id");
+
+                    b.Property<DateTime?>("AnsweredAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("answered_at");
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<byte>("Difficulty")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("difficulty");
+
+                    b.Property<int>("HintsUsedCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0)
+                        .HasColumnName("hints_used_count");
+
+                    b.Property<ulong>("KnowledgeNodeId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("knowledge_node_id");
+
+                    b.Property<ulong?>("LastAttemptId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("last_attempt_id");
+
+                    b.Property<DateTime>("PresentedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("presented_at");
+
+                    b.Property<ulong>("QuestionId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("question_id");
+
+                    b.Property<string>("QuestionVersion")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(16)")
+                        .HasDefaultValue("1.0")
+                        .HasColumnName("question_version");
+
+                    b.Property<string>("SelectionReasonCode")
+                        .IsRequired()
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("selection_reason_code");
+
+                    b.Property<string>("SelectionReasonText")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("selection_reason_text");
+
+                    b.Property<int>("SequenceNumber")
+                        .HasColumnType("int")
+                        .HasColumnName("sequence_number");
+
+                    b.Property<string>("SessionId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("session_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("status");
+
+                    b.HasKey("SessionItemId")
+                        .HasName("pk_adaptive_practice_session_items");
+
+                    b.HasAlternateKey("CenterId", "SessionItemId")
+                        .HasName("ux_adaptive_practice_session_items_center_id_session_item_id");
+
+                    b.HasIndex("CenterId", "KnowledgeNodeId");
+
+                    b.HasIndex("CenterId", "QuestionId");
+
+                    b.HasIndex("CenterId", "SessionId", "SequenceNumber")
+                        .HasDatabaseName("ix_adaptive_practice_session_items_center_session_seq");
+
+                    b.ToTable("adaptive_practice_session_items", (string)null);
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.AdaptivePractice.AdaptivePracticeSessionSummary", b =>
+                {
+                    b.Property<string>("SessionId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("session_id");
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<int>("CorrectCount")
+                        .HasColumnType("int")
+                        .HasColumnName("correct_count");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<decimal?>("EndingMastery")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("ending_mastery");
+
+                    b.Property<string>("GoalAchievementStatus")
+                        .IsRequired()
+                        .HasColumnType("varchar(64)")
+                        .HasColumnName("goal_achievement_status");
+
+                    b.Property<int>("IncorrectCount")
+                        .HasColumnType("int")
+                        .HasColumnName("incorrect_count");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_deleted");
+
+                    b.Property<int>("PartialCount")
+                        .HasColumnType("int")
+                        .HasColumnName("partial_count");
+
+                    b.Property<int>("PendingCount")
+                        .HasColumnType("int")
+                        .HasColumnName("pending_count");
+
+                    b.Property<string>("RecommendedNextAction")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("recommended_next_action");
+
+                    b.Property<ulong?>("RecommendedNextTopicId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("recommended_next_topic_id");
+
+                    b.Property<string>("RemediationSkillIds")
+                        .HasColumnType("text")
+                        .HasColumnName("remediation_skill_ids");
+
+                    b.Property<ulong>("RowVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("row_version");
+
+                    b.Property<decimal>("StartingMastery")
+                        .HasColumnType("decimal(5,2)")
+                        .HasColumnName("starting_mastery");
+
+                    b.Property<string>("StrongSkillIds")
+                        .HasColumnType("text")
+                        .HasColumnName("strong_skill_ids");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("student_id");
+
+                    b.Property<string>("SummaryConclusion")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("summary_conclusion");
+
+                    b.Property<string>("SummaryStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("varchar(32)")
+                        .HasDefaultValue("Finalized")
+                        .HasColumnName("summary_status");
+
+                    b.Property<int>("TimeSpentSeconds")
+                        .HasColumnType("int")
+                        .HasColumnName("time_spent_seconds");
+
+                    b.Property<int>("TotalQuestions")
+                        .HasColumnType("int")
+                        .HasColumnName("total_questions");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("updated_by");
+
+                    b.Property<string>("WeakSkillIds")
+                        .HasColumnType("text")
+                        .HasColumnName("weak_skill_ids");
+
+                    b.HasKey("SessionId")
+                        .HasName("pk_adaptive_practice_session_summaries");
+
+                    b.HasAlternateKey("CenterId", "SessionId")
+                        .HasName("ux_adaptive_practice_summaries_center_id_session_id");
+
+                    b.HasIndex("CenterId", "RecommendedNextTopicId");
+
+                    b.HasIndex("CenterId", "StudentId")
+                        .HasDatabaseName("ix_adaptive_practice_summaries_center_student");
+
+                    b.ToTable("adaptive_practice_session_summaries", (string)null);
+                });
+
             modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.AIAnalysisCheckpoint", b =>
                 {
                     b.Property<string>("CenterId")
@@ -6469,6 +6896,85 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.ToTable("teachers", (string)null);
                 });
 
+            modelBuilder.Entity("EduTwin.DAL.Organization.TeacherStudentNote", b =>
+                {
+                    b.Property<string>("NoteId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("VARCHAR(36)")
+                        .HasColumnName("note_id");
+
+                    b.Property<string>("CenterId")
+                        .IsRequired()
+                        .HasColumnType("VARCHAR(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .HasColumnName("content");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("DATETIME(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("VARCHAR(36)")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("DATETIME(6)")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("VARCHAR(36)")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TINYINT(1)")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_deleted");
+
+                    b.Property<ulong>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("BIGINT UNSIGNED")
+                        .HasDefaultValue(1ul)
+                        .HasColumnName("row_version");
+
+                    b.Property<string>("StudentId")
+                        .IsRequired()
+                        .HasColumnType("VARCHAR(36)")
+                        .HasColumnName("student_id");
+
+                    b.Property<string>("TeacherId")
+                        .IsRequired()
+                        .HasColumnType("VARCHAR(36)")
+                        .HasColumnName("teacher_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("DATETIME(6)")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("VARCHAR(36)")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("NoteId")
+                        .HasName("pk_teacher_student_notes");
+
+                    b.HasAlternateKey("CenterId", "NoteId")
+                        .HasName("ux_teacher_student_notes_center_id_note_id");
+
+                    b.HasIndex("CenterId", "StudentId")
+                        .HasDatabaseName("ix_teacher_student_notes_center_id_student_id");
+
+                    b.HasIndex("CenterId", "TeacherId", "StudentId")
+                        .HasDatabaseName("ix_teacher_student_notes_center_id_teacher_id_student_id");
+
+                    b.ToTable("teacher_student_notes", (string)null);
+                });
+
             modelBuilder.Entity("EduTwin.DAL.PlatformOperations.PlatformAiCall", b =>
                 {
                     b.Property<string>("CallId")
@@ -8219,6 +8725,101 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.ToTable("student_learning_path_preferences", (string)null);
                 });
 
+            modelBuilder.Entity("EduTwin.DAL.AdaptivePractice.AdaptivePracticeSession", b =>
+                {
+                    b.HasOne("EduTwin.DAL.Recommendations.LearningPath", "LearningPath")
+                        .WithMany()
+                        .HasForeignKey("LearningPathId");
+
+                    b.HasOne("EduTwin.DAL.Organization.Student", "Student")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "StudentId")
+                        .HasPrincipalKey("CenterId", "StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.Organization.Subject", "Subject")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "SubjectId")
+                        .HasPrincipalKey("CenterId", "SubjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.KnowledgeGraph.KnowledgeNode", "TopicNode")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "TopicNodeId")
+                        .HasPrincipalKey("CenterId", "NodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("LearningPath");
+
+                    b.Navigation("Student");
+
+                    b.Navigation("Subject");
+
+                    b.Navigation("TopicNode");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.AdaptivePractice.AdaptivePracticeSessionItem", b =>
+                {
+                    b.HasOne("EduTwin.DAL.KnowledgeGraph.KnowledgeNode", "KnowledgeNode")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "KnowledgeNodeId")
+                        .HasPrincipalKey("CenterId", "NodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.CurriculumAndQuestions.Question", "Question")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "QuestionId")
+                        .HasPrincipalKey("CenterId", "QuestionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.AdaptivePractice.AdaptivePracticeSession", "Session")
+                        .WithMany("Items")
+                        .HasForeignKey("CenterId", "SessionId")
+                        .HasPrincipalKey("CenterId", "SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("KnowledgeNode");
+
+                    b.Navigation("Question");
+
+                    b.Navigation("Session");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.AdaptivePractice.AdaptivePracticeSessionSummary", b =>
+                {
+                    b.HasOne("EduTwin.DAL.KnowledgeGraph.KnowledgeNode", "RecommendedNextTopic")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "RecommendedNextTopicId")
+                        .HasPrincipalKey("CenterId", "NodeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("EduTwin.DAL.AdaptivePractice.AdaptivePracticeSession", "Session")
+                        .WithOne("Summary")
+                        .HasForeignKey("EduTwin.DAL.AdaptivePractice.AdaptivePracticeSessionSummary", "CenterId", "SessionId")
+                        .HasPrincipalKey("EduTwin.DAL.AdaptivePractice.AdaptivePracticeSession", "CenterId", "SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("EduTwin.DAL.Organization.Student", "Student")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "StudentId")
+                        .HasPrincipalKey("CenterId", "StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("RecommendedNextTopic");
+
+                    b.Navigation("Session");
+
+                    b.Navigation("Student");
+                });
+
             modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.AIAnalysisCheckpoint", b =>
                 {
                     b.HasOne("EduTwin.DAL.AssessmentAndReasoning.Attempt", null)
@@ -9368,6 +9969,29 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("EduTwin.DAL.Organization.TeacherStudentNote", b =>
+                {
+                    b.HasOne("EduTwin.DAL.Organization.Student", "Student")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "StudentId")
+                        .HasPrincipalKey("CenterId", "StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_teacher_student_notes_students");
+
+                    b.HasOne("EduTwin.DAL.Organization.Teacher", "Teacher")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "TeacherId")
+                        .HasPrincipalKey("CenterId", "TeacherId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_teacher_student_notes_teachers");
+
+                    b.Navigation("Student");
+
+                    b.Navigation("Teacher");
+                });
+
             modelBuilder.Entity("EduTwin.DAL.Recommendations.ActivityRun", b =>
                 {
                     b.HasOne("EduTwin.DAL.Recommendations.LearningContentVersion", "ContentVersion")
@@ -9735,6 +10359,13 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.Navigation("Student");
 
                     b.Navigation("Subject");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.AdaptivePractice.AdaptivePracticeSession", b =>
+                {
+                    b.Navigation("Items");
+
+                    b.Navigation("Summary");
                 });
 
             modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.Attempt", b =>

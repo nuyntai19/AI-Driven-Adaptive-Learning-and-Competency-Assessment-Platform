@@ -18,6 +18,12 @@ public static class DependencyInjection
         services.AddScoped<ICreateStudentUseCase, CreateStudentUseCase>();
         services.AddScoped<IUpdateStudentUseCase, UpdateStudentUseCase>();
         services.AddScoped<IDeleteStudentUseCase, DeleteStudentUseCase>();
+        services.AddScoped<ICreateTeacherStudentNoteUseCase, CreateTeacherStudentNoteUseCase>();
+        services.AddScoped<IGetTeacherStudentNoteUseCase, GetTeacherStudentNoteUseCase>();
+        services.AddScoped<IListTeacherStudentNotesUseCase, ListTeacherStudentNotesUseCase>();
+        services.AddScoped<IUpdateTeacherStudentNoteUseCase, UpdateTeacherStudentNoteUseCase>();
+        services.AddScoped<IDeleteTeacherStudentNoteUseCase, DeleteTeacherStudentNoteUseCase>();
+        services.AddScoped<IUpsertTeacherStudentNoteUseCase, UpsertTeacherStudentNoteUseCase>();
         services.AddScoped<IResetAccountPasswordUseCase, ResetAccountPasswordUseCase>();
         services.AddScoped<IListClassesUseCase, ListClassesUseCase>();
         services.AddScoped<IGetClassUseCase, GetClassUseCase>();

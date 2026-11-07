@@ -1,0 +1,10 @@
+{
+  "teacher": {
+    "questionText": "Choose: I have two brothers, both of ___ live in Hanoi.",
+    "questionType": "MultipleChoice", "answerEvaluationMode": "TextExact", "contentLanguage": "en",
+    "correctAnswer": "A", "solution": "Whom làm tân ngữ sau giới từ of để chỉ người; both of whom mở đầu mệnh đề quan hệ.",
+    "options": [{"label":"A","text":"whom","isCorrect":true},{"label":"B","text":"who","isCorrect":false},{"label":"C","text":"which","isCorrect":false}],
+    "knowledgeTopics": ["Đại từ quan hệ"]
+  },
+  "student": { "finalAnswer": "A", "reasoningText": "Whom luôn là đại từ chủ ngữ nên dùng sau both of.", "confidence": 80 }
+}

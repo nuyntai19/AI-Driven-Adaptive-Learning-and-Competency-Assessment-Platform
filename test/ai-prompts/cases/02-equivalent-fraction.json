@@ -1,0 +1,9 @@
+{
+  "teacher": {
+    "questionText": "Rút gọn phân số 2/4.",
+    "questionType": "ShortAnswer", "answerEvaluationMode": "NumericRational",
+    "correctAnswer": "1/2", "solution": "Chia tử và mẫu cho 2 được 1/2.",
+    "knowledgeTopics": ["Phân số tương đương"]
+  },
+  "student": { "finalAnswer": "0.5", "answerDisplayLatex": "\\frac{1}{2}", "reasoningText": "Chia tử và mẫu cho 2 được 1/2, bằng 0.5.", "confidence": 100 }
+}

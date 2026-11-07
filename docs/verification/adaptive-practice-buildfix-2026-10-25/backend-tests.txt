@@ -1,0 +1,17 @@
+  Determining projects to restore...
+  Restored /workspace/src/EduTwin.Contracts/EduTwin.Contracts.csproj (in 57 ms).
+  Restored /workspace/src/EduTwin.DAL/EduTwin.DAL.csproj (in 8.55 sec).
+  Restored /workspace/src/EduTwin.API/EduTwin.API.csproj (in 11 sec).
+  Restored /workspace/src/EduTwin.BLL/EduTwin.BLL.csproj (in 11 sec).
+  Restored /workspace/tests/EduTwin.BLL.Tests/EduTwin.BLL.Tests.csproj (in 11 sec).
+  EduTwin.Contracts -> /tmp/adaptive-buildfix/bin/EduTwin.Contracts/debug/EduTwin.Contracts.dll
+  EduTwin.DAL -> /tmp/adaptive-buildfix/bin/EduTwin.DAL/debug/EduTwin.DAL.dll
+  EduTwin.BLL -> /tmp/adaptive-buildfix/bin/EduTwin.BLL/debug/EduTwin.BLL.dll
+  EduTwin.API -> /tmp/adaptive-buildfix/bin/EduTwin.API/debug/EduTwin.API.dll
+  EduTwin.BLL.Tests -> /tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll
+Test run for /tmp/adaptive-buildfix/bin/EduTwin.BLL.Tests/debug/EduTwin.BLL.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+WARNING: Overwriting results file: /results/adaptive-buildfix.trx
+Results File: /results/adaptive-buildfix.trx
+
+Passed!  - Failed:     0, Passed:    17, Skipped:     0, Total:    17, Duration: 3 s - EduTwin.BLL.Tests.dll (net10.0)

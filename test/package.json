@@ -1,0 +1,15 @@
+{
+  "name": "edutwin-system-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Isolated Cypress validation, sanitization and authorization tests for EduTwin",
+  "engines": { "node": "^22 || ^24 || >=26" },
+  "scripts": {
+    "e2e": "node scripts/run-cypress.cjs",
+    "e2e:existing": "node scripts/run-cypress.cjs --reuse-stack",
+    "e2e:open": "cypress open --config-file cypress.config.cjs",
+    "test:harness": "node --test cypress/plugins/*.test.cjs",
+    "test:unit": "node --test cypress/plugins/*.test.cjs scripts/*.test.cjs"
+  },
+  "devDependencies": { "cypress": "16.2.1" }
+}

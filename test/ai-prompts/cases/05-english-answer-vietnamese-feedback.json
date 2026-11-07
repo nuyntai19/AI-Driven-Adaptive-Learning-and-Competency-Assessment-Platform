@@ -1,0 +1,10 @@
+{
+  "teacher": {
+    "questionText": "Choose the correct answer: She ___ to school every day.",
+    "questionType": "MultipleChoice", "answerEvaluationMode": "TextExact", "contentLanguage": "en",
+    "correctAnswer": "A", "solution": "Dùng thì hiện tại đơn, she là ngôi thứ ba số ít nên go thêm es thành goes.",
+    "options": [{"label":"A","text":"goes","isCorrect":true},{"label":"B","text":"go","isCorrect":false},{"label":"C","text":"going","isCorrect":false}],
+    "knowledgeTopics": ["Subject-verb agreement"]
+  },
+  "student": { "finalAnswer": "A", "reasoningText": "She is third-person singular. In the present simple, go takes -es, so goes is correct.", "confidence": 85 }
+}

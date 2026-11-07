@@ -1,0 +1,20 @@
+{
+    "teacher":  {
+                    "questionText":  "Đọc đề bài trong ảnh đính kèm.",
+                    "questionType":  "ShortAnswer",
+                    "answerEvaluationMode":  "NumericRational",
+                    "correctAnswer":  "7",
+                    "solution":  "Đề bài trong ảnh hỏi 3 + 4. Cộng được 7.",
+                    "knowledgeTopics":  [
+                                            "Phép cộng"
+                                        ],
+                    "problemImage":  {
+                                         "dataBase64":  "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"
+                                     }
+                },
+    "student":  {
+                    "finalAnswer":  "7",
+                    "reasoningText":  "Trong ảnh là phép cộng 3 + 4. Em tính được 7.",
+                    "confidence":  90
+                }
+}

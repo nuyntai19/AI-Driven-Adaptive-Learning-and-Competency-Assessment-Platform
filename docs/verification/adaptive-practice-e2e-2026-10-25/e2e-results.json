@@ -1,0 +1,415 @@
+{
+  "generatedAt": "2026-10-25T12:53:10.433Z",
+  "timezone": "Asia/Saigon",
+  "branch": "origin/SkinnySnail/adaptive-practice",
+  "sourceRevision": "dd47b89dc5133022f7cb298c9bdf0adde5dbab2a",
+  "status": "BLOCKED_BEFORE_E2E",
+  "builds": [
+    {
+      "id": "BUILD_API",
+      "status": "FAIL",
+      "exitCode": 1,
+      "image": "edutwin-adaptive-e2e-api:dd47b89",
+      "evidence": "api-build.txt",
+      "compilerErrorCount": 33,
+      "compilerErrors": [
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeHintGenerator.cs(14,35): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(48,85): error CS1061: 'KnowledgeNode' does not contain a definition for 'Status' and no accessible extension method 'Status' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(48,95): error CS0103: The name 'NodeStatus' does not exist in the current context [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(54,96): error CS1061: 'Subject' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'Subject' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(79,89): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(98,87): error CS1061: 'Subject' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'Subject' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(121,96): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(125,89): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(135,35): error CS1061: 'Subject' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'Subject' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(137,39): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(138,99): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(214,62): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(215,59): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(421,26): error CS8602: Dereference of a possibly null reference. [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(817,69): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(856,41): error CS1061: 'Subject' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'Subject' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(857,41): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(901,42): error CS1061: 'User' does not contain a definition for 'FullName' and no accessible extension method 'FullName' accepting a first argument of type 'User' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(903,37): error CS1061: 'Subject' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'Subject' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(904,37): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(940,42): error CS1061: 'User' does not contain a definition for 'FullName' and no accessible extension method 'FullName' accepting a first argument of type 'User' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(943,37): error CS1061: 'Subject' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'Subject' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(945,37): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(947,80): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(963,37): error CS1061: 'Subject' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'Subject' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(965,37): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1002,30): error CS0104: 'StudentQuestionOptionDto' is an ambiguous reference between 'EduTwin.Contracts.Assignments.StudentQuestionOptionDto' and 'EduTwin.Contracts.CurriculumAndQuestions.StudentQuestionOptionDto' [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1005,27): error CS1061: 'QuestionOption' does not contain a definition for 'Label' and no accessible extension method 'Label' accepting a first argument of type 'QuestionOption' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1006,26): error CS1061: 'QuestionOption' does not contain a definition for 'Text' and no accessible extension method 'Text' accepting a first argument of type 'QuestionOption' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1016,30): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1139,96): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1142,108): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]",
+        "/src/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs(1145,86): error CS1061: 'KnowledgeNode' does not contain a definition for 'Name' and no accessible extension method 'Name' accepting a first argument of type 'KnowledgeNode' could be found (are you missing a using directive or an assembly reference?) [/src/src/EduTwin.BLL/EduTwin.BLL.csproj]"
+      ]
+    },
+    {
+      "id": "BUILD_WEB",
+      "status": "FAIL",
+      "exitCode": 1,
+      "image": "edutwin-adaptive-e2e-web:dd47b89",
+      "evidence": "web-build.txt",
+      "compilerErrorCount": 3,
+      "compilerErrors": [
+        "src/pages/AdaptivePracticeOverviewPage.tsx(13,9): error TS6133: 'user' is declared but its value is never read.",
+        "src/pages/AdaptivePracticeOverviewPage.tsx(116,24): error TS2339: Property 'name' does not exist on type 'SubjectDto'.",
+        "src/pages/AdaptivePracticeOverviewPage.tsx(116,36): error TS2339: Property 'code' does not exist on type 'SubjectDto'."
+      ]
+    }
+  ],
+  "functionalTotals": {
+    "executed": 0,
+    "passed": 0,
+    "failed": 0,
+    "blocked": 48,
+    "notRun": 0
+  },
+  "cases": [
+    {
+      "id": "APAPI01",
+      "name": "Unauthenticated adaptive access is denied",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI02",
+      "name": "Student login in isolated schema",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI03",
+      "name": "Second student login in isolated schema",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI04",
+      "name": "Teacher login in isolated schema",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI05",
+      "name": "Other-center student login in isolated schema",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI06",
+      "name": "Weakness proposal explains target without issuing questions",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI07",
+      "name": "Learning Path mode returns a meaningful proposal",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI08",
+      "name": "Custom topic mode preserves selected topic",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI09",
+      "name": "Adaptive persistence tables exist in isolated schema",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI10",
+      "name": "Start a ten-minute session",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI11",
+      "name": "Ten-minute session has four/eight question limits",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI12",
+      "name": "Repeated start returns the active session",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI13",
+      "name": "First question belongs to the selected session topic",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI14",
+      "name": "Repeated next request preserves unanswered question identity",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI15",
+      "name": "Progressive hint is persisted on issued item",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI16",
+      "name": "Second student cannot read another session",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI17",
+      "name": "Second student cannot request another students hint",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI18",
+      "name": "Pause persists Paused state",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI19",
+      "name": "Paused session does not issue a new question",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI20",
+      "name": "Resume preserves the current question",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI21",
+      "name": "Submit stores one graded answer and updates session progress",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI22",
+      "name": "Same-submission replay does not duplicate attempt or evidence",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI23",
+      "name": "Session progress remains one answer after replay",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI24",
+      "name": "Voluntary close produces an incomplete-goal summary",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI25",
+      "name": "Summary can be retrieved after close",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI26",
+      "name": "Second student cannot read another students summary",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI27",
+      "name": "Closed session appears in student history",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI28",
+      "name": "Closed session cannot issue another question",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI29",
+      "name": "Closed session cannot accept a new answer",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI30",
+      "name": "Follow-up practice creates a distinct session and preserves history",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI31",
+      "name": "Fifteen-minute session has five/twelve limits",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI32",
+      "name": "Twenty-minute session has six/fifteen limits",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI33",
+      "name": "Teacher cannot see sessions through an unrelated class scope",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI34",
+      "name": "Student cannot use teacher monitoring endpoint",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI35",
+      "name": "Other-center student cannot read session or summary",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APAPI36",
+      "name": "Teacher cannot create a student practice session",
+      "kind": "HTTP/MySQL integration",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APWEB01",
+      "name": "Login and open adaptive overview; show a goal before a question",
+      "kind": "Browser E2E",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APWEB02",
+      "name": "Switch Weakness, LearningPath and CustomTopic modes",
+      "kind": "Browser E2E",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APWEB03",
+      "name": "Select subject, topic and 10/15/20 minute budget; start session",
+      "kind": "Browser E2E",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APWEB04",
+      "name": "Question, progress, selection reason and answer controls render",
+      "kind": "Browser E2E",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APWEB05",
+      "name": "Request progressive hints and verify support usage",
+      "kind": "Browser E2E",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APWEB06",
+      "name": "Submit an answer; verify graded feedback and next question",
+      "kind": "Browser E2E",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APWEB07",
+      "name": "Pause, reload, resume and retain question/progress/timer",
+      "kind": "Browser E2E",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APWEB08",
+      "name": "Voluntarily stop and distinguish incomplete from achieved",
+      "kind": "Browser E2E",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APWEB09",
+      "name": "Summary counts, skill evaluation and next action match API data",
+      "kind": "Browser E2E",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APWEB10",
+      "name": "Create follow-up session and retain linked prior history",
+      "kind": "Browser E2E",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APWEB11",
+      "name": "Reopen history and a closed session without issuing new questions",
+      "kind": "Browser E2E",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    },
+    {
+      "id": "APWEB12",
+      "name": "Teacher sees practice monitoring within the assigned class",
+      "kind": "Browser E2E",
+      "status": "BLOCKED",
+      "reason": "Current source cannot produce API/web images. E2E runtime was not started."
+    }
+  ],
+  "limitations": [
+    "No API/MySQL or browser E2E case was executed by this prerequisite gate.",
+    "Existing application images were not used as evidence for this source revision.",
+    "No test schema was created and no student data was written."
+  ]
+}

@@ -1,0 +1,399 @@
+diff --git a/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs b/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs
+index b39f229..a34d59f 100644
+--- a/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs
++++ b/src/EduTwin.BLL/AdaptivePractice/AdaptivePracticeEngine.cs
+@@ -18,6 +18,7 @@ using EduTwin.DAL.CurriculumAndQuestions;
+ using EduTwin.DAL.DigitalTwin;
+ using EduTwin.DAL.KnowledgeGraph;
+ using EduTwin.DAL.Persistence;
++using StudentQuestionOptionDto = EduTwin.Contracts.CurriculumAndQuestions.StudentQuestionOptionDto;
+ 
+ namespace EduTwin.BLL.AdaptivePractice;
+ 
+@@ -45,7 +46,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
+ 
+         var allTopics = await _dbContext.KnowledgeNodes
+             .AsNoTracking()
+-            .Where(kn => kn.CenterId == centerId && kn.SubjectId == subjectId && kn.Status == NodeStatus.Active && !kn.IsDeleted)
++            .Where(kn => kn.CenterId == centerId && kn.SubjectId == subjectId && kn.IsActive && !kn.IsDeleted)
+             .OrderBy(kn => kn.NodeId)
+             .ToListAsync(ct);
+ 
+@@ -176,12 +177,10 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
+         }
+ 
+         var subject = await _dbContext.Subjects
+-            .AsNoTracking()
+             .SingleOrDefaultAsync(s => s.CenterId == centerId && s.SubjectId == request.SubjectId && !s.IsDeleted, ct)
+             ?? throw new InvalidOperationException($"Subject '{request.SubjectId}' not found.");
+ 
+         var topic = await _dbContext.KnowledgeNodes
+-            .AsNoTracking()
+             .SingleOrDefaultAsync(kn => kn.CenterId == centerId && kn.NodeId == request.TopicNodeId && !kn.IsDeleted, ct)
+             ?? throw new InvalidOperationException($"TopicNode '{request.TopicNodeId}' not found.");
+ 
+@@ -418,7 +417,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
+         // Multi-Stage Question Selector (UC-04)
+         // Stage 1: Filter eligible questions (active, not deleted, same center & subject)
+         var protectedAssignmentQuestionIds = await _dbContext.AssignmentQuestions
+-            .Where(aq => aq.Assignment.CenterId == centerId
++            .Where(aq => aq.Assignment != null && aq.Assignment.CenterId == centerId
+                 && (aq.Assignment.Status == AssignmentStatus.Published || aq.Assignment.Status == AssignmentStatus.Draft)
+                 && !aq.Assignment.IsDeleted)
+             .Select(aq => aq.QuestionId)
+@@ -550,7 +549,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
+         await _dbContext.SaveChangesAsync(ct);
+ 
+         sessionItem.Question = chosenQuestion;
+-        var node = await _dbContext.KnowledgeNodes.AsNoTracking().SingleOrDefaultAsync(kn => kn.CenterId == centerId && kn.NodeId == targetNodeId, ct);
++        var node = await _dbContext.KnowledgeNodes.SingleOrDefaultAsync(kn => kn.CenterId == centerId && kn.NodeId == targetNodeId, ct);
+         sessionItem.KnowledgeNode = node!;
+ 
+         return await BuildQuestionDtoAsync(centerId, sessionItem, session, ct);
+@@ -898,7 +897,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
+         {
+             SessionId = s.SessionId,
+             StudentId = s.StudentId,
+-            StudentName = s.Student.User?.FullName ?? "Học sinh",
++            StudentName = s.Student.FullName,
+             ClassName = "Lớp học",
+             SubjectName = s.Subject.Name,
+             TopicName = s.TopicNode.Name,
+@@ -937,7 +936,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
+         {
+             AlertId = s.SessionId.ToString("N"),
+             StudentId = s.StudentId,
+-            StudentName = s.Student.User?.FullName ?? "Học sinh",
++            StudentName = s.Student.FullName,
+             ClassName = "Lớp học",
+             SubjectId = s.SubjectId,
+             SubjectName = s.Subject.Name,
+@@ -1002,8 +1001,8 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
+             .Select(o => new StudentQuestionOptionDto
+             {
+                 OptionId = o.OptionId.ToString(CultureInfo.InvariantCulture),
+-                Label = o.Label,
+-                Text = o.Text,
++                Label = o.OptionLabel,
++                Text = o.OptionText,
+                 OrderIndex = o.OrderIndex
+             })
+             .ToListAsync(ct);
+diff --git a/src/EduTwin.Contracts/KnowledgeGraph/SubjectDto.cs b/src/EduTwin.Contracts/KnowledgeGraph/SubjectDto.cs
+index 6544210..5371d3a 100644
+--- a/src/EduTwin.Contracts/KnowledgeGraph/SubjectDto.cs
++++ b/src/EduTwin.Contracts/KnowledgeGraph/SubjectDto.cs
+@@ -5,6 +5,9 @@ public class SubjectDto
+     public string SubjectId { get; set; } = null!;
+     public string SubjectCode { get; set; } = null!;
+     public string SubjectName { get; set; } = null!;
++    // Read aliases for clients using the shorter subject labels.
++    public string Name => SubjectName;
++    public string Code => SubjectCode;
+     public string? Description { get; set; }
+     public bool IsActive { get; set; }
+     public string RowVersion { get; set; } = null!;
+diff --git a/src/EduTwin.DAL/KnowledgeGraph/KnowledgeNode.cs b/src/EduTwin.DAL/KnowledgeGraph/KnowledgeNode.cs
+index a0adabf..dccc398 100644
+--- a/src/EduTwin.DAL/KnowledgeGraph/KnowledgeNode.cs
++++ b/src/EduTwin.DAL/KnowledgeGraph/KnowledgeNode.cs
+@@ -14,6 +14,13 @@ public class KnowledgeNode : IMutableTenantAggregate
+     public NodeType NodeType { get; set; }
+     public string NodeCode { get; set; } = null!;
+     public string NodeName { get; set; } = null!;
++    // Compatibility alias; the persisted value remains node_name.
++    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
++    public string Name
++    {
++        get => NodeName;
++        set => NodeName = value;
++    }
+     public string? Description { get; set; }
+     public uint OrderIndex { get; set; }
+     public decimal ExamImportance { get; set; }
+diff --git a/src/EduTwin.DAL/Organization/Subject.cs b/src/EduTwin.DAL/Organization/Subject.cs
+index eca6ff1..388dba3 100644
+--- a/src/EduTwin.DAL/Organization/Subject.cs
++++ b/src/EduTwin.DAL/Organization/Subject.cs
+@@ -7,6 +7,13 @@ public class Subject : IMutableTenantAggregate
+     public Guid SubjectId { get; set; }
+     public string SubjectCode { get; set; } = null!;
+     public string SubjectName { get; set; } = null!;
++    // Compatibility alias; the persisted value remains subject_name.
++    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
++    public string Name
++    {
++        get => SubjectName;
++        set => SubjectName = value;
++    }
+     public string? Description { get; set; }
+     public bool IsActive { get; set; }
+ 
+diff --git a/tests/EduTwin.BLL.Tests/AdaptivePractice/AdaptivePracticeEngineTests.cs b/tests/EduTwin.BLL.Tests/AdaptivePractice/AdaptivePracticeEngineTests.cs
+index 612b97e..cc2d1fa 100644
+--- a/tests/EduTwin.BLL.Tests/AdaptivePractice/AdaptivePracticeEngineTests.cs
++++ b/tests/EduTwin.BLL.Tests/AdaptivePractice/AdaptivePracticeEngineTests.cs
+@@ -10,6 +10,8 @@ using EduTwin.Contracts.AdaptivePractice;
+ using EduTwin.Contracts.CurriculumAndQuestions;
+ using EduTwin.Contracts.KnowledgeGraph;
+ using EduTwin.Contracts.Assignments;
++using EduTwin.Contracts.Organization;
++using EduTwin.DAL.Assignments;
+ using EduTwin.DAL.CurriculumAndQuestions;
+ using EduTwin.DAL.DigitalTwin;
+ using EduTwin.DAL.IdentityAndTenancy;
+@@ -40,7 +42,7 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
+ 
+         _tenantContext = new TenantContext();
+         _tenantContext.Initialize(_centerId, _studentId, "Student", 1);
+-        _dbContext = new EduTwinDbContext(options, _tenantContext);
++        _dbContext = new AdaptivePracticeTestDbContext(options, _tenantContext);
+         _engine = new AdaptivePracticeEngine(_dbContext);
+ 
+         SeedInitialData();
+@@ -56,10 +58,12 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
+         var center = new Center
+         {
+             CenterId = _centerId,
+-            Code = "CTR_TEST",
+-            Name = "Center Test",
++            CenterCode = "CTR_TEST",
++            CenterName = "Center Test",
++            Timezone = "Asia/Ho_Chi_Minh",
+             Status = CenterStatus.Active,
+-            CreatedAt = _utcNow
++            CreatedAt = _utcNow,
++            UpdatedAt = _utcNow
+         };
+         _dbContext.Centers.Add(center);
+ 
+@@ -67,9 +71,8 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
+         {
+             CenterId = _centerId,
+             StudentId = _studentId,
++            FullName = "Test student",
+             GradeLevel = 10,
+-            EnrollmentDate = _utcNow,
+-            Status = StudentStatus.Active,
+             CreatedAt = _utcNow
+         };
+         _dbContext.Students.Add(student);
+@@ -78,9 +81,9 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
+         {
+             CenterId = _centerId,
+             SubjectId = _subjectId,
+-            Name = "Toán Học",
+-            Code = "MATH10",
+-            Status = SubjectStatus.Active,
++            SubjectName = "Toán Học",
++            SubjectCode = "MATH10",
++            IsActive = true,
+             CreatedAt = _utcNow
+         };
+         _dbContext.Subjects.Add(subject);
+@@ -90,9 +93,9 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
+             CenterId = _centerId,
+             SubjectId = _subjectId,
+             NodeId = _prereqTopicId,
+-            Name = "Quy tắc chuyển vế và đổi dấu",
+-            Status = NodeStatus.Active,
+-            Difficulty = 1,
++            NodeName = "Quy tắc chuyển vế và đổi dấu",
++            NodeCode = "AP_PREREQ",
++            IsActive = true,
+             CreatedAt = _utcNow
+         };
+         _dbContext.KnowledgeNodes.Add(prereqTopic);
+@@ -102,9 +105,9 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
+             CenterId = _centerId,
+             SubjectId = _subjectId,
+             NodeId = _mainTopicId,
+-            Name = "Phương trình bậc nhất một ẩn",
+-            Status = NodeStatus.Active,
+-            Difficulty = 2,
++            NodeName = "Phương trình bậc nhất một ẩn",
++            NodeCode = "AP_MAIN",
++            IsActive = true,
+             CreatedAt = _utcNow
+         };
+         _dbContext.KnowledgeNodes.Add(mainTopic);
+@@ -169,6 +172,11 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
+             });
+         }
+ 
++        foreach (var entry in _dbContext.ChangeTracker.Entries())
++        {
++            if (entry.Entity is EduTwin.DAL.Persistence.Models.IMutableTenantAggregate aggregate)
++                aggregate.UpdatedAt = _utcNow;
++        }
+         _dbContext.SaveChanges();
+     }
+ 
+@@ -367,15 +375,16 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
+         {
+             AssignmentId = Guid.NewGuid(),
+             CenterId = _centerId,
+-            SubjectId = _subjectId,
+             Title = "Bài kiểm tra 15 phút",
+             Status = AssignmentStatus.Published,
+-            CreatedAt = _utcNow
++            CreatedAt = _utcNow,
++            UpdatedAt = _utcNow
+         };
+         _dbContext.Assignments.Add(assignment);
+ 
+         _dbContext.AssignmentQuestions.Add(new AssignmentQuestion
+         {
++            CenterId = _centerId,
+             AssignmentId = assignment.AssignmentId,
+             QuestionId = 1,
+             OrderIndex = 0,
+@@ -420,4 +429,18 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
+         Assert.Equal(AdaptivePracticeSessionStatus.Closed, sessionDb!.Status);
+         Assert.Equal(AdaptivePracticeCloseReason.StudentStopped, sessionDb.CloseReason);
+     }
++
++    private sealed class AdaptivePracticeTestDbContext(
++        DbContextOptions<EduTwinDbContext> options, TenantContext tenantContext)
++        : EduTwinDbContext(options, tenantContext)
++    {
++        protected override void OnModelCreating(ModelBuilder modelBuilder)
++        {
++            base.OnModelCreating(modelBuilder);
++            // MySQL accepts the engine's explicit unsigned IDs. InMemory's auto-ID
++            // generator converts them to Int64 and can overflow before the test runs.
++            modelBuilder.Entity<EduTwin.DAL.AssessmentAndReasoning.Attempt>()
++                .Property(attempt => attempt.AttemptId).ValueGeneratedNever();
++        }
++    }
+ }
+diff --git a/tests/EduTwin.BLL.Tests/Organization/TeacherStudentNotesUseCaseTests.cs b/tests/EduTwin.BLL.Tests/Organization/TeacherStudentNotesUseCaseTests.cs
+index 92bae38..1a67fcc 100644
+--- a/tests/EduTwin.BLL.Tests/Organization/TeacherStudentNotesUseCaseTests.cs
++++ b/tests/EduTwin.BLL.Tests/Organization/TeacherStudentNotesUseCaseTests.cs
+@@ -57,6 +57,7 @@ public class TeacherStudentNotesUseCaseTests : IDisposable
+ 
+     private async Task SeedEntitiesAsync()
+     {
++        var now = DateTime.UtcNow;
+         var teacherUser = new User
+         {
+             UserId = _teacherId,
+@@ -66,14 +67,17 @@ public class TeacherStudentNotesUseCaseTests : IDisposable
+             RoleName = UserRole.Teacher,
+             Status = UserStatus.Active,
+             PasswordHash = "hash",
+-            PasswordSalt = "salt"
++            CreatedAt = now,
++            UpdatedAt = now
+         };
+         var teacher = new Teacher
+         {
+             TeacherId = _teacherId,
+             CenterId = _centerId,
+             Department = "Toán",
+-            User = teacherUser
++            User = teacherUser,
++            CreatedAt = now,
++            UpdatedAt = now
+         };
+ 
+         var studentUser = new User
+@@ -85,7 +89,8 @@ public class TeacherStudentNotesUseCaseTests : IDisposable
+             RoleName = UserRole.Student,
+             Status = UserStatus.Active,
+             PasswordHash = "hash",
+-            PasswordSalt = "salt"
++            CreatedAt = now,
++            UpdatedAt = now
+         };
+         var student = new Student
+         {
+@@ -93,7 +98,9 @@ public class TeacherStudentNotesUseCaseTests : IDisposable
+             CenterId = _centerId,
+             FullName = "Nguyễn Văn B",
+             GradeLevel = 10,
+-            User = studentUser
++            User = studentUser,
++            CreatedAt = now,
++            UpdatedAt = now
+         };
+ 
+         _dbContext.Users.AddRange(teacherUser, studentUser);
+@@ -197,12 +204,16 @@ public class TeacherStudentNotesUseCaseTests : IDisposable
+         _dbContext.TeacherStudentNotes.Add(note);
+         await _dbContext.SaveChangesAsync();
+ 
++        var staleRowVersion = note.RowVersion.ToString();
++        note.Content = "Đã được cập nhật bởi yêu cầu khác";
++        await _dbContext.SaveChangesAsync();
++
+         var sut = new UpdateTeacherStudentNoteUseCase(_dbContext, _mockTenantContext.Object, TimeProvider.System);
+ 
+         var result = await sut.ExecuteAsync(note.NoteId, new UpdateTeacherStudentNoteRequest
+         {
+             Content = "Thay đổi",
+-            RowVersion = "1" // Stale version
++            RowVersion = staleRowVersion
+         }, CancellationToken.None);
+ 
+         Assert.False(result.IsSuccess);
+@@ -249,6 +260,18 @@ public class TeacherStudentNotesUseCaseTests : IDisposable
+     {
+         await SeedEntitiesAsync();
+         var student2Id = Guid.NewGuid();
++        var now = DateTime.UtcNow;
++        _dbContext.Users.Add(new User
++        {
++            UserId = student2Id, CenterId = _centerId, Username = "student02",
++            DisplayName = "Học Sinh C", RoleName = UserRole.Student,
++            Status = UserStatus.Active, PasswordHash = "hash", CreatedAt = now, UpdatedAt = now
++        });
++        _dbContext.Students.Add(new Student
++        {
++            StudentId = student2Id, CenterId = _centerId, FullName = "Nguyễn Văn C",
++            GradeLevel = 10, CreatedAt = now, UpdatedAt = now
++        });
+         var note1 = new TeacherStudentNote
+         {
+             NoteId = Guid.NewGuid(),
+diff --git a/web/edutwin-web/src/pages/AdaptivePracticeOverviewPage.tsx b/web/edutwin-web/src/pages/AdaptivePracticeOverviewPage.tsx
+index a6cc378..7853e24 100644
+--- a/web/edutwin-web/src/pages/AdaptivePracticeOverviewPage.tsx
++++ b/web/edutwin-web/src/pages/AdaptivePracticeOverviewPage.tsx
+@@ -4,13 +4,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+ import { adaptivePracticeApi } from "../api/adaptivePracticeApi";
+ import { organizationApi } from "../api/organizationApi";
+ import type { AdaptivePracticeMode } from "../types/adaptivePractice";
+-import { useAuthStore } from "../stores/authStore";
+ 
+ export const AdaptivePracticeOverviewPage: React.FC = () => {
+   const [searchParams, setSearchParams] = useSearchParams();
+   const navigate = useNavigate();
+   const queryClient = useQueryClient();
+-  const user = useAuthStore((state) => state.user);
+ 
+   const selectedSubjectId = searchParams.get("subjectId") || "";
+   const [selectedMode, setSelectedMode] = useState<AdaptivePracticeMode>("Weakness");
+@@ -113,7 +111,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
+             >
+               {subjects.map((sub) => (
+                 <option key={sub.subjectId} value={sub.subjectId}>
+-                  {sub.name} ({sub.code})
++                  {sub.subjectName} ({sub.subjectCode})
+                 </option>
+               ))}
+             </select>
+diff --git a/web/edutwin-web/src/types/organization.ts b/web/edutwin-web/src/types/organization.ts
+index bf7c011..97916ec 100644
+--- a/web/edutwin-web/src/types/organization.ts
++++ b/web/edutwin-web/src/types/organization.ts
+@@ -117,6 +117,8 @@ export interface SubjectDto {
+   subjectId: string;
+   subjectCode: string;
+   subjectName: string;
++  readonly name?: string;
++  readonly code?: string;
+   description: string | null;
+   isActive: boolean;
+   rowVersion: string;

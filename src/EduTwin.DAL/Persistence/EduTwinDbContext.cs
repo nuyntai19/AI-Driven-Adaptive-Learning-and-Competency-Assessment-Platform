@@ -59,6 +59,7 @@ public class EduTwinDbContext : DbContext
     public DbSet<AuthorizationAuditLog> AuthorizationAuditLogs => Set<AuthorizationAuditLog>();
     public DbSet<Teacher> Teachers => Set<Teacher>();
     public DbSet<Student> Students => Set<Student>();
+    public DbSet<TeacherStudentNote> TeacherStudentNotes => Set<TeacherStudentNote>();
     public DbSet<Subject> Subjects => Set<Subject>();
     public DbSet<Class> Classes => Set<Class>();
     public DbSet<ClassStudent> ClassStudents => Set<ClassStudent>();
@@ -119,6 +120,11 @@ public class EduTwinDbContext : DbContext
     public DbSet<AIProviderQuotaState> AIProviderQuotaStates => Set<AIProviderQuotaState>();
     public DbSet<StudentReviewRequest> StudentReviewRequests => Set<StudentReviewRequest>();
     public DbSet<TeacherReviewHistory> TeacherReviewHistories => Set<TeacherReviewHistory>();
+
+    // Adaptive Practice
+    public DbSet<EduTwin.DAL.AdaptivePractice.AdaptivePracticeSession> AdaptivePracticeSessions => Set<EduTwin.DAL.AdaptivePractice.AdaptivePracticeSession>();
+    public DbSet<EduTwin.DAL.AdaptivePractice.AdaptivePracticeSessionItem> AdaptivePracticeSessionItems => Set<EduTwin.DAL.AdaptivePractice.AdaptivePracticeSessionItem>();
+    public DbSet<EduTwin.DAL.AdaptivePractice.AdaptivePracticeSessionSummary> AdaptivePracticeSessionSummaries => Set<EduTwin.DAL.AdaptivePractice.AdaptivePracticeSessionSummary>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

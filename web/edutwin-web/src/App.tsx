@@ -25,6 +25,9 @@ const StudentDashboardPage = lazy(() => import("./pages/StudentDashboardPage").t
 const StudentTwinPage = lazy(() => import("./pages/StudentTwinPage").then((module) => ({ default: module.StudentTwinPage })));
 const StudentLearningPathPage = lazy(() => import("./pages/StudentLearningPathPage").then((module) => ({ default: module.StudentLearningPathPage })));
 const LearningPlayerPage = lazy(() => import("./pages/LearningPlayerPage").then((module) => ({ default: module.LearningPlayerPage })));
+const AdaptivePracticeOverviewPage = lazy(() => import("./pages/AdaptivePracticeOverviewPage").then((module) => ({ default: module.AdaptivePracticeOverviewPage })));
+const AdaptivePracticeSessionPage = lazy(() => import("./pages/AdaptivePracticeSessionPage").then((module) => ({ default: module.AdaptivePracticeSessionPage })));
+const AdaptivePracticeSummaryPage = lazy(() => import("./pages/AdaptivePracticeSummaryPage").then((module) => ({ default: module.AdaptivePracticeSummaryPage })));
 import { StudentLayout } from "./layouts/StudentLayout";
 
 const CenterDashboardPage = lazy(() => import("./pages/CenterDashboardPage").then((module) => ({ default: module.CenterDashboardPage })));
@@ -107,11 +110,15 @@ function App() {
               <Route path="/hoc-tap/bai-tap" element={<StudentAssignmentsPage />} />
               <Route path="/hoc-tap/bai-tap/:id" element={<StudentAssignmentDetailPage />} />
             </Route>
+            <Route element={<PermissionRoute allOf={[permissions.recommendationsStudentReadOwn]} />}>
+              <Route path="/hoc-tap/luyen-tap" element={<AdaptivePracticeOverviewPage />} />
+            </Route>
           </Route>
 
-          {/* Focused Full-Screen Learning Player */}
+          {/* Focused Full-Screen Learning & Adaptive Practice Player */}
           <Route element={<PermissionRoute allOf={[permissions.learningAttemptsSubmit]} />}>
-            <Route path="/hoc-tap/luyen-tap" element={<LearningPlayerPage />} />
+            <Route path="/hoc-tap/luyen-tap/phien/:sessionId" element={<AdaptivePracticeSessionPage />} />
+            <Route path="/hoc-tap/luyen-tap/phien/:sessionId/tong-ket" element={<AdaptivePracticeSummaryPage />} />
             <Route path="/hoc-tap/luyen-tap/:questionId" element={<LearningPlayerPage />} />
           </Route>
 

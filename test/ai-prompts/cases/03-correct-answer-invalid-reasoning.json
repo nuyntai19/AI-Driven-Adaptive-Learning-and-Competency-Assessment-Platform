@@ -1,0 +1,9 @@
+{
+  "teacher": {
+    "questionText": "Rút gọn phân số 16/64 và giải thích.",
+    "questionType": "ShortAnswer", "answerEvaluationMode": "NumericRational",
+    "correctAnswer": "1/4", "solution": "Chia cả tử và mẫu cho 16 được 1/4.",
+    "knowledgeTopics": ["Rút gọn phân số"]
+  },
+  "student": { "finalAnswer": "1/4", "reasoningText": "Gạch bỏ chữ số 6 ở tử 16 và mẫu 64, còn 1/4. Mọi phân số đều có thể gạch các chữ số giống nhau như vậy.", "confidence": 95 }
+}

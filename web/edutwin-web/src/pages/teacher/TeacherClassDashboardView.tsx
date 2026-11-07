@@ -11,6 +11,7 @@ import {
   TeacherSkeleton,
   TeacherSafeErrorPanel,
 } from "../../components/teacher/TeacherPrimitives";
+import { TeacherAdaptivePracticeSection } from "../../components/teacher/TeacherAdaptivePracticeSection";
 import type { ClassDashboardDataDto } from "../../types/dashboards";
 import { normalizeCompletionRate } from "./teacherDashboardHelpers";
 
@@ -350,6 +351,11 @@ export function TeacherClassDashboardView() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Adaptive Practice Monitoring & Actionable Intervention Alerts */}
+          <div className="pt-4 border-t border-[var(--th-border)]">
+            <TeacherAdaptivePracticeSection classId={selectedClassId} />
           </div>
         </div>
         );

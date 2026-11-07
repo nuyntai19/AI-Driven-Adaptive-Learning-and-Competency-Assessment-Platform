@@ -1,0 +1,1 @@
+{"isolatedStackReady":true,"database":"edutwin_e2e_fddcc76efd594261b7ff1cfb41d38895","url":"http://127.0.0.1:3002","manifestPath":"C:\\Users\\ADMIN\\AppData\\Local\\Temp\\edutwin_acceptance_stack.fixture_manifest.json"}

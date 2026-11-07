@@ -1,0 +1,9 @@
+{
+  "teacher": {
+    "questionText": "Cho y = 2x + 1. Tính y tại x = 3.",
+    "questionType": "ShortAnswer", "answerEvaluationMode": "NumericRational",
+    "correctAnswer": "7", "solution": "Thay x = 3, ta có y = 2 × 3 + 1 = 7.",
+    "knowledgeTopics": ["Thay giá trị vào biểu thức"], "maxScore": 10
+  },
+  "student": { "finalAnswer": "7", "reasoningText": "Thay x=3 vào y=2x+1 được y=2*3+1=7.", "confidence": 90, "timeSpentSeconds": 45 }
+}

@@ -1,0 +1,5 @@
+{
+  "status": "PASS",
+  "case": "SubjectDto aliases match canonical fields in real HTTP response",
+  "checkedSubjects": 2
+}

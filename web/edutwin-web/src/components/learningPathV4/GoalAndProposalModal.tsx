@@ -61,11 +61,11 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
   const selfAssessed = placement ? [] : selfAssessedSkillIds.filter(id => !targets.includes(id) && !selfReported.includes(id));
   const generate = useMutation({ mutationFn: async () => {
     const goal = await createOrUpdateLearningGoal({ subjectId, classId, title, goalType, targetSkillIds: targets,
-      startWithPlacement: placement, targetScore: targetScore === "" ? null : Number(targetScore), schedule: { ...schedule, studyDays: schedule.studyDays.length ? schedule.studyDays : [1,2,3,4,5,6,0].slice(0,days) },
-      clearDeadline: !!initialDeadline && !deadline,
+      startWithPlacement: placement, targetScore: placement || targetScore === "" ? null : Number(targetScore), schedule: { ...schedule, studyDays: schedule.studyDays.length ? schedule.studyDays : [1,2,3,4,5,6,0].slice(0,days) },
+      clearDeadline: placement ? true : !!initialDeadline && !deadline,
       selfReportedPrerequisiteSkillIds: selfReported, selfAssessedSkillIds: selfAssessed,
       availableMinutesPerDay: minutes, availableDaysPerWeek: days, preferredMode: "Balanced", preferredPace: pace,
-      deadlineDate: deadline ? new Date(`${deadline}T23:59:59`).toISOString() : undefined });
+      deadlineDate: !placement && deadline ? new Date(`${deadline}T23:59:59`).toISOString() : undefined });
     const value = await generatePathProposal({ subjectId, classId, goalId: goal.goalId });
     // Placement starts right away: the chosen parts open as one test, section after section.
     const accepted = value.isPlacement ? await acceptPathProposal(value.proposalId) : undefined;
@@ -123,7 +123,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
           <p className="text-xs">Bỏ qua được ghi nhận theo tự xác nhận của em, không tự tính là đã nắm vững qua kiểm tra. Em có thể đổi lựa chọn khi cập nhật lộ trình.</p>
         </div>}
         {placement && <p className="rounded-xl bg-indigo-50 p-3 text-sm text-indigo-950">Bài kiểm tra gồm {targets.length} phần, khoảng {targets.length * 5} câu, mất khoảng {targets.length * 10} phút; câu xếp từ dễ đến khó trong từng phần. Có thể bỏ bớt phần đã chắc chắn ở danh sách trên. Mỗi phần dùng 3–5 câu mới có thể tự chấm. Phần thiếu câu được ghi chưa đủ dữ liệu; không chặn phần khác hoặc chặn tạo lộ trình. Mẫu ít có độ tin cậy thấp.</p>}
-        <details open><summary className="cursor-pointer text-base font-semibold text-slate-900 dark:text-slate-100">Mục tiêu và lịch học · {formatStudyMinutes(minutes)}/ngày, {days} ngày/tuần</summary><p className="mt-2 text-sm text-slate-500">Điểm mục tiêu và ngày thi giúp lộ trình xếp đúng theo ngày thật và chừa thời gian ôn, thi thử. Bỏ trống thì lộ trình đi theo tiến độ học.</p><div className="mt-4 space-y-4">
+        {!placement && <details open><summary className="cursor-pointer text-base font-semibold text-slate-900 dark:text-slate-100">Mục tiêu và lịch học · {formatStudyMinutes(minutes)}/ngày, {days} ngày/tuần</summary><p className="mt-2 text-sm text-slate-500">Điểm mục tiêu và ngày thi giúp lộ trình xếp đúng theo ngày thật và chừa thời gian ôn, thi thử. Bỏ trống thì lộ trình đi theo tiến độ học.</p><div className="mt-4 space-y-4">
         <label className="block text-sm font-medium">Tên mục tiêu<input required maxLength={200} className={input} value={title} onChange={e => setTitle(e.target.value)} /></label>
         <label className="block text-sm font-medium">Bạn muốn đạt điều gì?<select className={input} value={goalType} onChange={e => setGoalType(e.target.value)}>
           <option value="Foundation">Học lại nền tảng</option><option value="KeepUp">Theo kịp bài trên lớp</option><option value="Diagnostic">Vừa thử vừa học</option><option value="ExamPrep">Chuẩn bị bài kiểm tra</option><option value="Advanced">Học nâng cao</option>
@@ -141,7 +141,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
         <label className="block text-sm">Dự phòng ôn và thi thử<select className={input} value={schedule.reviewReservePercent} onChange={e => setSchedule(s => ({...s, reviewReservePercent: Number(e.target.value)}))}>{[15,20,25,30].map(n => <option key={n} value={n}>{n}% thời gian</option>)}</select></label>
         <label className="block text-sm">Chờ trước khi luyện lại câu đã làm<select className={input} value={schedule.questionReuseDelayDays ?? 2} onChange={e => setSchedule(s => ({...s, questionReuseDelayDays: Number(e.target.value)}))}>{[0,1,2,3,7].map(n => <option key={n} value={n}>{n === 0 ? "Có thể luyện lại ngay" : `${n} ngày`}</option>)}</select><span className="mt-1 block text-xs text-slate-500">Câu đã làm chỉ dùng để luyện/ôn; bài tự kiểm tra vẫn cần câu mới để xác nhận kỹ năng.</span></label>
         <p className="text-xs text-slate-500">Nhịp học và lịch ôn luôn nằm trong trần phút/ngày. Khi thiếu thời gian, hệ thống sẽ nêu phần bị hoãn và thời lượng còn thiếu.</p>
-        </div></details>
+        </div></details>}
         {!targets.length && <p className="text-sm text-amber-700">Chọn ít nhất một chủ đề hoặc kỹ năng để tiếp tục.</p>}
         <button type="submit" disabled={generate.isPending || targets.length === 0 || needsAcknowledgement} className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white disabled:opacity-50">{generate.isPending ? placement ? "Đang tạo bài kiểm tra…" : "Đang chuẩn bị…" : placement ? "Bắt đầu kiểm tra" : "Xem trước lộ trình"}</button>
       </form> : proposal && <div className="mt-6 space-y-5">
