@@ -698,14 +698,21 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             .Sum(r => (long)(definitions.GetValueOrDefault(r.SessionId.ToString())?.EstimatedMinutes ?? 0));
         var examMinutesToday = (uint)result.Exams.Where(e => LearningPathCalendar.LocalDate(e.ExamAt, plan.Schedule.TimeZoneId) == LearningPathCalendar.LocalDate(Now, plan.Schedule.TimeZoneId) && e.Status is "Scheduled" or "Completed")
             .Sum(e => e.TimeLimitMinutes);
-        var remainingToday = result.AvailableMinutesPerDay > result.StudiedMinutesToday + examMinutesToday ? result.AvailableMinutesPerDay - result.StudiedMinutesToday - examMinutesToday : 0;
+        // The time slider states how much time the student has TODAY. The
+        // goal's minutes-per-day is the default plan, not a ceiling: when the
+        // student picks more time today, the extra minutes stay in the budget
+        // and BuildTodayPlan spends them on extra practice/review sets (each
+        // sized by the pool's estimated seconds per question) instead of the
+        // request being silently clamped back to the daily goal.
+        var dayBudget = Math.Max(result.AvailableMinutesPerDay, result.AvailableMinutes);
+        var remainingToday = dayBudget > result.StudiedMinutesToday + examMinutesToday ? dayBudget - result.StudiedMinutesToday - examMinutesToday : 0;
         result.AvailableMinutes = Math.Min(result.AvailableMinutes, remainingToday);
         if (!plan.IsPlacement)
         {
             var scheduledToday = LearningPathCalendar.LocalDate(Now, plan.Schedule.TimeZoneId);
             // Rest days are not blocked: a student who opens the app may still study; the calendar just does not plan new load for that day.
             if (!LearningPathCalendar.Days(scheduledToday, scheduledToday, plan.Schedule, plan.AvailableDaysPerWeek).Any())
-                result.AvailableMinutes = Math.Min(result.AvailableMinutes, plan.AvailableMinutesPerDay);
+                result.AvailableMinutes = Math.Min(result.AvailableMinutes, dayBudget);
         }
         BuildTodayPlan(result, options, weaknessBySkill, setsToday);
         // Capacity: what the largest budget would plan today. Sets are created one after another, so more time adds nothing beyond it.
