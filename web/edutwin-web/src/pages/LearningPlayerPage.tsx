@@ -1828,6 +1828,7 @@ const PracticePlayerPage = () => {
       }
       const merged = reasoningText.trim() ? `${reasoningText.trimEnd()}\n${text}` : text;
       handleReasoningChange(merged);
+      setStepsMirror({ qId: String(question?.questionId ?? ""), steps: merged.split("\n") });
       // Câu tự luận/ngắn: bước cuối của bản chép là đáp án cuối (học sinh có
       // thể đổi dấu chọn sang bước khác). Trắc nghiệm giữ nguyên lựa chọn.
       if (question?.questionType !== "MultipleChoice") {
@@ -2453,7 +2454,13 @@ const PracticePlayerPage = () => {
   };
 
   const handleStepAdd = () => {
-    commitSteps([...solutionSteps, ""], finalStepIndex < 0 ? 0 : finalStepIndex);
+    // Writing in order means the conclusion is written last: when the marker
+    // sits on the current last step (or there are no steps yet), it follows
+    // the newly appended step. A marker deliberately moved to an earlier
+    // step stays where the student put it.
+    const oldLast = solutionSteps.length - 1;
+    const marker = finalStepIndex < 0 || finalStepIndex === oldLast ? solutionSteps.length : finalStepIndex;
+    commitSteps([...solutionSteps, ""], marker);
     setStepFocusRequest(solutionSteps.length);
   };
 
