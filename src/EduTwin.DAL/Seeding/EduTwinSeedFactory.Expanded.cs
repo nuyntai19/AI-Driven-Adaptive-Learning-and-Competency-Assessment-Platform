@@ -124,7 +124,19 @@ public partial class EduTwinSeedFactory
             Sample("ENG12-C-01", "ENG12-CAREERS", 12, "What does the abbreviation CV stand for in a job application?", "curriculum vitae", "CV stands for curriculum vitae."),
             Sample("ENG12-S-01", "ENG12-SPEAKING", 12, "In a job interview, how would you briefly explain one skill relevant to the position? Write two clear sentences.",
                 "I communicate clearly and work well in a team. I used these skills during a school project.",
-                "Give a relevant skill and a concrete example.", false, true)
+                "Give a relevant skill and a concrete example.", false, true),
+            // Ngân hàng bậc hai cần đủ câu cho kiểm tra đầu vào (5 câu độc lập)
+            // cộng phần luyện và ví dụ mẫu: các câu dưới đây nâng tổng số câu
+            // của MATH10-QUADRATIC từ 1 lên 9. Thêm ở CUỐI danh sách để ID
+            // xác định của 12 câu đầu không đổi.
+            Sample("MATH10-Q-02", "MATH10-QUADRATIC", 10, "Giải phương trình x² - 3x - 4 = 0. Viết hai nghiệm theo thứ tự tăng dần, cách nhau bằng dấu phẩy.", "-1,4", "Phân tích (x+1)(x-4)=0 nên x=-1 hoặc x=4."),
+            Sample("MATH10-Q-03", "MATH10-QUADRATIC", 10, "Tìm tọa độ đỉnh của parabol y = x² - 4x + 3. Viết theo dạng x,y.", "2,-1", "Hoành độ đỉnh x = -b/2a = 2; tung độ y = 2² - 4·2 + 3 = -1."),
+            Sample("MATH10-Q-04", "MATH10-QUADRATIC", 10, "Tính biệt thức Δ của phương trình 2x² - 4x + 2 = 0.", "0", "Δ = (-4)² - 4·2·2 = 16 - 16 = 0.", true),
+            Sample("MATH10-Q-05", "MATH10-QUADRATIC", 10, "Giải bất phương trình x² - x - 6 < 0. Viết khoảng nghiệm theo dạng (a;b).", "(-2;3)", "x² - x - 6 = (x+2)(x-3); tam thức âm trong khoảng hai nghiệm nên nghiệm là (-2;3)."),
+            Sample("MATH10-Q-06", "MATH10-QUADRATIC", 10, "Cho hàm số y = -x² + 2x + 3. Tìm giá trị lớn nhất của hàm số.", "4", "Đỉnh tại x = 1, y = -1 + 2 + 3 = 4; vì a < 0 nên 4 là giá trị lớn nhất.", true),
+            Sample("MATH10-Q-07", "MATH10-QUADRATIC", 10, "Phương trình x² + 2x + 5 = 0 có bao nhiêu nghiệm thực?", "0", "Δ = 2² - 4·1·5 = -16 < 0 nên phương trình vô nghiệm.", true),
+            Sample("MATH10-Q-08", "MATH10-QUADRATIC", 10, "Giải phương trình x² = 7x. Viết hai nghiệm theo thứ tự tăng dần, cách nhau bằng dấu phẩy.", "0,7", "x² - 7x = x(x-7) = 0 nên x=0 hoặc x=7."),
+            Sample("MATH10-Q-09", "MATH10-QUADRATIC", 10, "Tìm m để phương trình x² - 2x + m = 0 có nghiệm kép.", "1", "Nghiệm kép khi Δ = (-2)² - 4m = 0, tức m = 1.", true)
         };
         GenerateQuestionsFromTemplates(data, templates, mathTeacher, englishTeacher);
 

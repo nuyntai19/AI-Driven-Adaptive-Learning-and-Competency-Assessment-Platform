@@ -48,10 +48,16 @@ export function StudentLearningPathPage() {
   const actor = useAuthStore(s => s.user);
   const subjects = useQuery({ queryKey: ["subjects", "student-learning-path", actor?.centerId, actor?.userId],
     queryFn: () => organizationApi.listSubjects(true) });
-  const subject = subjects.data?.data.find(s => s.subjectId === params.get("subjectId")) ?? subjects.data?.data[0];
-  // Commit the default to the shared scope before loading a subject-specific plan.
+  const storedSubjectId = (() => { try { return localStorage.getItem("edutwin_last_subject_id"); } catch { return null; } })();
+  const subject = subjects.data?.data.find(s => s.subjectId === params.get("subjectId"))
+    ?? subjects.data?.data.find(s => s.subjectId === storedSubjectId)
+    ?? subjects.data?.data[0];
+  // Commit the resolved subject to the shared scope (URL + localStorage) so
+  // the subject picked on the dashboard stays the same on this page.
   useEffect(() => {
-    if (!subject || params.get("subjectId") === subject.subjectId) return;
+    if (!subject) return;
+    try { localStorage.setItem("edutwin_last_subject_id", subject.subjectId); } catch { /* ignore */ }
+    if (params.get("subjectId") === subject.subjectId) return;
     const next = new URLSearchParams(params);
     next.set("subjectId", subject.subjectId);
     for (const key of ["classId", "pathId", "sessionId"]) next.delete(key);
@@ -93,6 +99,17 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
     queryFn: () => getCapabilityMap(subjectId, access.classId), enabled: !!subjectId && access.writable });
   const agenda = useQuery({ queryKey: ["learning-agenda", actor?.centerId, actor?.userId, subjectId, access.classId, minutes],
     queryFn: () => getLearningAgenda(subjectId, minutes, access.classId), enabled: !!subjectId && access.writable, placeholderData: keepPreviousData });
+  // Seed the time slider from the goal's minutes/day once per path — the
+  // default 15 must not mask a 5-minute/day goal.
+  const goalSeededFor = useRef<string | null>(null);
+  useEffect(() => {
+    const lpId = agenda.data?.learningPathId;
+    const perDay = agenda.data?.availableMinutesPerDay;
+    if (!lpId || !perDay || perDay <= 0 || goalSeededFor.current === lpId) return;
+    goalSeededFor.current = lpId;
+    setSliderMinutes(perDay);
+    setMinutes(perDay);
+  }, [agenda.data?.learningPathId, agenda.data?.availableMinutesPerDay]);
   const missions = agenda.data?.missions ?? [];
   // Proposal from a finished placement: tested parts become the scope; untested parts are self-assessed.
   const openFromPlacement = (data: LearningAgendaDto) => {
@@ -229,6 +246,7 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
           {agenda.data.goalTitle && <p className="mt-1 text-sm text-slate-500">Mục tiêu: {agenda.data.goalTitle}</p>}
           <p className="mt-3 text-sm text-slate-500">{agenda.data.agendaMessage}</p></div>
         <TimeBudgetSlider label="Thời gian hôm nay" value={sliderMinutes} onChange={setSliderMinutes} summary={planSummary} capacity={agenda.data.learningPathId && !agenda.data.isPlacement ? agenda.data.availableTodayMinutes : undefined} />
+        {sliderMinutes < 10 && <p className="mt-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300">Học dưới 10 phút/ngày thường tiến bộ rất chậm. Nên đặt tối thiểu 10–15 phút/ngày để thấy cải thiện rõ rệt.</p>}
       </div>
       {primary && <div className="mt-5 rounded-xl bg-indigo-50 p-5 dark:bg-indigo-950/40">
         <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">{primary.activeRunId ? "Tiếp tục nhiệm vụ" : "Bắt đầu từ đây"}</p>
@@ -241,6 +259,11 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
         <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" onClick={() => setMission(m)}>{m.activeRunId ? "Tiếp tục" : "Mở"}</button>
       </li>)}</ol>}
       {agenda.data.pacingNote && <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-800 dark:text-slate-300">{agenda.data.pacingNote}</p>}
+      {agenda.data.progress?.studiedToday && todayPlan.length === 0 && (agenda.data.missions?.length ?? 0) > 0 && <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
+        <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">🎉 Em đã hoàn thành kế hoạch hôm nay</p>
+        <p className="mt-1 text-sm text-emerald-800/80 dark:text-emerald-200/80">Còn năng lượng thì ôn thêm với luyện tập thích ứng — hệ thống chọn câu vừa sức để củng cố phần còn yếu.</p>
+        <Link to={`/hoc-tap/luyen-tap?subjectId=${subjectId}`} className={`${action} mt-3 inline-block`}>Luyện tập thêm</Link>
+      </div>}
     </section>}
     {agenda.data && (agenda.data.reviewDueTasks.length > 0 || agenda.data.recentChanges?.length > 0) && <section className={panel}>
       <h2 className="text-xl font-semibold">Tiến bộ và lịch ôn</h2>

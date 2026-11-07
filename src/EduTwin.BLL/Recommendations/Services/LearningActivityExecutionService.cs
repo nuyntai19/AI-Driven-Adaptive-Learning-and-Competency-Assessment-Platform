@@ -137,7 +137,11 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
             if (plan.IsPlacement)
             {
                 pool = freshPool;
-                minimum = LearningAssessmentPolicy.MinimumPlacementQuestions;
+                // Small banks must not make placement unstartable: run with
+                // whatever fresh questions exist (at least 1). Classification
+                // already flags samples under the minimum as Inconclusive
+                // instead of blocking the student outright.
+                minimum = Math.Max(1, Math.Min(LearningAssessmentPolicy.MinimumPlacementQuestions, freshPool.Count));
             }
             else if (definition.IsMilestoneExam)
             {

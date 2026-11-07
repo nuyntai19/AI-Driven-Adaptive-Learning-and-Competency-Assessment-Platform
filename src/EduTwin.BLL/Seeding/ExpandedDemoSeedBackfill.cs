@@ -31,9 +31,9 @@ public sealed class ExpandedDemoSeedBackfill(EduTwinDbContext db, TimeProvider c
                 .Where(v => v.CenterId == centerId).Select(v => v.GraphVersionId).ToListAsync(ct);
             var existingCurricula = await db.Curriculums.IgnoreQueryFilters()
                 .Where(c => c.CenterId == centerId).Select(c => c.CurriculumId).ToListAsync(ct);
-            if (newVersionIds.All(existingVersions.Contains) && newCurriculumIds.All(existingCurricula.Contains)) continue;
-            if (newVersionIds.Any(existingVersions.Contains) || newCurriculumIds.Any(existingCurricula.Contains) ||
-                oldVersions.Any(v => !existingVersions.Contains(v.GraphVersionId)))
+            var versionsComplete = newVersionIds.All(existingVersions.Contains) && newCurriculumIds.All(existingCurricula.Contains);
+            if (!versionsComplete && (newVersionIds.Any(existingVersions.Contains) || newCurriculumIds.Any(existingCurricula.Contains) ||
+                oldVersions.Any(v => !existingVersions.Contains(v.GraphVersionId))))
                 throw new InvalidOperationException($"Demo content for {seed.Center.CenterCode} is incomplete; inspect it before retrying the additive upgrade.");
 
             var newNodes = seed.Topics.Where(n => n.NodeId >= (centerA ? 15000UL : 25000UL)).ToArray();
@@ -42,6 +42,34 @@ public sealed class ExpandedDemoSeedBackfill(EduTwinDbContext db, TimeProvider c
             var existingNodeIds = await db.KnowledgeNodes.IgnoreQueryFilters().Where(n => n.CenterId == centerId).Select(n => n.NodeId).ToListAsync(ct);
             var existingEdgeIds = await db.KnowledgeEdges.IgnoreQueryFilters().Where(e => e.CenterId == centerId).Select(e => e.EdgeId).ToListAsync(ct);
             var existingQuestionIds = await db.Questions.IgnoreQueryFilters().Where(q => q.CenterId == centerId).Select(q => q.QuestionId).ToListAsync(ct);
+            if (versionsComplete)
+            {
+                // Additive top-up for tenants that already run the expanded
+                // edition: later factory editions may add questions to
+                // existing topics (deterministic reserved IDs) and topic
+                // descriptions older seeds left NULL. Insert-missing only;
+                // the one write to existing rows fills a NULL/empty
+                // Description — a teacher-edited description is never touched.
+                var missingQuestions = newQuestions.Where(q => !existingQuestionIds.Contains(q.QuestionId)).ToArray();
+                var descriptionByNode = seed.Topics.Where(n => !string.IsNullOrWhiteSpace(n.Description))
+                    .ToDictionary(n => n.NodeId, n => n.Description!);
+                var undescribed = await db.KnowledgeNodes.IgnoreQueryFilters()
+                    .Where(n => n.CenterId == centerId && (n.Description == null || n.Description == "")).ToListAsync(ct);
+                var toDescribe = undescribed.Where(n => descriptionByNode.ContainsKey(n.NodeId)).ToList();
+                if (missingQuestions.Length > 0 || toDescribe.Count > 0)
+                {
+                    var topUpNow = clock.GetUtcNow().UtcDateTime;
+                    await using var topUp = await db.Database.BeginTransactionAsync(ct);
+                    foreach (var node in toDescribe) { node.Description = descriptionByNode[node.NodeId]; node.UpdatedAt = topUpNow; }
+                    foreach (var question in missingQuestions) { question.CreatedAt = topUpNow; question.UpdatedAt = topUpNow; }
+                    db.Questions.AddRange(missingQuestions);
+                    db.QuestionOptions.AddRange(seed.QuestionOptions.Where(o => missingQuestions.Any(q => q.QuestionId == o.QuestionId)));
+                    db.QuestionKnowledgeNodes.AddRange(seed.QuestionNodes.Where(m => missingQuestions.Any(q => q.QuestionId == m.QuestionId)));
+                    await db.SaveChangesAsync(ct);
+                    await topUp.CommitAsync(ct);
+                }
+                continue;
+            }
             if (newNodes.Any(n => existingNodeIds.Contains(n.NodeId)) || newEdges.Any(e => existingEdgeIds.Contains(e.EdgeId)) ||
                 newQuestions.Any(q => existingQuestionIds.Contains(q.QuestionId)))
                 throw new InvalidOperationException($"Reserved demo IDs collide with existing {seed.Center.CenterCode} content; no rows were changed.");

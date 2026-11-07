@@ -43,6 +43,7 @@ import { areSubmittedAnalysesTerminal, isAIProcessingPending } from "../utils/ai
 import { AttemptFeedbackHierarchy } from "../components/student/AttemptFeedbackHierarchy";
 import { AttemptScratchpadAttachment } from "../components/student/AttemptScratchpadAttachment";
 import { transcribeHandwriting } from "../api/handwritingApi";
+import { readScratchpadPhoto } from "../utils/scratchpadPngImport";
 import { AssignmentReviewReceipt } from "../components/student/AssignmentReviewReceipt";
 import { isAssignmentWorkSubmitted, shouldStartAssignment, getAssignmentReviewTiming, isActiveAssignmentExpired } from "../utils/assignmentReviewTiming";
 import { getAttemptFeedbackPresentation, normalizeQuestionScore, fallbackAssignmentGrade } from "../utils/attemptFeedbackPresentation";
@@ -277,6 +278,88 @@ const PracticePlayerPage = () => {
   // A rescan replaces this block in place when it is still untouched, so
   // scanning an updated board updates the steps instead of duplicating them.
   const [transcribedBlock, setTranscribedBlock] = useState<{ qId: string; start: number; lines: string[] } | null>(null);
+
+  // ── Ba phương thức nhập bài làm ─────────────────────────────────────────
+  // keyboard: gõ phím như luồng gốc (editor đáp án + editor lập luận).
+  // draw: viết tay trên giấy A4 (bảng) rồi quét vào phần trình bày.
+  // photo: chụp/tải ảnh bài giải giấy, quét vào phần trình bày, ảnh đính kèm.
+  // Cả ba cùng ghi vào finalAnswer/reasoningText nên chuyển qua lại không
+  // mất bài. Lựa chọn được nhớ theo học sinh (localStorage).
+  type InputMode = "keyboard" | "draw" | "photo";
+  const [inputMode, setInputModeState] = useState<InputMode>(() => {
+    try {
+      const v = localStorage.getItem("edutwin-input-mode");
+      return v === "draw" || v === "photo" ? v : "keyboard";
+    } catch { return "keyboard"; }
+  });
+  const setInputMode = (mode: InputMode) => {
+    setInputModeState(mode);
+    try { localStorage.setItem("edutwin-input-mode", mode); } catch { /* ignore */ }
+  };
+  // Tỉ lệ cột trái (câu hỏi + trình bày) trong bố cục vẽ A4; kéo thanh chia
+  // ở giữa để chỉnh, giống kéo cột trong Excel.
+  const [drawSplitPct, setDrawSplitPct] = useState<number>(() => {
+    try {
+      const v = Number(localStorage.getItem("edutwin-draw-split"));
+      return v >= 28 && v <= 68 ? v : 42;
+    } catch { return 42; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("edutwin-draw-split", String(drawSplitPct)); } catch { /* ignore */ }
+  }, [drawSplitPct]);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const [isWideLayout, setIsWideLayout] = useState<boolean>(() => typeof window !== "undefined" && window.innerWidth >= 1024);
+  useEffect(() => {
+    const onResize = () => setIsWideLayout(window.innerWidth >= 1024);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const handleSplitDragStart = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const container = splitContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const onMove = (ev: PointerEvent) => {
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100;
+      setDrawSplitPct(Math.min(68, Math.max(28, Math.round(pct))));
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Đánh dấu câu khó (checkpoint cá nhân) ───────────────────────────────
+  // Học sinh đánh dấu câu chưa biết làm; sau khi nộp và xem lại đáp án, các
+  // câu đã đánh dấu vẫn hiện rõ trên danh sách câu để quay lại xem. Lưu tại
+  // trình duyệt theo từng bài/buổi vì đây là ghi chú cá nhân của học sinh.
+  const bookmarkScope = assignmentId ?? pathSessionId ?? (subjectId ? `subject-${subjectId}` : "practice");
+  const bookmarkStorageKey = `edutwin-bookmarks:${bookmarkScope}`;
+  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(bookmarkStorageKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+    } catch { return []; }
+  });
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(bookmarkStorageKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setBookmarkedIds(Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : []);
+    } catch { setBookmarkedIds([]); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookmarkStorageKey]);
+  const toggleBookmark = (qId: string) => {
+    setBookmarkedIds((prev) => {
+      const next = prev.includes(qId) ? prev.filter((x) => x !== qId) : [...prev, qId];
+      try { localStorage.setItem(bookmarkStorageKey, JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
 
   // After a step split/add, move focus into the freshly created step card.
   useEffect(() => {
@@ -1819,6 +1902,56 @@ const PracticePlayerPage = () => {
   // đúng nguyên tắc "AI chép, học sinh xác nhận" của luồng viết tay.
   // Ảnh bảng đồng thời được đính kèm làm bằng chứng qua đúng cơ chế snapshot
   // sẵn có, nên học sinh không cần bấm "Đính kèm" riêng trước khi nhận dạng.
+  // Đưa bản chép (văn bản nhiều dòng) vào các bước giải. Quét lại = cập
+  // nhật: nếu các bước do lần quét trước tạo ra vẫn còn nguyên (học sinh
+  // chưa sửa tay), thay thế đúng khối đó bằng bản quét mới; nếu đã sửa tay
+  // thì nối thêm ở cuối để không ghi đè bài sửa của học sinh.
+  const applyTranscribedText = (text: string): boolean => {
+    if (!text.trim()) {
+      setHandwritingTranscribeError("Không đọc được chữ viết trong ảnh. Hãy viết rõ hơn hoặc gõ trực tiếp vào các bước giải bên dưới.");
+      return false;
+    }
+    const qId = String(question?.questionId ?? "");
+    const newLines = text.split("\n");
+    const currentSteps = solutionSteps;
+    let blockStart = currentSteps.length;
+    let nextSteps = [...currentSteps, ...newLines];
+    let replaced = false;
+    if (transcribedBlock && transcribedBlock.qId === qId &&
+        currentSteps.slice(transcribedBlock.start, transcribedBlock.start + transcribedBlock.lines.length).join("\n") === transcribedBlock.lines.join("\n")) {
+      blockStart = transcribedBlock.start;
+      nextSteps = [
+        ...currentSteps.slice(0, blockStart),
+        ...newLines,
+        ...currentSteps.slice(blockStart + transcribedBlock.lines.length),
+      ];
+      replaced = true;
+    }
+    const merged = nextSteps.join("\n");
+    handleReasoningChange(merged);
+    setStepsMirror({ qId, steps: nextSteps });
+    setEditingStep(null);
+    setTranscribedBlock({ qId, start: blockStart, lines: newLines });
+    // Câu tự luận/ngắn: bước cuối của bản chép là đáp án cuối (học sinh có
+    // thể đổi dấu chọn sang bước khác). Trắc nghiệm giữ nguyên lựa chọn.
+    if (question?.questionType !== "MultipleChoice") {
+      const conclusionIndex = blockStart + newLines.length - 1;
+      const conclusion = nextSteps[conclusionIndex] ?? "";
+      if (conclusion !== finalAnswer) handleAnswerChange(conclusion, "");
+      persistCurrentAnswer(conclusion, merged, undefined, "");
+      setFinalStepOverride({ qId, index: conclusionIndex });
+    }
+    setHandwritingTranscribeNotice(replaced
+      ? "Đã quét lại và cập nhật các bước từ ảnh mới nhất. Hãy kiểm tra và sửa lại cho đúng trước khi nộp bài."
+      : "Đã chép chữ viết thành các bước giải bên dưới. Đây là bản chép tự động — hãy kiểm tra và sửa lại cho đúng trước khi nộp bài.");
+    return true;
+  };
+
+  // Nhận dạng chữ viết: chép nét vẽ HIỆN TẠI trên bảng thành các bước giải.
+  // Đây chỉ là bản chép gợi ý — học sinh kiểm tra, sửa lại rồi mới nộp,
+  // đúng nguyên tắc "AI chép, học sinh xác nhận" của luồng viết tay.
+  // Ảnh bảng đồng thời được đính kèm làm bằng chứng qua đúng cơ chế snapshot
+  // sẵn có, nên học sinh không cần bấm "Đính kèm" riêng trước khi nhận dạng.
   const handleTranscribeHandwriting = async () => {
     if (isTranscribingHandwriting || isReadOnly) return;
     setIsTranscribingHandwriting(true);
@@ -1834,53 +1967,51 @@ const PracticePlayerPage = () => {
         imageDataUrl = snapshot.dataUrl;
       }
       if (!imageDataUrl) {
-        setHandwritingTranscribeError("Hãy viết bài giải lên bảng trước, hoặc gõ trực tiếp vào các bước giải bên dưới.");
+        setHandwritingTranscribeError("Hãy viết bài giải lên giấy A4 trước, hoặc gõ trực tiếp vào các bước giải bên dưới.");
         return;
       }
       const text = await transcribeHandwriting(imageDataUrl);
-      if (!text.trim()) {
-        setHandwritingTranscribeError("Không đọc được chữ viết trong ảnh. Hãy vẽ rõ hơn hoặc gõ trực tiếp vào các bước giải bên dưới.");
-        return;
-      }
-      const qId = String(question?.questionId ?? "");
-      const newLines = text.split("\n");
-      const currentSteps = solutionSteps;
-      // Quét lại = cập nhật: nếu các bước do lần quét trước tạo ra vẫn còn
-      // nguyên (học sinh chưa sửa tay), thay thế đúng khối đó bằng bản quét
-      // mới; nếu đã sửa tay thì nối thêm ở cuối để không ghi đè bài sửa.
-      let blockStart = currentSteps.length;
-      let nextSteps = [...currentSteps, ...newLines];
-      let replaced = false;
-      if (transcribedBlock && transcribedBlock.qId === qId &&
-          currentSteps.slice(transcribedBlock.start, transcribedBlock.start + transcribedBlock.lines.length).join("\n") === transcribedBlock.lines.join("\n")) {
-        blockStart = transcribedBlock.start;
-        nextSteps = [
-          ...currentSteps.slice(0, blockStart),
-          ...newLines,
-          ...currentSteps.slice(blockStart + transcribedBlock.lines.length),
-        ];
-        replaced = true;
-      }
-      const merged = nextSteps.join("\n");
-      handleReasoningChange(merged);
-      setStepsMirror({ qId, steps: nextSteps });
-      setEditingStep(null);
-      setTranscribedBlock({ qId, start: blockStart, lines: newLines });
-      // Câu tự luận/ngắn: bước cuối của bản chép là đáp án cuối (học sinh có
-      // thể đổi dấu chọn sang bước khác). Trắc nghiệm giữ nguyên lựa chọn.
-      if (question?.questionType !== "MultipleChoice") {
-        const conclusionIndex = blockStart + newLines.length - 1;
-        const conclusion = nextSteps[conclusionIndex] ?? "";
-        if (conclusion !== finalAnswer) handleAnswerChange(conclusion, "");
-        persistCurrentAnswer(conclusion, merged, undefined, "");
-        setFinalStepOverride({ qId, index: conclusionIndex });
-      }
-      setHandwritingTranscribeNotice(replaced
-        ? "Đã quét lại và cập nhật các bước từ ảnh mới nhất. Hãy kiểm tra và sửa lại cho đúng trước khi nộp bài."
-        : "Đã chép chữ viết thành các bước giải bên dưới. Đây là bản chép tự động — hãy kiểm tra và sửa lại cho đúng trước khi nộp bài.");
+      applyTranscribedText(text);
     } catch (error) {
       const errObj = error as { response?: { data?: { detail?: string } }; message?: string };
       setHandwritingTranscribeError(errObj?.response?.data?.detail || "Không thể nhận dạng chữ viết lúc này. Hãy thử lại hoặc gõ trực tiếp vào các bước giải bên dưới.");
+    } finally {
+      setIsTranscribingHandwriting(false);
+    }
+  };
+
+  // Phương thức Ảnh chụp: học sinh tải ảnh bài giải trên giấy → ảnh được
+  // đính kèm làm bằng chứng và quét ngay vào phần trình bày bên dưới.
+  const handlePhotoFileSelected = async (file: File | null) => {
+    if (!file || isTranscribingHandwriting || isReadOnly) return;
+    setIsTranscribingHandwriting(true);
+    setHandwritingTranscribeError(null);
+    setHandwritingTranscribeNotice(null);
+    try {
+      const { blob, dataUrl } = await readScratchpadPhoto(file);
+      handleAttachSnapshot(blob, dataUrl);
+      const text = await transcribeHandwriting(dataUrl);
+      applyTranscribedText(text);
+    } catch (error) {
+      const errObj = error as { response?: { data?: { detail?: string } }; message?: string };
+      setHandwritingTranscribeError(errObj?.response?.data?.detail || (error instanceof Error ? error.message : "Không thể xử lý ảnh lúc này. Hãy thử lại."));
+    } finally {
+      setIsTranscribingHandwriting(false);
+    }
+  };
+
+  // Quét lại chính ảnh đã đính kèm (sau khi đổi ảnh hoặc quét lỗi).
+  const handleRescanAttachedPhoto = async () => {
+    if (isTranscribingHandwriting || isReadOnly || !attachedSnapshotDataUrl) return;
+    setIsTranscribingHandwriting(true);
+    setHandwritingTranscribeError(null);
+    setHandwritingTranscribeNotice(null);
+    try {
+      const text = await transcribeHandwriting(attachedSnapshotDataUrl);
+      applyTranscribedText(text);
+    } catch (error) {
+      const errObj = error as { response?: { data?: { detail?: string } }; message?: string };
+      setHandwritingTranscribeError(errObj?.response?.data?.detail || "Không thể nhận dạng chữ viết lúc này. Hãy thử lại.");
     } finally {
       setIsTranscribingHandwriting(false);
     }
@@ -2425,11 +2556,17 @@ const PracticePlayerPage = () => {
     isAssignmentExpired ||
     Boolean(assignmentQuestion?.isVoided);
 
-  // ── Board-centric answering flow (Cách A) ──────────────────────────────
-  // Active for math-enabled questions while the student can still write.
-  // Read-only review and non-math subjects keep the classic editors below.
-  const boardFlowActive = mathToolsEnabled && !isReadOnly;
+  // ── Ba phương thức nhập bài làm ────────────────────────────────────────
+  // draw: giấy A4 + thẻ bước; photo: ảnh chụp + thẻ bước; keyboard: editor
+  // gốc. Chỉ áp dụng khi học sinh còn sửa được; chế độ chỉ đọc giữ nguyên
+  // cách hiển thị bài đã nộp.
   const isMcqQuestion = question?.questionType === "MultipleChoice";
+  const boardFlowActive = inputMode === "draw" && !isReadOnly;
+  const photoFlowActive = inputMode === "photo" && !isReadOnly;
+  const stepsFlowActive = boardFlowActive || photoFlowActive;
+  // Bố cục chia đôi của chế độ Vẽ A4: câu hỏi + phần trình bày bên trái,
+  // giấy A4 bên phải. Chỉ cho câu tự luận/ngắn trên màn hình rộng.
+  const splitDrawActive = boardFlowActive && !isMcqQuestion;
   // One step per line of reasoningText — the stored format does not change.
   const solutionSteps =
     stepsMirror && stepsMirror.qId === String(question?.questionId ?? "")
@@ -2510,7 +2647,7 @@ const PracticePlayerPage = () => {
 
   // Casio/graph results are inserted into the step being edited (or the last
   // one) — assigned every render so insertTextAtCursor stays untouched.
-  boardInsertHandlerRef.current = boardFlowActive
+  boardInsertHandlerRef.current = stepsFlowActive
     ? (text: string) => {
         if (solutionSteps.length === 0) {
           commitSteps([text], 0);
@@ -2931,13 +3068,66 @@ const PracticePlayerPage = () => {
     );
   }
 
-  // Board + step cards: the shared body of the board-centric flow.
-  // withFinalMarker (câu tự luận/ngắn) — one card carries the "Đáp án cuối"
-  // marker and feeds finalAnswer; without it (trắc nghiệm) the steps are the
-  // explanation only and the selected option stays the final answer.
-  const renderBoardWork = (withFinalMarker: boolean) => (
-    <div className="space-y-4">
-      <div ref={boardSectionRef} className="h-[430px] sm:h-[500px]">
+  // Nội dung đề bài — ở chế độ Vẽ A4 nó nằm trong cột trái của bố cục
+  // chia đôi; các chế độ khác hiển thị ngay dưới tiêu đề câu hỏi như cũ.
+  const questionStatement = (
+    <>
+      <div>
+        <div className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-relaxed whitespace-pre-wrap">
+          <RichMathText content={question?.questionText} text={question?.questionText} />
+          {question && <QuestionImage questionId={question.questionId} hasImage={question.hasImage} />}
+        </div>
+        {question?.questionText && /[\\[{^_\\]]/.test(question.questionText) && (
+          <div className="mt-3">
+            <MathFormulaPreview
+              formula={question.questionText}
+              label="Hiển thị công thức Toán (KaTeX)"
+            />
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  // Thông báo/lỗi của các lần quét — dùng chung cho cả ba phương thức nhập.
+  const renderTranscribeMessages = () => (
+    <>
+      {handwritingTranscribeNotice && (
+        <p role="status" className="text-xs font-medium text-indigo-700 dark:text-indigo-300">
+          {handwritingTranscribeNotice}
+        </p>
+      )}
+      {handwritingTranscribeError && (
+        <p role="alert" className="text-xs font-medium text-rose-700 dark:text-rose-300">
+          {handwritingTranscribeError}
+        </p>
+      )}
+    </>
+  );
+
+  // Giấy A4 với nút quét đặt ngay phía trên giấy: học sinh viết xong bấm
+  // "Quét bài làm trên A4" là nội dung được chép vào phần trình bày.
+  const renderBoardPanel = (tall: boolean) => (
+    <div className="flex flex-col gap-3 h-full">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-indigo-200/80 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/40 px-3.5 py-2.5">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-base leading-none">📄</span>
+          <div className="min-w-0">
+            <div className="text-xs font-black text-indigo-900 dark:text-indigo-100">Giấy A4 — viết bài làm của bạn</div>
+            <div className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80 truncate">Sửa lại trên giấy rồi quét lại để cập nhật phần trình bày</div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => void handleTranscribeHandwriting()}
+          disabled={isTranscribingHandwriting}
+          className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-xs cursor-pointer shadow-sm shadow-indigo-600/30 shrink-0"
+          title="Chép toàn bộ nội dung trên giấy A4 vào phần trình bày bài làm"
+        >
+          {isTranscribingHandwriting ? "Đang quét…" : "📝 Quét bài làm trên A4"}
+        </button>
+      </div>
+      <div ref={boardSectionRef} className={tall ? "flex-1 min-h-[480px] lg:min-h-[560px]" : "h-[430px] sm:h-[500px]"}>
         <ScratchpadInlinePanel
           ref={boardPanelRef}
           centerId={currentUser?.centerId ?? ""}
@@ -2949,36 +3139,18 @@ const PracticePlayerPage = () => {
           onAttachSnapshot={handleAttachSnapshot}
         />
       </div>
+      {renderTranscribeMessages()}
+    </div>
+  );
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => void handleTranscribeHandwriting()}
-          disabled={isTranscribingHandwriting}
-          className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-sm cursor-pointer shadow-sm shadow-indigo-600/30"
-          title="Chép chữ viết trên bảng thành các bước giải để bạn kiểm tra và sửa lại"
-        >
-          {isTranscribingHandwriting ? "Đang nhận dạng…" : "📝 Nhận dạng chữ viết trên bảng"}
-        </button>
-        <span className="text-xs text-slate-500 dark:text-slate-400">
-          Viết bài giải lên bảng rồi nhận dạng, hoặc gõ trực tiếp vào từng bước bên dưới.
-        </span>
-      </div>
-      {handwritingTranscribeNotice && (
-        <p role="status" className="text-xs font-medium text-indigo-700 dark:text-indigo-300">
-          {handwritingTranscribeNotice}
-        </p>
-      )}
-      {handwritingTranscribeError && (
-        <p role="alert" className="text-xs font-medium text-rose-700 dark:text-rose-300">
-          {handwritingTranscribeError}
-        </p>
-      )}
-
+  // Các thẻ bước giải — phần trình bày của học sinh. withFinalMarker (câu tự
+  // luận/ngắn): một thẻ mang dấu "Đáp án cuối" và nuôi finalAnswer; không có
+  // nó (trắc nghiệm) các bước chỉ là phần giải thích, lựa chọn vẫn là đáp án.
+  const renderStepCards = (withFinalMarker: boolean) => (
       <div className="space-y-2">
         {solutionSteps.length === 0 && (
           <p className="text-sm text-slate-400 border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl px-4 py-3">
-            Chưa có bước giải nào. Viết lên bảng rồi bấm “Nhận dạng chữ viết”, hoặc thêm bước và gõ trực tiếp.
+            Chưa có bước giải nào. Viết lên giấy A4 rồi bấm “Quét bài làm trên A4”, chụp ảnh bài giải, hoặc thêm bước và gõ trực tiếp.
           </p>
         )}
         {solutionSteps.map((step, i) => {
@@ -3071,9 +3243,141 @@ const PracticePlayerPage = () => {
         >
           + Thêm bước
         </button>
+    </div>
+  );
+
+  // Giấy A4 + thẻ bước xếp dọc (trắc nghiệm ở chế độ Vẽ A4).
+  const renderBoardWork = (withFinalMarker: boolean) => (
+    <div className="space-y-4">
+      {renderBoardPanel(false)}
+      {renderStepCards(withFinalMarker)}
+    </div>
+  );
+
+  // Bố cục chia đôi của chế độ Vẽ A4 cho câu tự luận: cột trái là câu hỏi +
+  // phần trình bày, cột phải là giấy A4 rộng rãi; thanh chia ở giữa kéo
+  // được như kéo cột trong Excel.
+  const renderDrawSplitWork = () => (
+    <div ref={splitContainerRef} className="flex flex-col lg:flex-row items-stretch gap-4 lg:gap-0">
+      <div className="min-w-0 space-y-4" style={isWideLayout ? { width: `${drawSplitPct}%` } : undefined}>
+        {questionStatement}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Phần trình bày bài làm</span>
+            <span className="text-[11px] text-slate-400">— kết quả quét từ giấy A4, bấm vào từng bước để sửa</span>
+          </div>
+          {renderStepCards(true)}
+        </div>
+      </div>
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Kéo để thay đổi độ rộng giấy A4"
+        title="Kéo để thay đổi độ rộng giấy A4"
+        onPointerDown={handleSplitDragStart}
+        className="hidden lg:flex w-5 shrink-0 cursor-col-resize items-stretch justify-center group touch-none mx-1"
+      >
+        <span className="w-1 rounded-full bg-slate-200 dark:bg-slate-700 group-hover:bg-indigo-400 group-active:bg-indigo-500 transition-colors" />
+      </div>
+      <div className="flex-1 min-w-0">
+        {renderBoardPanel(true)}
       </div>
     </div>
   );
+
+  // Phương thức Ảnh chụp: tải ảnh bài giải trên giấy → quét ngay vào phần
+  // trình bày, ảnh gốc được đính kèm theo bài nộp làm bằng chứng.
+  const renderPhotoWork = (withFinalMarker: boolean) => (
+    <div className="space-y-4">
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        aria-label="Chọn ảnh bài giải"
+        onChange={(e) => {
+          const file = e.target.files?.[0] ?? null;
+          e.target.value = "";
+          void handlePhotoFileSelected(file);
+        }}
+      />
+      {attachedSnapshotDataUrl ? (
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/50 p-3.5">
+          <div className="flex flex-wrap items-start gap-3">
+            <img
+              src={attachedSnapshotDataUrl}
+              alt="Ảnh bài giải đã tải lên"
+              onClick={() => setShowFullSnapshotModal(true)}
+              className="w-28 h-20 object-cover rounded-xl border border-slate-300 dark:border-slate-600 bg-white cursor-pointer hover:scale-[1.03] transition-transform"
+            />
+            <div className="flex-1 min-w-[180px]">
+              <div className="text-xs font-black text-slate-800 dark:text-slate-100">📷 Ảnh bài giải của bạn</div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Ảnh này được đính kèm theo bài nộp. Nội dung quét được hiển thị ở phần trình bày bên dưới — hãy kiểm tra và sửa lại cho đúng.</p>
+              <div className="flex flex-wrap gap-2 mt-2.5">
+                <button type="button" onClick={() => void handleRescanAttachedPhoto()} disabled={isTranscribingHandwriting} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-xs cursor-pointer">
+                  {isTranscribingHandwriting ? "Đang quét…" : "🔄 Quét lại ảnh này"}
+                </button>
+                <button type="button" onClick={() => photoInputRef.current?.click()} disabled={isTranscribingHandwriting} className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 font-bold text-xs text-slate-600 dark:text-slate-200 hover:border-indigo-400 hover:text-indigo-600 cursor-pointer disabled:opacity-60">
+                  Đổi ảnh khác
+                </button>
+                <button type="button" onClick={handleRemoveSnapshot} className="px-3 py-1.5 rounded-lg text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-950/40 font-bold text-xs cursor-pointer">
+                  Gỡ ảnh
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => photoInputRef.current?.click()}
+          disabled={isTranscribingHandwriting}
+          className="w-full rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-colors px-4 py-8 text-center cursor-pointer disabled:opacity-60"
+        >
+          <div className="text-3xl mb-2">📷</div>
+          <div className="text-sm font-black text-slate-700 dark:text-slate-200">{isTranscribingHandwriting ? "Đang quét ảnh…" : "Chụp hoặc tải ảnh bài giải lên"}</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">Ảnh bài làm trên giấy (JPG, PNG, WebP) — hệ thống sẽ quét nội dung vào phần trình bày bên dưới</div>
+        </button>
+      )}
+      {renderTranscribeMessages()}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Phần trình bày bài làm</span>
+        </div>
+        {renderStepCards(withFinalMarker)}
+      </div>
+    </div>
+  );
+
+  // Bộ chuyển ba phương thức nhập bài làm.
+  const renderInputModeSwitcher = () => {
+    const modes: Array<{ value: InputMode; icon: string; label: string; hint: string }> = [
+      { value: "keyboard", icon: "⌨️", label: "Bàn phím", hint: "Gõ bài làm bằng bàn phím" },
+      { value: "draw", icon: "✏️", label: "Vẽ trên A4", hint: "Viết tay lên giấy A4 rồi quét vào phần trình bày" },
+      { value: "photo", icon: "📷", label: "Ảnh chụp", hint: "Chụp bài giải trên giấy rồi tải lên" },
+    ];
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cách làm bài</span>
+        <div className="inline-flex rounded-2xl bg-slate-100 dark:bg-slate-800/80 p-1 gap-1" role="tablist" aria-label="Phương thức nhập bài làm">
+          {modes.map((m) => (
+            <button
+              key={m.value}
+              type="button"
+              role="tab"
+              aria-selected={inputMode === m.value}
+              onClick={() => setInputMode(m.value)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${inputMode === m.value ? "bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 shadow-sm ring-1 ring-indigo-500/50" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"}`}
+              title={m.hint}
+            >
+              {m.icon} {m.label}
+            </button>
+          ))}
+        </div>
+        <span className="text-[11px] text-slate-400">{modes.find((m) => m.value === inputMode)?.hint} — chuyển cách khác vẫn giữ nguyên bài đã làm</span>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-stone-50/50 dark:bg-[#101623] text-stone-800 dark:text-stone-100 flex flex-col antialiased student-shell">
@@ -3265,9 +3569,13 @@ const PracticePlayerPage = () => {
       <main className="flex-1 max-w-[1700px] w-full mx-auto p-4 sm:p-6">
         <div
           className={`mx-auto transition-all duration-200 ${
-            activeSideTool
-              ? "grid grid-cols-1 lg:grid-cols-12 gap-6 items-start"
-              : "max-w-4xl space-y-6"
+            splitDrawActive
+              ? "space-y-6"
+              : activeSideTool
+                ? "grid grid-cols-1 lg:grid-cols-12 gap-6 items-start"
+                : inputMode === "keyboard" && !isReadOnly
+                  ? "max-w-3xl space-y-6"
+                  : "max-w-4xl space-y-6"
           }`}
         >
           {/* Left / Main Question Area ~70% */}
@@ -3516,7 +3824,7 @@ const PracticePlayerPage = () => {
                           key={q.questionId}
                           type="button"
                           onClick={() => handleSwitchQuestion(q.questionId)}
-                          className={`w-8 h-8 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center justify-center ${
+                          className={`relative w-8 h-8 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center justify-center ${
                             isCurrent
                               ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400 ring-offset-2 dark:ring-offset-slate-900 scale-105"
                               : isVoided
@@ -3534,6 +3842,9 @@ const PracticePlayerPage = () => {
                           title={`Câu ${idx + 1}: ${isVoided ? "Được miễn / Tính trọn điểm do lỗi đề" : isProcessing ? "AI đang phân tích" : isCompleted ? "Đã chấm xong" : isReview ? "Chờ GV duyệt" : isAnswered ? "Đã làm" : "Chưa làm"}`}
                         >
                           {idx + 1}
+                          {bookmarkedIds.includes(String(q.questionId)) && (
+                            <span className="absolute -top-1.5 -right-1.5 text-[10px] leading-none drop-shadow" title="Câu đã đánh dấu khó">🔖</span>
+                          )}
                         </button>
                       );
                     })}
@@ -3616,6 +3927,29 @@ const PracticePlayerPage = () => {
                     Kỳ vọng: {question?.estimatedTimeSeconds || 90}s
                   </span>
                 </div>
+                {question && (
+                  isReadOnly ? (
+                    bookmarkedIds.includes(String(question.questionId)) ? (
+                      <span className="px-2.5 py-1 rounded-lg bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200 text-[11px] font-black shrink-0">
+                        🔖 Câu đã đánh dấu khó
+                      </span>
+                    ) : null
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => toggleBookmark(String(question.questionId))}
+                      aria-pressed={bookmarkedIds.includes(String(question.questionId))}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black border transition-colors cursor-pointer shrink-0 ${
+                        bookmarkedIds.includes(String(question.questionId))
+                          ? "bg-amber-500 border-amber-500 text-white hover:bg-amber-600"
+                          : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300 hover:border-amber-400 hover:text-amber-600"
+                      }`}
+                      title="Đánh dấu câu này là câu khó — sau khi nộp và có đáp án, quay lại xem đúng câu đã đánh dấu"
+                    >
+                      {bookmarkedIds.includes(String(question.questionId)) ? "🔖 Đã đánh dấu câu khó" : "🔖 Đánh dấu câu khó"}
+                    </button>
+                  )
+                )}
               </div>
 
               {/* Notice for voided question or existing attempt */}
@@ -3683,21 +4017,7 @@ const PracticePlayerPage = () => {
                 </div>
               )}
 
-              {/* Question Text Statement */}
-              <div>
-                <div className="text-base sm:text-lg font-bold text-slate-900 dark:text-white leading-relaxed whitespace-pre-wrap">
-                  <RichMathText content={question?.questionText} text={question?.questionText} />
-                  {question && <QuestionImage questionId={question.questionId} hasImage={question.hasImage} />}
-                </div>
-                {question?.questionText && /[\\[{^_\\]]/.test(question.questionText) && (
-                  <div className="mt-3">
-                    <MathFormulaPreview
-                      formula={question.questionText}
-                      label="Hiển thị công thức Toán (KaTeX)"
-                    />
-                  </div>
-                )}
-              </div>
+              {splitDrawActive ? null : questionStatement}
 
               {/* 3. Thanh 3 Nút Công Cụ Trợ Lý (Casio, Nháp, Đồ Thị) */}
               <div className="pt-2">
@@ -3773,10 +4093,19 @@ const PracticePlayerPage = () => {
 
               {/* 4. Answer Section */}
               <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
+                {!isReadOnly && question && (
+                  <div className="mb-4">{renderInputModeSwitcher()}</div>
+                )}
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                      {boardFlowActive && !isMcqQuestion ? "Bài làm — viết tay trên bảng" : "Đáp án của bạn"}
+                      {splitDrawActive
+                        ? "Bài làm — viết tay trên giấy A4"
+                        : photoFlowActive && !isMcqQuestion
+                          ? "Bài làm — ảnh chụp bài giải"
+                          : boardFlowActive && !isMcqQuestion
+                            ? "Bài làm — viết tay trên giấy A4"
+                            : "Đáp án của bạn"}
                     </span>
                     {isAssignmentSubmitted && (
                       <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
@@ -3825,7 +4154,7 @@ const PracticePlayerPage = () => {
                             <span className="text-sm font-semibold truncate block">
                               <RichMathText content={option.text} />
                             </span>
-                            {isSelected && boardFlowActive && (
+                            {isSelected && stepsFlowActive && (
                               <span className="inline-block text-[10px] font-black uppercase tracking-wide text-white bg-emerald-600 px-1.5 py-0.5 rounded-md mt-1">
                                 Đáp án cuối
                               </span>
@@ -3840,8 +4169,12 @@ const PracticePlayerPage = () => {
                       );
                     })}
                   </fieldset>
+                ) : splitDrawActive ? (
+                  renderDrawSplitWork()
                 ) : boardFlowActive ? (
                   renderBoardWork(true)
+                ) : photoFlowActive ? (
+                  renderPhotoWork(true)
                 ) : (
                   <div>
                     {!mathToolsEnabled ? <textarea aria-label="Đáp án của bạn" value={finalAnswer} disabled={isReadOnly} onChange={e => handleAnswerChange(e.target.value, "")} placeholder="Nhập câu trả lời..." className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <ModeAwareAnswerEditor
@@ -3874,12 +4207,12 @@ const PracticePlayerPage = () => {
                 )}
               </div>
 
-              {/* 5. Reasoning / Solution Section — ở luồng bảng trung tâm:
-                  câu tự luận đã gộp bảng + bước giải vào mục 4 nên mục này chỉ
-                  còn thẻ ảnh đính kèm; câu trắc nghiệm hiển thị bảng + các
-                  bước giải (phần lập luận) tại đây. */}
+              {/* 5. Reasoning / Solution Section — ở chế độ Vẽ A4 / Ảnh chụp:
+                  câu tự luận đã gộp bảng/ảnh + bước giải vào mục 4 nên mục
+                  này chỉ còn thẻ ảnh đính kèm; câu trắc nghiệm hiển thị khu
+                  vực làm việc của phương thức đã chọn tại đây. */}
               <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
-                {!(boardFlowActive && !isMcqQuestion) && (
+                {!(stepsFlowActive && !isMcqQuestion) && (
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-400">
                     Lập luận tư duy & Trình bày các bước giải
@@ -3898,6 +4231,8 @@ const PracticePlayerPage = () => {
 
                 {boardFlowActive ? (
                   isMcqQuestion ? renderBoardWork(false) : null
+                ) : photoFlowActive ? (
+                  isMcqQuestion ? renderPhotoWork(false) : null
                 ) : !mathToolsEnabled ? <textarea aria-label="Lập luận của bạn" value={reasoningText} disabled={isReadOnly} onChange={e => handleReasoningChange(e.target.value)} placeholder="Trình bày lập luận của bạn..." className="w-full min-h-32 rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <RichMathEditor
                   ref={reasoningEditorRef}
                   variant="student"
@@ -3920,7 +4255,7 @@ const PracticePlayerPage = () => {
                 {isCurrentQuestionSubmitted && reviewAttemptId &&
                   (assignmentQuestion?.hasAttachment || reviewFeedbackQuery.data?.studentSubmission?.attachmentUrl || immediateQuestionFeedback?.studentSubmission?.attachmentUrl) ? (
                   <AttemptScratchpadAttachment attemptId={reviewAttemptId} />
-                ) : !isCurrentQuestionSubmitted && attachedSnapshotDataUrl ? (
+                ) : !isCurrentQuestionSubmitted && attachedSnapshotDataUrl && !photoFlowActive ? (
                   <>
                   <div className="mt-4 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 p-4 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -3955,7 +4290,7 @@ const PracticePlayerPage = () => {
                       >
                         🔍 Xem to
                       </button>
-                      {!isReadOnly && !boardFlowActive && (
+                      {!isReadOnly && !stepsFlowActive && (
                         <button
                           type="button"
                           onClick={() => void handleTranscribeHandwriting()}
@@ -3978,12 +4313,12 @@ const PracticePlayerPage = () => {
                       )}
                     </div>
                   </div>
-                  {!boardFlowActive && handwritingTranscribeNotice && (
+                  {!stepsFlowActive && handwritingTranscribeNotice && (
                     <p role="status" className="mt-2 text-xs font-medium text-indigo-700 dark:text-indigo-300">
                       {handwritingTranscribeNotice}
                     </p>
                   )}
-                  {!boardFlowActive && handwritingTranscribeError && (
+                  {!stepsFlowActive && handwritingTranscribeError && (
                     <p role="alert" className="mt-2 text-xs font-medium text-rose-700 dark:text-rose-300">
                       {handwritingTranscribeError}
                     </p>

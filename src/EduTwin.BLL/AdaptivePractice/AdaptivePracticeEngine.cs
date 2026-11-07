@@ -424,15 +424,17 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
 
         // Multi-Stage Question Selector (UC-04)
         // Stage 1: Filter eligible questions (active, not deleted, same center & subject)
-        var protectedAssignmentQuestionIds = await _dbContext.AssignmentQuestions
+        var protectedAssignmentQuestions = await _dbContext.AssignmentQuestions
             .Where(aq => aq.Assignment != null && aq.Assignment.CenterId == centerId
                 && (aq.Assignment.Status == AssignmentStatus.Published || aq.Assignment.Status == AssignmentStatus.Draft)
                 && !aq.Assignment.IsDeleted)
-            .Select(aq => aq.QuestionId)
+            .Select(aq => new { aq.QuestionId, aq.Assignment!.Status })
             .Distinct()
             .ToListAsync(ct);
 
-        var protectedSet = new HashSet<ulong>(protectedAssignmentQuestionIds);
+        var protectedSet = new HashSet<ulong>(protectedAssignmentQuestions.Select(x => x.QuestionId));
+        var publishedProtectedSet = new HashSet<ulong>(protectedAssignmentQuestions
+            .Where(x => x.Status == AssignmentStatus.Published).Select(x => x.QuestionId));
         var sessionPresentedQuestionIds = new HashSet<ulong>(session.Items.Select(i => i.QuestionId));
 
         ulong targetNodeId = session.PrerequisiteTestedNodeId ?? session.TopicNodeId;
@@ -494,12 +496,31 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             .ToList();
 
         // If candidate pool for prerequisite is empty, fallback to primary topic
+        // (refetch: the query above only covered the first target node).
         if (availablePool.Count == 0 && session.PrerequisiteTestedNodeId.HasValue)
         {
             targetNodeId = session.TopicNodeId;
             session.PrerequisiteTestedNodeId = null;
+            candidateQuestions = await _dbContext.Questions
+                .Where(q => q.CenterId == centerId
+                    && q.SubjectId == session.SubjectId
+                    && q.PrimaryTopicNodeId == targetNodeId
+                    && q.Status == QuestionStatus.Active
+                    && !q.IsDeleted)
+                .ToListAsync(ct);
             availablePool = candidateQuestions
-                .Where(q => q.PrimaryTopicNodeId == targetNodeId && !protectedSet.Contains(q.QuestionId) && !sessionPresentedQuestionIds.Contains(q.QuestionId))
+                .Where(q => !protectedSet.Contains(q.QuestionId) && !sessionPresentedQuestionIds.Contains(q.QuestionId))
+                .ToList();
+        }
+
+        // A diagnostic session (student with no evidence yet) must not die at
+        // zero questions only because every question of the topic sits in an
+        // assignment: fall back to questions from PUBLISHED assignments.
+        // Draft-assignment questions stay protected — they are not public yet.
+        if (availablePool.Count == 0 && session.IsDiagnosticMode)
+        {
+            availablePool = candidateQuestions
+                .Where(q => q.PrimaryTopicNodeId == targetNodeId && publishedProtectedSet.Contains(q.QuestionId) && !sessionPresentedQuestionIds.Contains(q.QuestionId))
                 .ToList();
         }
 

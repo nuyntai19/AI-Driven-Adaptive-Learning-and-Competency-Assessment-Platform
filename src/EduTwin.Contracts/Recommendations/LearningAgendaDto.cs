@@ -140,6 +140,8 @@ public class AgendaItemDto
     public string SkillId { get; set; } = string.Empty;
     public string SkillName { get; set; } = string.Empty;
     public uint EstimatedDurationMinutes { get; set; } = 15;
+    /// <summary>Teacher-set seconds per question for this item's pool (0 = unknown; the flat default pace applies).</summary>
+    public uint EstimatedSecondsPerQuestion { get; set; }
     public List<string> ActivityTypes { get; set; } = new();
     public string RecommendationReason { get; set; } = string.Empty;
 

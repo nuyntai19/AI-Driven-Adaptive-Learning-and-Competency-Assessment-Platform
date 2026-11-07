@@ -74,6 +74,22 @@ public static class LearningPathPacing
 
     public static uint ClampMinutes(uint minutes) => Math.Clamp(minutes, MinDailyMinutes, MaxDailyMinutes);
 
+    /// <summary>Average teacher-set seconds per question in a pool (0 when the
+    /// pool carries no estimates). Plans must divide the daily budget by this
+    /// pace — 90-second questions give ~3 questions in 5 minutes, not 1.</summary>
+    public static double AverageSecondsPerQuestion(IEnumerable<uint> estimatedSeconds)
+    {
+        var values = estimatedSeconds.Where(s => s > 0).Select(s => (double)s).ToList();
+        return values.Count == 0 ? 0 : values.Average();
+    }
+
+    /// <summary>Whole minutes a set of questions is expected to take at the
+    /// pool's own pace; the flat default applies when the pace is unknown.</summary>
+    public static uint EstimatedMinutes(uint count, double averageSecondsPerQuestion)
+        => averageSecondsPerQuestion <= 0
+            ? Math.Max(1u, count) * MinutesPerQuestion
+            : Math.Max(1u, (uint)Math.Ceiling(count * averageSecondsPerQuestion / 60d));
+
     public static string FormatMinutes(uint minutes)
     {
         var h = minutes / 60; var m = minutes % 60;

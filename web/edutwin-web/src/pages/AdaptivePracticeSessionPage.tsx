@@ -3,6 +3,9 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adaptivePracticeApi } from "../api/adaptivePracticeApi";
 import { RichMathText } from "../components/math/RichMathText";
+import { ScratchpadInlinePanel, type ScratchpadInlinePanelHandle } from "../components/math/ScratchpadInlinePanel";
+import { transcribeHandwriting } from "../api/handwritingApi";
+import { readScratchpadPhoto } from "../utils/scratchpadPngImport";
 import type {
   AdaptivePracticeHint,
   AdaptivePracticeAnswerFeedback,
@@ -23,6 +26,26 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [showExitConfirm, setShowExitConfirm] = useState<boolean>(false);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+
+  // Ba phương thức nhập cho câu tự luận: bàn phím / vẽ trên A4 / ảnh chụp —
+  // cùng ghi vào textAnswer + reasoningText như trang làm bài tập.
+  type InputMode = "keyboard" | "draw" | "photo";
+  const [inputMode, setInputModeState] = useState<InputMode>(() => {
+    try {
+      const v = localStorage.getItem("edutwin-input-mode");
+      return v === "draw" || v === "photo" ? v : "keyboard";
+    } catch { return "keyboard"; }
+  });
+  const setInputMode = (mode: InputMode) => {
+    setInputModeState(mode);
+    try { localStorage.setItem("edutwin-input-mode", mode); } catch { /* ignore */ }
+  };
+  const [isScanning, setIsScanning] = useState<boolean>(false);
+  const [scanNotice, setScanNotice] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
+  const boardRef = useRef<ScratchpadInlinePanelHandle>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const startTimeRef = useRef<number>(Date.now());
 
@@ -63,6 +86,9 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
       setActiveHint(null);
       setIsHintOpen(false);
       setFeedback(null);
+      setPhotoDataUrl(null);
+      setScanNotice(null);
+      setScanError(null);
       startTimeRef.current = Date.now();
     }
   }, [question?.sessionItemId]);
@@ -90,6 +116,59 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
       }
     },
   });
+
+  // Đưa bản chép vào đáp án + lập luận: câu trả lời ngắn lấy dòng cuối làm
+  // đáp án, toàn bộ bản chép là phần lập luận; câu tự luận lấy toàn bộ.
+  const applyScan = (text: string) => {
+    const lines = text.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (!lines.length) {
+      setScanError("Không đọc được chữ viết trong ảnh. Hãy viết rõ hơn hoặc gõ bằng bàn phím.");
+      return;
+    }
+    if (question?.questionType === "Essay") {
+      setTextAnswer(text.trim());
+    } else {
+      setReasoningText(text.trim());
+      setTextAnswer(lines[lines.length - 1]);
+    }
+    setScanNotice("Đã quét nội dung vào bài làm. Hãy kiểm tra lại đáp án trước khi nộp.");
+  };
+
+  const runScan = async (imageDataUrl: string) => {
+    setIsScanning(true);
+    setScanError(null);
+    setScanNotice(null);
+    try {
+      applyScan(await transcribeHandwriting(imageDataUrl));
+    } catch (e) {
+      const err = e as { response?: { data?: { detail?: string } } };
+      setScanError(err?.response?.data?.detail || "Không thể nhận dạng chữ viết lúc này. Hãy thử lại hoặc gõ bằng bàn phím.");
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  const handleScanBoard = async () => {
+    if (isScanning) return;
+    const snap = boardRef.current ? await boardRef.current.exportSnapshot() : null;
+    if (!snap) {
+      setScanError("Hãy viết bài giải lên giấy A4 trước khi quét.");
+      return;
+    }
+    setPhotoDataUrl(snap.dataUrl);
+    await runScan(snap.dataUrl);
+  };
+
+  const handlePhotoFile = async (file: File | null) => {
+    if (!file || isScanning) return;
+    try {
+      const { dataUrl } = await readScratchpadPhoto(file);
+      setPhotoDataUrl(dataUrl);
+      await runScan(dataUrl);
+    } catch (e) {
+      setScanError(e instanceof Error ? e.message : "Không đọc được tệp ảnh.");
+    }
+  };
 
   // Fetch Progressive Hint
   const handleFetchHint = async (level: number) => {
@@ -163,6 +242,11 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
         <h2 className="text-xl font-bold text-slate-800 dark:text-white">
           Phiên luyện tập đã kết thúc
         </h2>
+        {session.closeReason === "OutOfQuestions" && session.questionCount === 0 && (
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md text-center">
+            Phiên kết thúc sớm vì chủ đề này tạm hết câu hỏi khả dụng cho bạn. Hãy quay lại sau hoặc chọn chủ đề khác để luyện tập.
+          </p>
+        )}
         <button
           type="button"
           onClick={() => navigate(`/hoc-tap/luyen-tap/phien/${sessionId}/tong-ket`)}
@@ -175,6 +259,14 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   }
 
   const answerEntered = question?.questionType === "MultipleChoice" ? !!selectedOption : textAnswer.trim().length > 0;
+
+  // Placeholder theo môn + loại câu (tránh ô nhập kiểu Toán cho câu tiếng Anh).
+  const isMathSubject = /toán|math/i.test(session?.subjectName ?? "");
+  const answerPlaceholder = question?.questionType === "Essay"
+    ? "Viết câu trả lời của bạn..."
+    : isMathSubject
+      ? "Nhập số, biểu thức hoặc kết quả..."
+      : "Nhập đáp án của bạn...";
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex flex-col font-sans antialiased">
@@ -289,24 +381,126 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
                     })}
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    <label htmlFor="text-ans" className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                      Nhập đáp án của bạn:
-                    </label>
-                    <input
-                      id="text-ans"
-                      type="text"
-                      value={textAnswer}
-                      onChange={(e) => setTextAnswer(e.target.value)}
-                      placeholder="Nhập số, biểu thức hoặc kết quả..."
-                      className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-base focus:outline-indigo-500"
-                    />
+                  <div className="space-y-4">
+                    {/* Ba phương thức nhập: bàn phím / vẽ A4 / ảnh chụp */}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cách làm bài</span>
+                      <div className="inline-flex rounded-2xl bg-slate-100 dark:bg-slate-800/80 p-1 gap-1" role="tablist" aria-label="Phương thức nhập bài làm">
+                        {([
+                          ["keyboard", "⌨️", "Bàn phím"],
+                          ["draw", "✏️", "Vẽ trên A4"],
+                          ["photo", "📷", "Ảnh chụp"],
+                        ] as const).map(([value, icon, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            role="tab"
+                            aria-selected={inputMode === value}
+                            onClick={() => setInputMode(value)}
+                            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${inputMode === value ? "bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 shadow-sm ring-1 ring-indigo-500/50" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"}`}
+                          >
+                            {icon} {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {inputMode === "draw" && (
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-indigo-200/80 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/40 px-3.5 py-2.5">
+                          <div className="min-w-0">
+                            <div className="text-xs font-black text-indigo-900 dark:text-indigo-100">📄 Giấy A4 — viết bài làm của bạn</div>
+                            <div className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80">Sửa lại trên giấy rồi quét lại để cập nhật</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleScanBoard()}
+                            disabled={isScanning}
+                            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-xs cursor-pointer shadow-sm shrink-0"
+                          >
+                            {isScanning ? "Đang quét…" : "📝 Quét bài làm trên A4"}
+                          </button>
+                        </div>
+                        <div className="h-[380px]">
+                          <ScratchpadInlinePanel
+                            ref={boardRef}
+                            centerId={session?.centerId ?? ""}
+                            userId={session?.studentId ?? ""}
+                            clientSubmissionId={`adaptive:${sessionId}:${question.sessionItemId}`}
+                            backgroundImageUrl={photoDataUrl}
+                            onAttachSnapshot={(_blob, url) => setPhotoDataUrl(url)}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {inputMode === "photo" && (
+                      <div className="space-y-3">
+                        <input
+                          ref={photoInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="hidden"
+                          aria-label="Chọn ảnh bài giải"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0] ?? null;
+                            e.target.value = "";
+                            void handlePhotoFile(f);
+                          }}
+                        />
+                        {photoDataUrl ? (
+                          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/50 p-3.5">
+                            <img src={photoDataUrl} alt="Ảnh bài giải đã tải lên" className="w-24 h-16 object-cover rounded-xl border border-slate-300 dark:border-slate-600 bg-white" />
+                            <div className="flex-1 min-w-[160px]">
+                              <div className="text-xs font-black text-slate-800 dark:text-slate-100">📷 Ảnh bài giải của bạn</div>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400">Ảnh chỉ dùng để quét nội dung vào bài làm, không lưu kèm phiên luyện tập.</p>
+                            </div>
+                            <div className="flex gap-2">
+                              <button type="button" onClick={() => void runScan(photoDataUrl)} disabled={isScanning} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-xs cursor-pointer">
+                                {isScanning ? "Đang quét…" : "🔄 Quét lại"}
+                              </button>
+                              <button type="button" onClick={() => photoInputRef.current?.click()} disabled={isScanning} className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 font-bold text-xs text-slate-600 dark:text-slate-200 cursor-pointer disabled:opacity-60">
+                                Đổi ảnh
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => photoInputRef.current?.click()}
+                            disabled={isScanning}
+                            className="w-full rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-colors px-4 py-6 text-center cursor-pointer disabled:opacity-60"
+                          >
+                            <div className="text-2xl mb-1">📷</div>
+                            <div className="text-sm font-black text-slate-700 dark:text-slate-200">{isScanning ? "Đang quét ảnh…" : "Chụp hoặc tải ảnh bài giải lên"}</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Hệ thống sẽ quét nội dung vào ô đáp án + lập luận bên dưới</div>
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {scanNotice && <p role="status" className="text-xs font-medium text-indigo-700 dark:text-indigo-300">{scanNotice}</p>}
+                    {scanError && <p role="alert" className="text-xs font-medium text-rose-700 dark:text-rose-300">{scanError}</p>}
+
+                    <div className="space-y-3">
+                      <label htmlFor="text-ans" className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        {inputMode === "keyboard" ? "Nhập đáp án của bạn:" : "Đáp án của bạn (kết quả quét — kiểm tra và sửa lại nếu cần):"}
+                      </label>
+                      <input
+                        id="text-ans"
+                        type="text"
+                        value={textAnswer}
+                        onChange={(e) => setTextAnswer(e.target.value)}
+                        placeholder={answerPlaceholder}
+                        className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-base focus:outline-indigo-500"
+                      />
+                    </div>
                   </div>
                 )}
 
                 {/* Optional Reasoning Text Field */}
                 <div className="pt-2">
-                  <details className="text-xs text-slate-500 dark:text-slate-400">
+                  <details className="text-xs text-slate-500 dark:text-slate-400" open={inputMode !== "keyboard" || undefined}>
                     <summary className="cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 font-semibold select-none">
                       + Thêm lời giải thích / lập luận (không bắt buộc)
                     </summary>

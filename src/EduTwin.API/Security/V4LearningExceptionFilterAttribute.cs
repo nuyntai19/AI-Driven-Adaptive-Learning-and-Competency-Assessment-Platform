@@ -16,7 +16,14 @@ public sealed class V4LearningExceptionFilterAttribute : ExceptionFilterAttribut
             LearningScopeDeniedException => 403,
             ArgumentException => 422,
             DbUpdateConcurrencyException => 409,
-            InvalidOperationException => 409,
+            LearningMissionInProgressException => 409,
+            LearningPathChangeBlockedException => 409,
+            QuestionPoolDepletedException => 409,
+            // Business-rule rejections (not enough questions, mission not
+            // startable yet, budget exhausted...) are not state conflicts:
+            // 422 lets the client tell "fix your request/state" apart from a
+            // real 409 concurrency clash.
+            InvalidOperationException => 422,
             _ => 0
         };
         if (status == 0) return;

@@ -162,6 +162,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         {
             var node = nodes.Single(n => n.NodeId.ToString() == skill.SkillId);
             var count = questions.Count(q => q.PrimaryTopicNodeId == node.NodeId);
+            var nodeAvgSeconds = LearningPathPacing.AverageSecondsPerQuestion(questions.Where(q => q.PrimaryTopicNodeId == node.NodeId).Select(q => q.EstimatedTimeSeconds));
             var missions = new List<ProposedMissionDto>();
             void Add(string type, string title, uint minutes, bool canStart, string reason, Guid? contentId = null)
                 => missions.Add(new ProposedMissionDto
@@ -180,9 +181,9 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                     var fresh = questions.Count(q => q.PrimaryTopicNodeId == node.NodeId &&
                         !usedQuestionIds.Contains(q.QuestionId) && !exposedQuestionIds.Contains(q.QuestionId));
                     var size = (uint)Math.Min(5, fresh);
-                    Add("IndependentCheck", $"Kiểm tra đầu vào: {node.NodeName}", size * LearningPathPacing.MinutesPerQuestion, fresh >= LearningAssessmentPolicy.MinimumPlacementQuestions,
+                    Add("IndependentCheck", $"Kiểm tra đầu vào: {node.NodeName}", LearningPathPacing.EstimatedMinutes(size, nodeAvgSeconds), fresh >= 1,
                         fresh >= 3 ? $"{size} câu mới, tự chấm ngay. Không mở gợi ý hoặc lời giải trước khi nộp cả phần; mẫu ít được ghi rõ độ tin cậy thấp."
-                            : $"Có {fresh} câu mới: chưa đủ dữ liệu cho phần này. Có thể bỏ qua để lập tuyến học, không chặn các phần khác.");
+                            : $"Có {fresh} câu mới: vẫn làm được nhưng mẫu nhỏ, độ tin cậy thấp. Có thể bỏ qua để lập tuyến học, không chặn các phần khác.");
                     missions.Last().QuestionCount = size;
                     missions.Last().IsProbe = true;
                     if (skill.State == "Confirmed" && fresh >= 5)
@@ -211,7 +212,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 if (probeFirst)
                 {
                     var probeSize = (int)Math.Min(LearningPathPacing.ProbeSize, (uint)practicePool.Count);
-                    Add("Practice", $"Thử nhanh: {node.NodeName}", (uint)probeSize * LearningPathPacing.MinutesPerQuestion, true,
+                    Add("Practice", $"Thử nhanh: {node.NodeName}", LearningPathPacing.EstimatedMinutes((uint)probeSize, nodeAvgSeconds), true,
                         $"Chưa có bài làm cho kỹ năng này: thử {probeSize} câu trước. Làm tốt sẽ bỏ qua phần lý thuyết và lên bộ khó hơn.");
                     var probe = missions.Last(); probe.QuestionCount = (uint)probeSize; probe.TargetDifficulty = 2; probe.SetNumber = 1; probe.IsProbe = true; probe.EstimatedSets = estimatedSets;
                 }
@@ -224,7 +225,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 if (!probeFirst)
                 {
                     var size = (int)Math.Min(LearningAssessmentPolicy.PracticeSize(goal.PreferredPace), (uint)practicePool.Count);
-                    Add("Practice", $"Rèn kỹ năng: {node.NodeName} · bộ 1", (uint)Math.Max(1, size) * LearningPathPacing.MinutesPerQuestion, size > 0,
+                    Add("Practice", $"Rèn kỹ năng: {node.NodeName} · bộ 1", LearningPathPacing.EstimatedMinutes((uint)Math.Max(1, size), nodeAvgSeconds), size > 0,
                         size == 0 ? "Chưa có câu phù hợp; cần giáo viên bổ sung ngân hàng."
                             : $"{levelLabel}: luyện theo vòng, mỗi bộ {LearningPathPacing.SetSize} câu, dự kiến {estimatedSets} bộ. Sau mỗi bộ hệ thống chọn bộ tiếp theo theo kết quả.");
                     var first = missions.Last(); first.QuestionCount = (uint)size; first.SetNumber = 1; first.EstimatedSets = estimatedSets;
@@ -262,7 +263,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             if (!goal.StartWithPlacement && skill.State == "Confirmed" && goal.GoalType != "Advanced")
             {
                 var reviewCount = Math.Min(5u, (uint)count);
-                Add("Review", $"Ôn nhớ lại: {node.NodeName}", reviewCount * LearningPathPacing.MinutesPerQuestion,
+                Add("Review", $"Ôn nhớ lại: {node.NodeName}", LearningPathPacing.EstimatedMinutes(reviewCount, nodeAvgSeconds),
                     reviewCount > 0, "Đã có bằng chứng hợp lệ; bỏ luyện cơ bản và hẹn ôn để duy trì kiến thức.");
                 missions.Last().QuestionCount = reviewCount;
                 missions.Last().AvailableFrom = Now.AddDays(2);
@@ -340,7 +341,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                         {
                             MissionId = Guid.NewGuid().ToString(), SkillId = skill.SkillId, Purpose = "Review", ActivityTypes = ["Practice"],
                             Title = $"Ôn xác nhận: {node.NodeName}", QuestionCount = size, IsSelfAssessedCheck = true,
-                            EstimatedMinutes = Math.Max(1u, size) * LearningPathPacing.MinutesPerQuestion, CanStart = size > 0,
+                            EstimatedMinutes = LearningPathPacing.EstimatedMinutes(Math.Max(1u, size), LearningPathPacing.AverageSecondsPerQuestion(pool.Select(q => q.EstimatedTimeSeconds))), CanStart = size > 0,
                             SelectionReason = size == 0 ? "Chưa có câu phù hợp để ôn xác nhận; cần giáo viên bổ sung ngân hàng câu hỏi."
                                 : $"Em đã bỏ qua phần này khi kiểm tra đầu vào vì tự đánh giá đã vững. {size} câu ngắn để xác nhận; đạt thì giữ lịch ôn, chưa đạt sẽ thêm bộ rèn lại."
                         }
@@ -610,7 +611,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 var available = strict ? fresh : allForMission.Count;
                 var minimum = m.IsMilestoneExam
                     ? Math.Min(5 * Math.Max(1, m.AssessedSkillIds.Count), 3 * Math.Max(1, m.AssessedSkillIds.Count))
-                    : strict ? 3 : Math.Min(5, Math.Max(3, Math.Min(fresh, 5)));
+                    : strict ? Math.Max(1, Math.Min(3, fresh)) : Math.Min(5, Math.Max(3, Math.Min(fresh, 5)));
                 item.QuestionCount = m.IsMilestoneExam ? m.QuestionCount : (uint)Math.Min(5, Math.Max(fresh, Math.Min(5, available)));
                 item.CanStart = available >= minimum && prerequisitesReady && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped &&
                     !(plan.IsPlacement && latest?.Status == SessionRunStatus.Completed);
@@ -635,7 +636,9 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 item.QuestionCount = (uint)Math.Min(Math.Min(m.QuestionCount == 0 ? skillSetSize : m.QuestionCount, skillSetSize), pool);
                 item.DefaultQuestionCount = item.QuestionCount;
                 item.CanStart = item.QuestionCount > 0 && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped && (!m.AvailableFrom.HasValue || m.AvailableFrom <= Now);
-                item.EstimatedDurationMinutes = Math.Max(1u, item.QuestionCount) * LearningPathPacing.MinutesPerQuestion;
+                var poolSeconds = LearningPathPacing.AverageSecondsPerQuestion(relevantQuestions.Select(q => q.EstimatedTimeSeconds));
+                item.EstimatedSecondsPerQuestion = (uint)Math.Round(poolSeconds);
+                item.EstimatedDurationMinutes = LearningPathPacing.EstimatedMinutes(item.QuestionCount, poolSeconds);
                 if (pool == 0 && cooling.Count > 0) item.RecommendationReason = $"Câu đã dùng cần chờ {plan.Schedule.QuestionReuseDelayDays} ngày trước khi luyện hoặc ôn lại. Có thể học phần khác trong thời gian chờ; câu đã lộ đáp án không trở thành câu kiểm tra mới.";
             }
             ApplyRetryRule(item, m, session, latest, active, runs, path, fresh, poolSizes.GetValueOrDefault(m.MissionId));
@@ -761,7 +764,13 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         var plan = new List<AgendaItemDto>();
         uint reviewUsed = 0;
         var reviewLimit = options.Any(o => o.Purpose != "Review") ? Math.Max(2u, budget / 2) : budget;
-        uint Minutes(AgendaItemDto i) => i.Purpose is "Practice" or "Review" ? i.QuestionCount * LearningPathPacing.MinutesPerQuestion * i.PlannedSets : i.EstimatedDurationMinutes;
+        // Pace comes from the teacher-set EstimatedTimeSeconds of each item's
+        // pool (90-second questions: a 5-minute budget fits 3 questions),
+        // falling back to the flat default when the pool has no estimates.
+        uint SecondsPerQuestion(AgendaItemDto i) => i.EstimatedSecondsPerQuestion > 0 ? i.EstimatedSecondsPerQuestion : LearningPathPacing.MinutesPerQuestion * 60;
+        uint SetMinutes(AgendaItemDto i) => Math.Max(1u, (uint)Math.Ceiling(i.QuestionCount * (decimal)SecondsPerQuestion(i) / 60m));
+        uint Minutes(AgendaItemDto i) => i.Purpose is "Practice" or "Review" ? SetMinutes(i) * i.PlannedSets : i.EstimatedDurationMinutes;
+        uint FitsIn(uint minutesLeft, AgendaItemDto i) => minutesLeft * 60 / SecondsPerQuestion(i);
         foreach (var ongoing in result.OngoingRuns)
         {
             if (used >= budget) break;
@@ -775,8 +784,17 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             var cost = Minutes(item);
             if (item.Purpose == "Review" && reviewUsed + cost > reviewLimit)
             {
-                item.QuestionCount = Math.Min(item.QuestionCount, (reviewLimit - Math.Min(reviewUsed, reviewLimit)) / LearningPathPacing.MinutesPerQuestion);
+                item.QuestionCount = Math.Min(item.QuestionCount, FitsIn(reviewLimit - Math.Min(reviewUsed, reviewLimit), item));
                 cost = Minutes(item); if (cost == 0) continue;
+            }
+            if (item.Purpose is not ("Practice" or "Review") && !item.IsMilestoneExam && used + cost >= budget && budget > used &&
+                options.Any(o => o.Purpose is "Practice" or "Review"))
+            {
+                // A study/read block must not swallow the whole day when
+                // practice is also planned: cap it at half of what is left
+                // so at least one practice set still fits today.
+                cost = Math.Max(1u, (budget - used) / 2);
+                item.EstimatedDurationMinutes = cost;
             }
             if (used >= budget) break;
             if (used + cost > budget)
@@ -784,7 +802,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 if (item.IsMilestoneExam) continue;
                 if (item.Purpose is "Practice" or "Review")
                 {
-                    item.QuestionCount = Math.Min(item.QuestionCount, (budget - used) / LearningPathPacing.MinutesPerQuestion);
+                    item.QuestionCount = Math.Min(item.QuestionCount, FitsIn(budget - used, item));
                     if (item.QuestionCount == 0) continue;
                     cost = Minutes(item);
                 }
@@ -799,10 +817,10 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             var grow = plan.Where(i => i.ActiveRunId == null && i.Purpose == "Practice" && i.QuestionCount > 0 &&
                     i.PlannedSets + setsToday.GetValueOrDefault(i.SkillId) < LearningAssessmentPolicy.DailySetsPerSkill(result.PreferredPace) &&
                     (i.EstimatedSets == 0 || i.PlannedSets < Math.Max(1, (int)i.EstimatedSets - (int)Math.Max(0, (int)i.SetNumber - 1))) &&
-                    used + i.QuestionCount * LearningPathPacing.MinutesPerQuestion <= budget)
+                    used + SetMinutes(i) <= budget)
                 .OrderByDescending(i => weakness.GetValueOrDefault(i.SkillId)).ThenBy(i => i.PlannedSets).FirstOrDefault();
             if (grow == null) break;
-            grow.PlannedSets++; used += grow.QuestionCount * LearningPathPacing.MinutesPerQuestion;
+            grow.PlannedSets++; used += SetMinutes(grow);
         }
         foreach (var i in plan.Where(i => i.Purpose is "Practice" or "Review" && i.ActiveRunId == null)) i.EstimatedDurationMinutes = Minutes(i);
         result.TodayPlan = plan;
@@ -861,7 +879,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         MilestoneOrder = i.MilestoneOrder, MilestoneTitle = i.MilestoneTitle,
         AvailableFrom = i.AvailableFrom, QuestionCount = i.QuestionCount, DefaultQuestionCount = i.DefaultQuestionCount, MissionId = i.MissionId,
         LegacySessionId = i.LegacySessionId, Title = i.Title, Objective = i.Objective, Purpose = i.Purpose, SkillId = i.SkillId, SkillName = i.SkillName,
-        EstimatedDurationMinutes = i.EstimatedDurationMinutes, ActivityTypes = i.ActivityTypes, RecommendationReason = i.RecommendationReason,
+        EstimatedDurationMinutes = i.EstimatedDurationMinutes, EstimatedSecondsPerQuestion = i.EstimatedSecondsPerQuestion, ActivityTypes = i.ActivityTypes, RecommendationReason = i.RecommendationReason,
         CanStart = i.CanStart, Status = i.Status, ActiveRunId = i.ActiveRunId, LatestRunId = i.LatestRunId, WeaknessLevel = i.WeaknessLevel,
         CanRetry = i.CanRetry, RetryLabel = i.RetryLabel, RetryBlockedReason = i.RetryBlockedReason, Runs = i.Runs,
         PlannedSets = i.PlannedSets, SetNumber = i.SetNumber, EstimatedSets = i.EstimatedSets, Advice = i.Advice,
