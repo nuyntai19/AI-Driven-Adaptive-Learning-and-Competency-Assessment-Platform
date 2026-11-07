@@ -269,6 +269,10 @@ const PracticePlayerPage = () => {
   // to the same "" as no steps at all — the mirror keeps a freshly added empty
   // step alive until it is typed into or the question changes.
   const [stepsMirror, setStepsMirror] = useState<{ qId: string; steps: string[] } | null>(null);
+  // Which step card is in raw-text edit mode (per question). Every other
+  // non-empty step renders as formatted math via RichMathText; clicking a
+  // rendered step swaps it back to its textarea for correction.
+  const [editingStep, setEditingStep] = useState<{ qId: string; index: number } | null>(null);
 
   // After a step split/add, move focus into the freshly created step card.
   useEffect(() => {
@@ -1829,6 +1833,7 @@ const PracticePlayerPage = () => {
       const merged = reasoningText.trim() ? `${reasoningText.trimEnd()}\n${text}` : text;
       handleReasoningChange(merged);
       setStepsMirror({ qId: String(question?.questionId ?? ""), steps: merged.split("\n") });
+      setEditingStep(null);
       // Câu tự luận/ngắn: bước cuối của bản chép là đáp án cuối (học sinh có
       // thể đổi dấu chọn sang bước khác). Trắc nghiệm giữ nguyên lựa chọn.
       if (question?.questionType !== "MultipleChoice") {
@@ -2446,6 +2451,7 @@ const PracticePlayerPage = () => {
   };
 
   const handleStepDelete = (index: number) => {
+    setEditingStep(null);
     const nextSteps = solutionSteps.filter((_, i) => i !== index);
     let marker = finalStepIndex;
     if (index < marker) marker -= 1;
@@ -2914,21 +2920,42 @@ const PracticePlayerPage = () => {
               >
                 {i + 1}
               </span>
-              <textarea
-                ref={(el) => {
-                  stepTextareaRefs.current[i] = el;
-                }}
-                aria-label={`Bước giải ${i + 1}`}
-                value={step}
-                rows={1}
-                onFocus={() => {
-                  focusedStepIndexRef.current = i;
-                  setActiveInputTarget("reasoning");
-                }}
-                onChange={(e) => handleStepEdit(i, e.target.value)}
-                placeholder={`Bước ${i + 1}…`}
-                className="flex-1 min-w-0 resize-none bg-transparent outline-none text-sm leading-relaxed text-slate-800 dark:text-slate-100 placeholder:text-slate-400 py-1"
-              />
+              {step.trim() !== "" &&
+              !(editingStep?.qId === String(question?.questionId ?? "") && editingStep.index === i) ? (
+                <div
+                  onClick={() => {
+                    focusedStepIndexRef.current = i;
+                    setActiveInputTarget("reasoning");
+                    setEditingStep({ qId: String(question?.questionId ?? ""), index: i });
+                    setStepFocusRequest(i);
+                  }}
+                  className="flex-1 min-w-0 cursor-text py-1 text-sm leading-relaxed text-slate-800 dark:text-slate-100"
+                  title="Bấm để sửa bước này"
+                >
+                  <RichMathText text={step} />
+                </div>
+              ) : (
+                <textarea
+                  ref={(el) => {
+                    stepTextareaRefs.current[i] = el;
+                  }}
+                  aria-label={`Bước giải ${i + 1}`}
+                  value={step}
+                  rows={1}
+                  onFocus={() => {
+                    focusedStepIndexRef.current = i;
+                    setActiveInputTarget("reasoning");
+                  }}
+                  onBlur={() => {
+                    setEditingStep((prev) =>
+                      prev?.qId === String(question?.questionId ?? "") && prev.index === i ? null : prev,
+                    );
+                  }}
+                  onChange={(e) => handleStepEdit(i, e.target.value)}
+                  placeholder={`Bước ${i + 1}…`}
+                  className="flex-1 min-w-0 resize-none bg-transparent outline-none text-sm leading-relaxed text-slate-800 dark:text-slate-100 placeholder:text-slate-400 py-1"
+                />
+              )}
               {withFinalMarker &&
                 (isFinalStep ? (
                   <span className="shrink-0 mt-1 px-2 py-1 rounded-lg bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wide">
