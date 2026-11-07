@@ -33,6 +33,7 @@ public static class DependencyInjection
         services.TryAddSingleton<GeminiPromptBuilder>();
         services.TryAddSingleton<GeminiResponseJsonSchema>();
         services.TryAddSingleton<IAIService, GeminiAIService>();
+        services.TryAddScoped<HandwritingTranscriptionService>();
         services.TryAddScoped<ILearningPathPlanEnricher, GeminiLearningPathPlanEnricher>();
 
         return services;
