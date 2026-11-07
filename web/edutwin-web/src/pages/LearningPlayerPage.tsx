@@ -1928,9 +1928,7 @@ const PracticePlayerPage = () => {
       return false;
     }
     const qId = String(question?.questionId ?? "");
-    // Bản chép thường ngăn các bước bằng dòng trống: bỏ dòng trống/rỗng
-    // để không sinh thẻ bước trống ở giữa bài làm.
-    const newLines = text.split("\n").map((s) => s.trim()).filter(Boolean);
+    const newLines = text.split("\n");
     const currentSteps = solutionSteps;
     let blockStart = currentSteps.length;
     let nextSteps = [...currentSteps, ...newLines];
@@ -2591,7 +2589,7 @@ const PracticePlayerPage = () => {
       ? stepsMirror.steps
       : reasoningText === ""
         ? []
-        : reasoningText.split("\n").map((s) => s.trim()).filter(Boolean);
+        : reasoningText.split("\n");
   const finalStepIndex = ((): number => {
     if (solutionSteps.length === 0) return -1;
     if (
