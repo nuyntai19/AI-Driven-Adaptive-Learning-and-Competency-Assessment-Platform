@@ -17,7 +17,6 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   const queryClient = useQueryClient();
 
   const [selectedOption, setSelectedOption] = useState<string>("");
-  const [textAnswer, setTextAnswer] = useState<string>("");
   const [reasoningText, setReasoningText] = useState<string>("");
   const [activeHint, setActiveHint] = useState<AdaptivePracticeHint | null>(null);
   const [hintLoading, setHintLoading] = useState<boolean>(false);
@@ -27,8 +26,8 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   const [showExitConfirm, setShowExitConfirm] = useState<boolean>(false);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
 
-  // Ba phương thức nhập cho câu tự luận: bàn phím / vẽ trên A4 / ảnh chụp —
-  // cùng ghi vào textAnswer + reasoningText như trang làm bài tập.
+  // Ba phương thức nhập: bàn phím / vẽ trên A4 / ảnh chụp — tất cả cùng
+  // ghi vào một ô bài làm duy nhất như trang làm bài tập.
   type InputMode = "keyboard" | "draw" | "photo";
   const [inputMode, setInputModeState] = useState<InputMode>(() => {
     try {
@@ -81,7 +80,6 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   useEffect(() => {
     if (question) {
       setSelectedOption("");
-      setTextAnswer("");
       setReasoningText("");
       setActiveHint(null);
       setIsHintOpen(false);
@@ -97,7 +95,11 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   const submitMutation = useMutation({
     mutationFn: async () => {
       if (!question || !sessionId) return;
-      const finalAnswer = question.questionType === "MultipleChoice" ? selectedOption : textAnswer;
+      // One single work box: the submitted answer is derived from the work
+      // — the whole text for essays, its last non-empty line otherwise.
+      const workLines = reasoningText.split("\n").map((s) => s.trim()).filter(Boolean);
+      const derivedAnswer = question.questionType === "Essay" ? reasoningText.trim() : (workLines[workLines.length - 1] ?? "");
+      const finalAnswer = question.questionType === "MultipleChoice" ? selectedOption : derivedAnswer;
       const timeSpent = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000));
 
       return await adaptivePracticeApi.submitAnswer(sessionId, {
@@ -117,21 +119,16 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
     },
   });
 
-  // Đưa bản chép vào đáp án + lập luận: câu trả lời ngắn lấy dòng cuối làm
-  // đáp án, toàn bộ bản chép là phần lập luận; câu tự luận lấy toàn bộ.
+  // Đưa bản chép vào ô bài làm duy nhất; đáp án nộp đi được suy ra từ bài
+  // làm khi bấm nộp (tự luận lấy toàn bộ, trả lời ngắn lấy dòng cuối).
   const applyScan = (text: string) => {
     const lines = text.split("\n").map((s) => s.trim()).filter(Boolean);
     if (!lines.length) {
       setScanError("Không đọc được chữ viết trong ảnh. Hãy viết rõ hơn hoặc gõ bằng bàn phím.");
       return;
     }
-    if (question?.questionType === "Essay") {
-      setTextAnswer(text.trim());
-    } else {
-      setReasoningText(text.trim());
-      setTextAnswer(lines[lines.length - 1]);
-    }
-    setScanNotice("Đã quét nội dung vào bài làm. Hãy kiểm tra lại đáp án trước khi nộp.");
+    setReasoningText(text.trim());
+    setScanNotice("Đã quét nội dung vào bài làm. Hãy kiểm tra lại trước khi nộp.");
   };
 
   const runScan = async (imageDataUrl: string) => {
@@ -258,15 +255,12 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
     );
   }
 
-  const answerEntered = question?.questionType === "MultipleChoice" ? !!selectedOption : textAnswer.trim().length > 0;
+  const answerEntered = question?.questionType === "MultipleChoice" ? !!selectedOption : reasoningText.trim().length > 0;
 
-  // Placeholder theo môn + loại câu (tránh ô nhập kiểu Toán cho câu tiếng Anh).
-  const isMathSubject = /toán|math/i.test(session?.subjectName ?? "");
-  const answerPlaceholder = question?.questionType === "Essay"
-    ? "Viết câu trả lời của bạn..."
-    : isMathSubject
-      ? "Nhập số, biểu thức hoặc kết quả..."
-      : "Nhập đáp án của bạn...";
+  // Placeholder cho ô bài làm duy nhất, theo loại câu.
+  const workPlaceholder = question?.questionType === "Essay"
+    ? "Viết bài làm của bạn..."
+    : "Trình bày bài làm của bạn...";
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex flex-col font-sans antialiased">
@@ -473,7 +467,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
                           >
                             <div className="text-2xl mb-1">📷</div>
                             <div className="text-sm font-black text-slate-700 dark:text-slate-200">{isScanning ? "Đang quét ảnh…" : "Chụp hoặc tải ảnh bài giải lên"}</div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Hệ thống sẽ quét nội dung vào ô đáp án + lập luận bên dưới</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Hệ thống sẽ quét nội dung vào ô bài làm bên dưới</div>
                           </button>
                         )}
                       </div>
@@ -483,36 +477,42 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
                     {scanError && <p role="alert" className="text-xs font-medium text-rose-700 dark:text-rose-300">{scanError}</p>}
 
                     <div className="space-y-3">
-                      <label htmlFor="text-ans" className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                        {inputMode === "keyboard" ? "Nhập đáp án của bạn:" : "Đáp án của bạn (kết quả quét — kiểm tra và sửa lại nếu cần):"}
+                      <label htmlFor="work-text" className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        {inputMode === "keyboard" ? "Bài làm của bạn:" : "Bài làm của bạn (kết quả quét — kiểm tra và sửa lại nếu cần):"}
                       </label>
-                      <input
-                        id="text-ans"
-                        type="text"
-                        value={textAnswer}
-                        onChange={(e) => setTextAnswer(e.target.value)}
-                        placeholder={answerPlaceholder}
+                      <textarea
+                        id="work-text"
+                        value={reasoningText}
+                        onChange={(e) => setReasoningText(e.target.value)}
+                        placeholder={workPlaceholder}
+                        rows={5}
                         className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-base focus:outline-indigo-500"
                       />
+                      {question.questionType !== "Essay" && (
+                        <p className="text-[11px] text-slate-400">Dòng cuối cùng của bài làm được tính là đáp án cuối.</p>
+                      )}
                     </div>
                   </div>
                 )}
 
-                {/* Optional Reasoning Text Field */}
+                {/* Multiple choice: the single box holds the explanation of
+                    why the student picked that option. */}
+                {question.questionType === "MultipleChoice" && (
                 <div className="pt-2">
                   <details className="text-xs text-slate-500 dark:text-slate-400" open={inputMode !== "keyboard" || undefined}>
                     <summary className="cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 font-semibold select-none">
-                      + Thêm lời giải thích / lập luận (không bắt buộc)
+                      Giải thích vì sao em chọn đáp án này (không bắt buộc)
                     </summary>
                     <textarea
                       value={reasoningText}
                       onChange={(e) => setReasoningText(e.target.value)}
-                      placeholder="Ghi lại các bước suy luận của bạn..."
+                      placeholder="Giải thích vì sao em chọn đáp án này..."
                       rows={3}
                       className="w-full mt-2 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-200 text-xs focus:outline-indigo-500"
                     />
                   </details>
                 </div>
+                )}
 
                 {/* Action Bar: Hints & Submit */}
                 <div className="pt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800">

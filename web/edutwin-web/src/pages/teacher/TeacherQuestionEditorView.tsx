@@ -658,34 +658,6 @@ export function TeacherQuestionEditorView() {
           </div>
         </div>
 
-        {/* Reasoning Required Toggle */}
-        <div className="p-3.5 rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)] flex items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              id="reasoningRequiredToggle"
-              checked={reasoningRequired}
-              onChange={(e) => setReasoningRequired(e.target.checked)}
-              className="accent-teal-500 h-4 w-4 mt-0.5 cursor-pointer"
-            />
-            <label htmlFor="reasoningRequiredToggle" className="cursor-pointer select-none">
-              <span className="text-xs font-semibold text-[var(--th-text)]">
-                Yêu cầu học sinh trình bày lời giải
-              </span>
-              <p className="text-[11px] text-[var(--th-text-muted)] mt-0.5">
-                Khi bật, học sinh bắt buộc phải nhập các bước lập luận trước khi nộp bài. Mặc định tắt (chỉ nộp đáp án; nếu học sinh tự nguyện nhập lời giải thì AI vẫn phân tích và cập nhật Digital Twin).
-              </p>
-            </label>
-          </div>
-          <span className={`text-[10px] uppercase font-bold px-2.5 py-1 rounded-full border whitespace-nowrap ${
-            reasoningRequired
-              ? "bg-teal-500/10 text-[var(--th-teal)] border-teal-500/30"
-              : "bg-slate-500/10 text-slate-400 border-slate-500/30"
-          }`}>
-            {reasoningRequired ? "Bắt buộc giải trình" : "Tùy chọn lời giải"}
-          </span>
-        </div>
-
         {/* Row 3: Đề bài & Bộ công cụ Toán học */}
         <div className="space-y-3 border-t border-[var(--th-border-subtle)] pt-4">
           <div className="flex items-center justify-between">

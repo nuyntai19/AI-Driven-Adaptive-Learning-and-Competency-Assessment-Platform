@@ -1255,28 +1255,25 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                         </div>
                       </div>
 
-                      {/* Final Answer */}
+                      {/* Student's work — one merged submission: students now
+                          write everything in a single box, so the grading
+                          view shows one block too, with the final answer
+                          (or the chosen option) called out at the end. */}
                       <div className="space-y-1.5">
-                        <span className="text-xs font-bold text-slate-500 uppercase">Đáp án học sinh đã chọn / nhập:</span>
-                        <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold text-slate-900 dark:text-slate-100 text-base">
-                          {resolvedStudentAnswer ? (
-                            <RichMathText text={resolvedStudentAnswer} />
-                          ) : (
-                            <span className="text-slate-400 italic font-normal text-sm">(Chưa có câu trả lời)</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Reasoning Text / Solution Steps */}
-                      <div className="space-y-1.5 pt-1">
-                        <span className="text-xs font-bold text-slate-500 uppercase">Các bước giải & Lập luận của học sinh:</span>
-                        {resolvedStudentReasoning ? (
-                          <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-sans whitespace-pre-wrap">
-                            <RichMathText text={resolvedStudentReasoning} />
+                        <span className="text-xs font-bold text-slate-500 uppercase">Bài làm của học sinh:</span>
+                        {resolvedStudentReasoning || resolvedStudentAnswer ? (
+                          <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-sans whitespace-pre-wrap space-y-2">
+                            {resolvedStudentReasoning && <RichMathText text={resolvedStudentReasoning} />}
+                            {resolvedStudentAnswer && (
+                              <p className="font-semibold text-slate-900 dark:text-slate-100">
+                                {currentQuestion.questionType === "MultipleChoice" ? "Đáp án đã chọn: " : "Đáp án cuối: "}
+                                <RichMathText text={resolvedStudentAnswer} />
+                              </p>
+                            )}
                           </div>
                         ) : (
                           <div className="p-3.5 bg-slate-50/60 dark:bg-slate-800/40 border border-dashed border-slate-200 dark:border-slate-700/80 rounded-xl text-xs text-slate-400 dark:text-slate-500 italic">
-                            (Học sinh không đính kèm các bước giải hoặc lời giải thích bằng chữ cho câu hỏi này)
+                            (Học sinh chưa làm câu này)
                           </div>
                         )}
                       </div>
@@ -1353,7 +1350,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                           </span>
                         </div>
                         <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800">
-                          <span className="text-slate-500 dark:text-slate-400 block mb-1">Chỉ số chất lượng lập luận (không phải điểm bài)</span>
+                          <span className="text-slate-500 dark:text-slate-400 block mb-1">Chỉ số chất lượng bài làm (không phải điểm bài)</span>
                           <span className="text-base font-extrabold text-slate-900 dark:text-slate-100">
                             {originalReasoningQuality !== null && originalReasoningQuality !== undefined
                               ? `${Math.round(Number(originalReasoningQuality))}/100`
@@ -1561,14 +1558,14 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
 
                           {/* 2. Điểm chất lượng lập luận & Phân loại lỗi */}
                           <details className="rounded-xl border border-slate-200 dark:border-slate-700 p-3">
-                          <summary className="text-xs font-bold cursor-pointer">Chi tiết lập luận & phân loại lỗi</summary>
+                          <summary className="text-xs font-bold cursor-pointer">Chi tiết phân tích bài làm & phân loại lỗi</summary>
                           <div className="grid grid-cols-2 gap-3">
                             <div>
                               <div className="flex items-center justify-between mb-1">
                                 <label className="text-xs font-bold text-slate-600 dark:text-slate-400">
                                   Chất lượng lập luận
                                 </label>
-                                <span className="text-xs font-bold text-indigo-600">{reasoningQuality == null ? "Chưa đánh giá" : `${reasoningQuality}/100 (chỉ số lập luận)`}</span>
+                                <span className="text-xs font-bold text-indigo-600">{reasoningQuality == null ? "Chưa đánh giá" : `${reasoningQuality}/100 (chỉ số bài làm)`}</span>
                               </div>
                               <input
                                 type="number"

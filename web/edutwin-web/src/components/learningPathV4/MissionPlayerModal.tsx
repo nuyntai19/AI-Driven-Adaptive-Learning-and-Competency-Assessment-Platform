@@ -250,7 +250,8 @@ function Activity({ activity: a, onSubmitted, paused }: { activity: ActivityRunD
   const [hints, setHints] = useState<AssistanceResponseDto[]>([]);
   // Ba phương thức nhập cho câu tự luận: bàn phím / vẽ trên A4 (có thước,
   // compa, tam giác, trục Oxy cho bài hình học) / ảnh chụp. Kết quả quét đổ
-  // vào đúng hai ô answer + reasoning sẵn có nên nháp server không đổi.
+  // vào ô bài làm duy nhất (đáp án suy ra từ dòng cuối) nên nháp server
+  // không đổi.
   const actorUser = useAuthStore(s => s.user);
   type InputMode = "keyboard" | "draw" | "photo";
   const [inputMode, setInputModeState] = useState<InputMode>(() => {
@@ -262,6 +263,15 @@ function Activity({ activity: a, onSubmitted, paused }: { activity: ActivityRunD
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const boardRef = useRef<ScratchpadInlinePanelHandle>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  // One single work box for question activities: the student writes the
+  // whole solution once; the submitted final answer is the last non-empty
+  // line of the work (the same rule scanning below already used).
+  const workText = reasoning || answer;
+  const handleWorkChange = (v: string) => {
+    setReasoning(v);
+    const lines = v.split("\n").map(s => s.trim()).filter(Boolean);
+    setAnswer(lines.length ? lines[lines.length - 1] : "");
+  };
   const applyScan = (scanned: string) => {
     const lines = scanned.split("\n").map(s => s.trim()).filter(Boolean);
     if (!lines.length) { setScanMsg("Không đọc được chữ viết trong ảnh. Hãy viết rõ hơn hoặc gõ bằng bàn phím."); return; }
@@ -361,8 +371,8 @@ function Activity({ activity: a, onSubmitted, paused }: { activity: ActivityRunD
       </div>}
       {scanMsg && <p role="status" className="text-xs font-medium text-indigo-700 dark:text-indigo-300">{scanMsg}</p>}
     </div>}
-    {!q?.options?.length && <label className="block text-sm font-medium">{q ? "Câu trả lời" : a.activityType === "FindError" ? "Sửa lại bước sai" : "Em hiểu hoặc rút ra điều gì?"}<textarea required rows={3} className={field} value={answer} onChange={e => setAnswer(e.target.value)} /></label>}
-    {q && <label className="block text-sm font-medium">Giải thích cách làm{q.reasoningRequired ? " (bắt buộc)" : " (nếu có)"}<textarea required={q.reasoningRequired} rows={3} className={field} value={reasoning} onChange={e => setReasoning(e.target.value)} /></label>}
+    {!q?.options?.length && <label className="block text-sm font-medium">{q ? "Bài làm của em" : a.activityType === "FindError" ? "Sửa lại bước sai" : "Em hiểu hoặc rút ra điều gì?"}<textarea required rows={3} className={field} value={q ? workText : answer} onChange={e => q ? handleWorkChange(e.target.value) : setAnswer(e.target.value)} /></label>}
+    {q?.options?.length ? <label className="block text-sm font-medium">Giải thích vì sao em chọn đáp án này{q.reasoningRequired ? " (bắt buộc)" : " (nếu có)"}<textarea required={q.reasoningRequired} rows={3} className={field} value={reasoning} onChange={e => setReasoning(e.target.value)} /></label> : null}
     {hints.length > 0 && <section aria-label="Gợi ý" className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-slate-900">
       {hints.map(h => <div key={h.hintLevel}><p className="text-xs font-semibold uppercase tracking-wider text-amber-700">Gợi ý {h.hintLevel}/{h.totalHints} · {h.hintTitle}</p>
         <RichMathText className="mt-1 whitespace-pre-wrap text-sm leading-relaxed" text={h.explanation} /></div>)}

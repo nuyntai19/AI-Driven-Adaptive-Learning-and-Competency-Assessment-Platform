@@ -536,11 +536,6 @@ function CenterManagerQuestionBankView() {
                           {q.answerEvaluationMode}
                         </span>
                       )}
-                      {q.reasoningRequired && (
-                        <span className="rounded bg-amber-500/10 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 px-2 py-0.5 border border-amber-500/20 text-[10px] font-medium">
-                          ⚡ Yêu cầu lập luận
-                        </span>
-                      )}
                     </div>
                   </div>
 

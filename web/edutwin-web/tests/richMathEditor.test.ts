@@ -278,16 +278,16 @@ describe("Cross-Actor Unification (Center Manager, Teacher, Student)", () => {
     assert.equal(fs.existsSync(toolbarPath), false, "MathInputToolbar.tsx must be completely removed");
   });
 
-  it("LearningPlayerPage uses RichMathEditor for student reasoning and ModeAwareAnswerEditor for answer dispatching", () => {
+  it("LearningPlayerPage uses one unified RichMathEditor work box and no separate answer editor", () => {
     const studentPath = path.resolve(__dirname, "../src/pages/LearningPlayerPage.tsx");
     const content = fs.readFileSync(studentPath, "utf-8");
 
     assert.ok(content.includes('import { RichMathEditor, type RichMathEditorRef } from "../components/math/RichMathEditor";'));
-    assert.ok(content.includes('import { ModeAwareAnswerEditor } from "../components/math/answer-editor/ModeAwareAnswerEditor";'));
+    // Single-box design: students write the whole solution in one work
+    // box; the separate ModeAwareAnswerEditor answer dispatch is gone.
+    assert.ok(!content.includes("ModeAwareAnswerEditor"));
+    assert.ok(content.includes("handleUnifiedWorkChange"));
     assert.ok(content.includes('variant="student"'));
-    assert.ok(content.includes('profile="answering"'));
-    assert.ok(content.includes('showPreview={false}'));
-    assert.ok(content.includes('showSyntaxHint={false}'));
     assert.ok(!content.includes("KaTeX Preview"));
   });
 

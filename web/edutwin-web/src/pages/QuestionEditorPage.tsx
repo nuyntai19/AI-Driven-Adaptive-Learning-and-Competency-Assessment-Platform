@@ -1187,24 +1187,6 @@ function CenterManagerQuestionEditorView() {
               </p>
             </div>
 
-            {/* Independent Reasoning Required Flag */}
-            <div className="flex flex-col justify-center">
-              <label className="flex items-center gap-3 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  disabled={isReadOnly}
-                  checked={formData.reasoningRequired}
-                  onChange={(e) => handleInputChange("reasoningRequired", e.target.checked)}
-                  className="h-4 w-4 rounded border-[var(--cm-border)] bg-[var(--cm-surface-subtle)] text-[var(--cm-cyan)] focus:ring-[var(--cm-cyan)]"
-                />
-                <span className="text-sm font-semibold text-[var(--cm-text)]">
-                  Yêu cầu học sinh trình bày lời giải
-                </span>
-              </label>
-              <p className="mt-1.5 text-xs text-[var(--cm-text-muted)] pl-7">
-                Khi bật, học sinh bắt buộc phải nhập các bước lập luận trước khi nộp bài. Mặc định tắt (chỉ nộp đáp án; nếu học sinh tự nguyện nhập lời giải thì AI vẫn phân tích và cập nhật Digital Twin).
-              </p>
-            </div>
           </div>
 
           {/* Conditional Sub-form: MultipleChoice */}

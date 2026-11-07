@@ -53,7 +53,6 @@ import { type VisualMathFieldRef } from "../components/math/VisualMathField";
 import { RichMathText } from "../components/math/RichMathText";
 import { QuestionImage } from "../components/QuestionImage";
 import { RichMathEditor, type RichMathEditorRef } from "../components/math/RichMathEditor";
-import { ModeAwareAnswerEditor } from "../components/math/answer-editor/ModeAwareAnswerEditor";
 import type { AnswerEditorRef } from "../components/math/answer-editor/answerEditorHelpers";
 import { SideAssistantWorkspace, type AssistantToolTab } from "../components/math/SideAssistantWorkspace";
 import { ScratchpadInlinePanel, type ScratchpadInlinePanelHandle } from "../components/math/ScratchpadInlinePanel";
@@ -1765,6 +1764,21 @@ const PracticePlayerPage = () => {
     persistCurrentAnswer(undefined, val, undefined);
   };
 
+  // Unified single work box (keyboard mode): the student writes the whole
+  // solution in one place — there is no separate answer box anymore. The
+  // final answer is derived from the last non-empty line of the work, the
+  // same rule the board/photo flow applies to its marked final step. For
+  // multiple choice the box holds only the explanation of the choice; the
+  // selected option remains the answer.
+  const handleUnifiedWorkChange = (val: string) => {
+    if (isReadOnly) return;
+    handleReasoningChange(val);
+    if (question?.questionType === "MultipleChoice") return;
+    const lines = val.split("\n").map((s) => s.trim()).filter(Boolean);
+    const derived = lines.length ? lines[lines.length - 1] : "";
+    if (derived !== finalAnswer) handleAnswerChange(derived, "");
+  };
+
   const handleConfidenceChange = (val: number) => {
     if (isReadOnly) return;
     setConfidence(val);
@@ -1790,7 +1804,9 @@ const PracticePlayerPage = () => {
       } else if (visualMathFieldRef.current) {
         visualMathFieldRef.current.insertAtCursor(textToInsert);
       } else {
-        handleAnswerChange(finalAnswer + textToInsert, answerDisplayLatex + textToInsert);
+        // The separate answer editor no longer exists: tool results land
+        // in the unified work box (the explanation for multiple choice).
+        handleUnifiedWorkChange(reasoningText + textToInsert);
       }
       return;
     }
@@ -4105,7 +4121,9 @@ const PracticePlayerPage = () => {
                           ? "Bài làm — ảnh chụp bài giải"
                           : boardFlowActive && !isMcqQuestion
                             ? "Bài làm — viết tay trên giấy A4"
-                            : "Đáp án của bạn"}
+                            : isMcqQuestion
+                              ? "Đáp án của bạn"
+                              : "Bài làm của bạn"}
                     </span>
                     {isAssignmentSubmitted && (
                       <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
@@ -4177,45 +4195,44 @@ const PracticePlayerPage = () => {
                   renderPhotoWork(true)
                 ) : (
                   <div>
-                    {!mathToolsEnabled ? <textarea aria-label="Đáp án của bạn" value={finalAnswer} disabled={isReadOnly} onChange={e => handleAnswerChange(e.target.value, "")} placeholder="Nhập câu trả lời..." className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <ModeAwareAnswerEditor
-                      ref={answerEditorRef}
-                      profile="answering"
+                    {/* One single work box for every subject: the whole
+                        solution is written here; the last line counts as
+                        the final answer (see handleUnifiedWorkChange). */}
+                    {!mathToolsEnabled ? <textarea aria-label="Bài làm của bạn" value={reasoningText} disabled={isReadOnly} onChange={e => handleUnifiedWorkChange(e.target.value)} placeholder="Trình bày bài làm của bạn..." className="w-full min-h-32 rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <RichMathEditor
+                      ref={reasoningEditorRef}
                       variant="student"
-                      questionType={question?.questionType || "ShortAnswer"}
-                      evaluationMode={question?.answerEvaluationMode || "NumericRational"}
-                      value={{ rawText: finalAnswer, displayLatex: answerDisplayLatex }}
-                      onChange={(val) => handleAnswerChange(val.rawText, val.displayLatex)}
-                      onFocus={() => setActiveInputTarget("answer")}
+                      value={reasoningText}
+                      onChange={(val) => {
+                        if (!isReadOnly) handleUnifiedWorkChange(val);
+                      }}
+                      onFocus={() => setActiveInputTarget("reasoning")}
                       disabled={isReadOnly}
-                      readOnly={isAssignmentSubmitted}
+                      minHeight="120px"
                       placeholder={
                         isAssignmentSubmitted
-                          ? "Chưa có đáp số"
-                          : question?.questionType === "Essay"
-                          ? "Nhập kết luận hoặc đáp án; dùng Chèn công thức để thêm biểu thức toán..."
-                          : question?.answerEvaluationMode === "Manual"
-                          ? "Nhập câu trả lời ngắn; có thể kết hợp chữ và công thức toán..."
-                          : question?.answerEvaluationMode === "TextExact"
-                          ? "Nhập câu trả lời; dùng Chèn công thức nếu cần ký hiệu toán..."
-                          : "Nhập đáp số; dùng Chèn công thức để nhập phân số, căn hoặc tọa độ (có thể chèn từ Casio)..."
+                          ? "Chưa có bài làm cho câu hỏi này."
+                          : "Trình bày bài làm của em... (Gõ $ hoặc Ctrl+M để chèn công thức toán)"
                       }
-                      showPreview={false}
-                      showSyntaxHint={false}
-                      autoFocus={!isReadOnly}
+                      className={isAssignmentSubmitted ? "opacity-90" : ""}
                     />}
+                    {!isAssignmentSubmitted && (
+                      <p className="mt-2 text-[11px] text-slate-400">Dòng cuối cùng của bài làm được tính là đáp án cuối.</p>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* 5. Reasoning / Solution Section — ở chế độ Vẽ A4 / Ảnh chụp:
-                  câu tự luận đã gộp bảng/ảnh + bước giải vào mục 4 nên mục
-                  này chỉ còn thẻ ảnh đính kèm; câu trắc nghiệm hiển thị khu
-                  vực làm việc của phương thức đã chọn tại đây. */}
+              {/* 5. Explanation Section — only multiple choice still has a
+                  separate box here: it holds the explanation of why the
+                  student picked that option. Every other question type
+                  writes its whole work in section 4 (or on the board /
+                  photo in the draw & photo flows), so this section renders
+                  nothing for them besides the attachment card below. */}
               <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
-                {!(stepsFlowActive && !isMcqQuestion) && (
+                {isMcqQuestion && (
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                    Lập luận tư duy & Trình bày các bước giải
+                    Giải thích vì sao em chọn đáp án này
                   </label>
                   {isAssignmentSubmitted ? (
                     <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800">
@@ -4233,7 +4250,7 @@ const PracticePlayerPage = () => {
                   isMcqQuestion ? renderBoardWork(false) : null
                 ) : photoFlowActive ? (
                   isMcqQuestion ? renderPhotoWork(false) : null
-                ) : !mathToolsEnabled ? <textarea aria-label="Lập luận của bạn" value={reasoningText} disabled={isReadOnly} onChange={e => handleReasoningChange(e.target.value)} placeholder="Trình bày lập luận của bạn..." className="w-full min-h-32 rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <RichMathEditor
+                ) : !isMcqQuestion ? null : !mathToolsEnabled ? <textarea aria-label="Giải thích vì sao em chọn đáp án này" value={reasoningText} disabled={isReadOnly} onChange={e => handleReasoningChange(e.target.value)} placeholder="Giải thích vì sao em chọn đáp án này..." className="w-full min-h-32 rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <RichMathEditor
                   ref={reasoningEditorRef}
                   variant="student"
                   value={reasoningText}
@@ -4245,8 +4262,8 @@ const PracticePlayerPage = () => {
                   minHeight="120px"
                   placeholder={
                     isAssignmentSubmitted
-                      ? "Chưa có nội dung lập luận cho câu hỏi này."
-                      : "Trình bày các bước biến đổi, suy luận toán học để AI phân tích chất lượng tư duy... (Gõ $ hoặc Ctrl+M để chèn công thức toán)"
+                      ? "Học sinh không giải thích."
+                      : "Giải thích vì sao em chọn đáp án này... (Gõ $ hoặc Ctrl+M để chèn công thức toán)"
                   }
                   className={isAssignmentSubmitted ? "opacity-90" : ""}
                 />}
