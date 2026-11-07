@@ -8,6 +8,9 @@ export type AssistantToolTab = "casio" | "scratchpad" | "graph";
 
 export interface SideAssistantWorkspaceProps {
   mathToolsEnabled?: boolean;
+  /** Hide the scratchpad tab when the board already lives inline in the page
+   *  (board-centric player) — there must only ever be one live board. */
+  hideScratchpadTab?: boolean;
   activeTab: AssistantToolTab;
   onChangeTab: (tab: AssistantToolTab) => void;
   onClose: () => void;
@@ -25,6 +28,7 @@ export interface SideAssistantWorkspaceProps {
 
 export const SideAssistantWorkspace: React.FC<SideAssistantWorkspaceProps> = ({
   mathToolsEnabled = true,
+  hideScratchpadTab = false,
   activeTab,
   onChangeTab,
   onClose,
@@ -62,7 +66,7 @@ export const SideAssistantWorkspace: React.FC<SideAssistantWorkspaceProps> = ({
             <span>Casio fx-580</span>
           </button>}
 
-          <button
+          {!hideScratchpadTab && <button
             type="button"
             role="tab"
             aria-selected={activeTab === "scratchpad"}
@@ -78,7 +82,7 @@ export const SideAssistantWorkspace: React.FC<SideAssistantWorkspaceProps> = ({
             {isScratchpadAttached && (
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Đã có ảnh nháp đính kèm" />
             )}
-          </button>
+          </button>}
 
           {mathToolsEnabled && <button
             type="button"
@@ -114,7 +118,7 @@ export const SideAssistantWorkspace: React.FC<SideAssistantWorkspaceProps> = ({
           <CasioInlinePanel onInsertResult={onInsertResult} />
         )}
 
-        {activeTab === "scratchpad" && isReadOnly && (
+        {activeTab === "scratchpad" && !hideScratchpadTab && isReadOnly && (
           <div className="overflow-auto flex-1">
             {submittedAttemptId && hasSubmittedScratchpad ? (
               <AttemptScratchpadAttachment key={String(submittedAttemptId)} attemptId={submittedAttemptId} />
@@ -123,7 +127,7 @@ export const SideAssistantWorkspace: React.FC<SideAssistantWorkspaceProps> = ({
             )}
           </div>
         )}
-        {activeTab === "scratchpad" && !isReadOnly && (
+        {activeTab === "scratchpad" && !hideScratchpadTab && !isReadOnly && (
           <ScratchpadInlinePanel
             centerId={centerId}
             userId={userId}

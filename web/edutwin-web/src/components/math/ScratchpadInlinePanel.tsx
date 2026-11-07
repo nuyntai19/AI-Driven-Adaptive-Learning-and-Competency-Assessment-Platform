@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type {
   ScratchpadDraft,
   ScratchpadGrid,
@@ -48,7 +48,15 @@ export interface ScratchpadInlinePanelProps {
   onAttachSnapshot?: (blob: Blob, dataUrl: string) => void;
 }
 
-export const ScratchpadInlinePanel = ({
+/** Imperative access so a parent (e.g. the board-centric player) can read the
+ *  board's current drawing without the student pressing "Đính kèm" first. */
+export interface ScratchpadInlinePanelHandle {
+  /** PNG snapshot of the current drawing, or null when the board is blank. */
+  exportSnapshot: () => Promise<{ blob: Blob; dataUrl: string } | null>;
+  hasInk: () => boolean;
+}
+
+export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, ScratchpadInlinePanelProps>(({
   centerId,
   userId,
   clientSubmissionId,
@@ -56,7 +64,7 @@ export const ScratchpadInlinePanel = ({
   isReadOnly = false,
   onExportPng,
   onAttachSnapshot,
-}: ScratchpadInlinePanelProps) => {
+}, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -362,6 +370,23 @@ export const ScratchpadInlinePanel = ({
     void saveDraft([], grid);
   };
 
+  const buildSnapshot = useCallback(async (): Promise<{ blob: Blob; dataUrl: string } | null> => {
+    if (strokes.length === 0) return null;
+    const blob = await renderPng(strokes, grid);
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error("read failed"));
+      reader.readAsDataURL(blob);
+    });
+    return { blob, dataUrl };
+  }, [strokes, grid]);
+
+  useImperativeHandle(ref, () => ({
+    exportSnapshot: buildSnapshot,
+    hasInk: () => strokes.length > 0,
+  }), [buildSnapshot, strokes]);
+
   const handleAttachSnapshot = async () => {
     if (isReadOnly) return;
     if (strokes.length === 0) {
@@ -372,20 +397,16 @@ export const ScratchpadInlinePanel = ({
 
     setExportStatus("Đang lưu ảnh nháp...");
     try {
-      const blob = await renderPng(strokes, grid);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const dataUrl = reader.result as string;
-        if (onAttachSnapshot) {
-          onAttachSnapshot(blob, dataUrl);
-        }
-        if (onExportPng) {
-          onExportPng(blob);
-        }
-        setExportStatus("Đã cập nhật ảnh nháp đính kèm vào bài làm!");
-        setTimeout(() => setExportStatus(null), 3000);
-      };
-      reader.readAsDataURL(blob);
+      const snapshot = await buildSnapshot();
+      if (!snapshot) return;
+      if (onAttachSnapshot) {
+        onAttachSnapshot(snapshot.blob, snapshot.dataUrl);
+      }
+      if (onExportPng) {
+        onExportPng(snapshot.blob);
+      }
+      setExportStatus("Đã cập nhật ảnh nháp đính kèm vào bài làm!");
+      setTimeout(() => setExportStatus(null), 3000);
     } catch {
       setExportStatus("Lỗi xuất ảnh nháp");
       setTimeout(() => setExportStatus(null), 2500);
@@ -637,7 +658,7 @@ export const ScratchpadInlinePanel = ({
       </div>
     </div>
   );
-};
+});
 
 function appendFreehandPoint(points: ScratchpadPoint[], next: ScratchpadPoint): void {
   const last = points[points.length - 1];
