@@ -174,7 +174,17 @@ public sealed class SubmitAttemptUseCase : ISubmitAttemptUseCase
                     (sessionRun.PolicySnapshot?.RootElement.TryGetProperty("isPlacement", out var baseline) == true && baseline.ValueKind == System.Text.Json.JsonValueKind.True ||
                      sessionRun.PolicySnapshot?.RootElement.TryGetProperty("isMilestoneExam", out var exam) == true && exam.ValueKind == System.Text.Json.JsonValueKind.True);
                 if (deterministicCheck && !submission.IsCorrect.HasValue)
-                    return SubmitAttemptResult.Failure(ErrorCodes.ValidationFailed);
+                {
+                    // A placement/milestone check has no teacher-review queue to
+                    // route an unparseable answer to: prose written for a
+                    // Coordinate2D/MathEquivalent question must count as an
+                    // incorrect answer, not trap the student behind a 422 they
+                    // cannot act on. A broken reference answer still fails loudly.
+                    if (submission.PreliminaryGradingReasonCode != PreliminaryGradingReasonCodes.UnsupportedMathFormat)
+                        return SubmitAttemptResult.Failure(ErrorCodes.ValidationFailed);
+                    attempt.IsCorrect = false;
+                    attempt.AwardedScore = 0m;
+                }
             }
             var job = CreateAnalysisJob(
                 submission,
