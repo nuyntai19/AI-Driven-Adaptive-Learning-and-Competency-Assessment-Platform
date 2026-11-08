@@ -370,7 +370,7 @@ function Activity({ activity: a, onSubmitted, paused }: { activity: ActivityRunD
           <span className="text-xs font-black text-indigo-900 dark:text-indigo-100">📄 Giấy A4 — viết bài làm (có thước, compa, tam giác, trục Oxy)</span>
           <button type="button" onClick={() => void handleScanBoard()} disabled={scanning} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60 cursor-pointer">{scanning ? "Đang quét…" : "📝 Quét bài làm trên A4"}</button>
         </div>
-        <div className="h-[720px]"><ScratchpadInlinePanel ref={boardRef} centerId={actorUser?.centerId ?? ""} userId={actorUser?.userId ?? ""} clientSubmissionId={`mission:${a.activityRunId}`} backgroundImageUrl={photoUrl} onAttachSnapshot={(_b, url) => setPhotoUrl(url)} /></div>
+        <div className="h-[720px]"><ScratchpadInlinePanel ref={boardRef} centerId={actorUser?.centerId ?? ""} userId={actorUser?.userId ?? ""} clientSubmissionId={`mission:${a.activityRunId}`} backgroundImageUrl={photoUrl} onAttachSnapshot={(_b, url) => setPhotoUrl(url)} questionNode={q ? <RichMathText text={q.questionText} /> : a.content ? <span className="font-semibold">{a.content.title}</span> : undefined} /></div>
       </div>}
       {inputMode === "photo" && <div className="space-y-2">
         <input ref={photoInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" aria-label="Chọn ảnh bài giải" onChange={e => { const f = e.target.files?.[0] ?? null; e.target.value = ""; void handlePhotoFile(f); }} />

@@ -3155,6 +3155,16 @@ const PracticePlayerPage = () => {
           isReadOnly={false}
           backgroundImageUrl={attachedSnapshotDataUrl}
           onAttachSnapshot={handleAttachSnapshot}
+          questionNode={<>
+            {questionStatement}
+            {assignmentQuestion?.options?.length ? (
+              <div className="mt-2 space-y-1">
+                {assignmentQuestion.options.map((o) => (
+                  <div key={o.optionId}><span className="font-semibold">{o.label}. </span><RichMathText text={o.text} /></div>
+                ))}
+              </div>
+            ) : null}
+          </>}
         />
       </div>
       {renderTranscribeMessages()}
