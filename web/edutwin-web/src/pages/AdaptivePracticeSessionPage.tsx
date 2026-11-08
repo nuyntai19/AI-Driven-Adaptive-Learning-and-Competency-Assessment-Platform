@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adaptivePracticeApi } from "../api/adaptivePracticeApi";
 import { RichMathText } from "../components/math/RichMathText";
+import { RichMathEditor } from "../components/math/RichMathEditor";
 import { ScratchpadInlinePanel, type ScratchpadInlinePanelHandle } from "../components/math/ScratchpadInlinePanel";
 import { transcribeHandwriting } from "../api/handwritingApi";
 import { readScratchpadPhoto } from "../utils/scratchpadPngImport";
@@ -310,7 +311,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
       </header>
 
       {/* Main Workspace Area */}
-      <main className="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
+      <main className={`flex-1 w-full ${inputMode === "draw" ? "max-w-6xl" : "max-w-4xl"} mx-auto px-4 sm:px-6 py-8 space-y-6`}>
         {question && (
           <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-6">
             {/* Selection Reason Pill & Difficulty Badge */}
@@ -415,7 +416,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
                             {isScanning ? "Đang quét…" : "📝 Quét bài làm trên A4"}
                           </button>
                         </div>
-                        <div className="h-[380px]">
+                        <div className="h-[720px]">
                           <ScratchpadInlinePanel
                             ref={boardRef}
                             centerId={session?.centerId ?? ""}
@@ -480,13 +481,13 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
                       <label htmlFor="work-text" className="text-xs font-bold text-slate-700 dark:text-slate-300">
                         {inputMode === "keyboard" ? "Bài làm của bạn:" : "Bài làm của bạn (kết quả quét — kiểm tra và sửa lại nếu cần):"}
                       </label>
-                      <textarea
+                      <RichMathEditor
                         id="work-text"
+                        variant="student"
                         value={reasoningText}
-                        onChange={(e) => setReasoningText(e.target.value)}
-                        placeholder={workPlaceholder}
-                        rows={5}
-                        className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-base focus:outline-indigo-500"
+                        onChange={setReasoningText}
+                        placeholder={`${workPlaceholder} (Gõ $ hoặc Ctrl+M để chèn công thức toán)`}
+                        minHeight="160px"
                       />
                       {question.questionType !== "Essay" && (
                         <p className="text-[11px] text-slate-400">Dòng cuối cùng của bài làm được tính là đáp án cuối.</p>
@@ -498,19 +499,17 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
                 {/* Multiple choice: the single box holds the explanation of
                     why the student picked that option. */}
                 {question.questionType === "MultipleChoice" && (
-                <div className="pt-2">
-                  <details className="text-xs text-slate-500 dark:text-slate-400" open={inputMode !== "keyboard" || undefined}>
-                    <summary className="cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 font-semibold select-none">
-                      Giải thích vì sao em chọn đáp án này (không bắt buộc)
-                    </summary>
-                    <textarea
-                      value={reasoningText}
-                      onChange={(e) => setReasoningText(e.target.value)}
-                      placeholder="Giải thích vì sao em chọn đáp án này..."
-                      rows={3}
-                      className="w-full mt-2 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-800 dark:text-slate-200 text-xs focus:outline-indigo-500"
-                    />
-                  </details>
+                <div className="pt-2 space-y-2">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Giải thích vì sao em chọn đáp án này (không bắt buộc)
+                  </span>
+                  <RichMathEditor
+                    variant="student"
+                    value={reasoningText}
+                    onChange={setReasoningText}
+                    placeholder="Giải thích vì sao em chọn đáp án này..."
+                    minHeight="96px"
+                  />
                 </div>
                 )}
 
