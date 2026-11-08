@@ -147,7 +147,7 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
       <div><p className="text-sm text-indigo-600 dark:text-indigo-300">Mục tiêu của bạn · Tiến bộ từ bằng chứng thật</p>
         <h1 className="mt-1 text-3xl font-bold">Lộ trình học tập cá nhân</h1>
         <p className="mt-2 text-sm text-slate-500">Học theo mục tiêu, luyện phần còn yếu và theo dõi tiến bộ qua từng chặng.</p></div>
-      <div className="flex flex-wrap gap-3">{agenda.data?.learningPathId && !agenda.data.isPlacement && <button className={action} onClick={() => openSetup("Update", agenda.data?.targetSkillIds)} disabled={!map.data?.skills.length}>Điều chỉnh mục tiêu</button>}
+      <div className="flex flex-wrap gap-3">{agenda.data?.learningPathId && !agenda.data.isPlacement && <button data-cy="goal-open-update" className={action} onClick={() => openSetup("Update", agenda.data?.targetSkillIds)} disabled={!map.data?.skills.length}>Điều chỉnh mục tiêu</button>}
         {extendCandidates.length > 0 && <button className="rounded-xl border px-4 py-2.5 text-sm" onClick={() => setShowExtend(true)}>Kiểm tra thêm phần khác</button>}</div>
     </header>
     {agenda.data?.scheduleSummary && !agenda.data.isPlacement && <section className={`${panel} ${agenda.data.scheduleSummary.missingMinutes > 0 ? "border-amber-300" : "border-indigo-200"}`} aria-label="Lịch học và ngân sách">
@@ -166,7 +166,7 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
       <p className="text-sm font-semibold text-indigo-600">Bắt đầu học cùng EduTwin</p>
       <h2 id="starting-point-title" className="mt-2 text-2xl font-semibold">Chưa biết bắt đầu từ đâu?</h2>
       <p className="mt-3 text-sm text-slate-500">Chọn phần muốn học, sau đó kiểm tra đầu vào để tìm điểm xuất phát hoặc bỏ qua để học ngay.</p>
-      <div className="mt-5"><button className={action} disabled={!map.data?.skills.length} onClick={() => openSetup("Start")}>Bắt đầu lộ trình</button></div>
+      <div className="mt-5"><button data-cy="goal-open-start" className={action} disabled={!map.data?.skills.length} onClick={() => openSetup("Start")}>Bắt đầu lộ trình</button></div>
       {!map.data?.skills.length && <p className="mt-3 text-sm text-amber-700">Môn học chưa có kỹ năng trong giáo trình. Cần giáo viên bổ sung để bắt đầu.</p>}
     </section>}
     {agenda.data?.placementReport && <PlacementReport report={agenda.data.placementReport} pending={agenda.data.ongoingRuns.length > 0}
@@ -192,7 +192,7 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
         <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">Từ bài làm của bạn · {agenda.data.insights.windowDays} ngày gần đây</p>
         <h2 id="path-insights-title" className="mt-2 text-2xl font-semibold">Lộ trình đề xuất cho bạn</h2>
         <p className="mt-3 text-sm leading-relaxed">{agenda.data.insights.summary}</p></div>
-        <button className={action} disabled={!map.data?.skills.length} onClick={() => agenda.data?.learningPathId
+        <button data-cy="goal-open-update" className={action} disabled={!map.data?.skills.length} onClick={() => agenda.data?.learningPathId
           ? openSetup("Update", agenda.data.targetSkillIds) : openSetup("Update", agenda.data?.insights?.suggestedSkillIds)}>Cập nhật lộ trình từ bài làm</button></div>
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">{[
         [agenda.data.insights.answerCount, "lượt trả lời"], [agenda.data.insights.assignmentCount, "bài tập đã tham gia"],
@@ -209,7 +209,7 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
     </section>}
     {agenda.data?.planOutdated && <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
       <p>Tuyến này được tạo trước khi có vòng luyện theo kết quả. Cập nhật để mỗi kỹ năng được luyện nhiều bộ ngắn tùy mức độ yếu; bài làm cũ vẫn được giữ và dùng để tính.</p>
-      <button className={action} disabled={!map.data?.skills.length} onClick={() => openSetup("Update", agenda.data?.targetSkillIds)}>Xem tuyến cập nhật</button>
+      <button data-cy="goal-open-update" className={action} disabled={!map.data?.skills.length} onClick={() => openSetup("Update", agenda.data?.targetSkillIds)}>Xem tuyến cập nhật</button>
     </div>}
     {!agenda.data?.isPlacement && agenda.data?.progress && agenda.data.progress.totalSkills > 0 && <section className={panel} aria-label="Tiến độ mục tiêu">
       <div className="flex flex-wrap items-end justify-between gap-4">

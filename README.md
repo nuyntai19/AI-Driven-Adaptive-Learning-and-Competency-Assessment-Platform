@@ -6,6 +6,8 @@
 > Trạng thái tài liệu: COURSE REBASELINE — đang được nhóm xác minh và phê duyệt.
 > Chủ sở hữu: Nhóm EduTwin.
 
+Hướng dẫn kiểm thử: [Cypress và đánh giá prompt AI](test/README.md). Khi thay đổi giao diện, đọc [lưu ý bảo trì UI và Cypress](test/UI_CHANGE_GUIDE.md).
+
 ## 1. Mục tiêu
 
 EduTwin kết hợp quản lý trung tâm, nội dung học tập, bài tập, bằng chứng làm bài và phân tích reasoning tùy chọn để giúp:

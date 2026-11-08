@@ -2822,7 +2822,7 @@ const PracticePlayerPage = () => {
 
             {/* If assignment is NOT submitted yet: show prominent submit button on ALL viewports */}
             {assignmentId && !classReadOnly && !isAssignmentSubmitted && (
-              <button
+              <button data-cy="learning-open-submit"
                 type="button"
                 onClick={() => setShowBatchConfirmModal(true)}
                 disabled={isSubmitting || isAssignmentExpired}
@@ -3157,7 +3157,7 @@ const PracticePlayerPage = () => {
                   </div>
 
                   <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
-                    <button
+                    <button data-cy="btn-sync-server-draft"
                       type="button"
                       id="btn-sync-server-draft"
                       onClick={handleSyncWithServer}
@@ -3165,7 +3165,7 @@ const PracticePlayerPage = () => {
                     >
                       Tải lại từ máy chủ
                     </button>
-                    <button
+                    <button data-cy="btn-force-overwrite-draft"
                       type="button"
                       id="btn-force-overwrite-draft"
                       onClick={handleForceOverwriteLocal}
@@ -3405,7 +3405,7 @@ const PracticePlayerPage = () => {
                     })}
                   </fieldset>
                 ) : (
-                  <div>
+                  <div data-cy="learning-answer-editor">
                     {!mathToolsEnabled ? <textarea aria-label="Đáp án của bạn" value={finalAnswer} disabled={isReadOnly} onChange={e => handleAnswerChange(e.target.value, "")} placeholder="Nhập câu trả lời..." className="w-full rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <ModeAwareAnswerEditor
                       ref={answerEditorRef}
                       profile="answering"
@@ -3453,7 +3453,7 @@ const PracticePlayerPage = () => {
                   ) : null}
                 </div>
 
-                {!mathToolsEnabled ? <textarea aria-label="Lập luận của bạn" value={reasoningText} disabled={isReadOnly} onChange={e => handleReasoningChange(e.target.value)} placeholder="Trình bày lập luận của bạn..." className="w-full min-h-32 rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <RichMathEditor
+                {!mathToolsEnabled ? <textarea data-cy="learning-reasoning" aria-label="Lập luận của bạn" value={reasoningText} disabled={isReadOnly} onChange={e => handleReasoningChange(e.target.value)} placeholder="Trình bày lập luận của bạn..." className="w-full min-h-32 rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <RichMathEditor
                   ref={reasoningEditorRef}
                   variant="student"
                   value={reasoningText}
@@ -3725,14 +3725,14 @@ const PracticePlayerPage = () => {
             )}
 
             <div className="pt-2 flex items-center justify-end gap-3">
-              <button
+              <button data-cy="learning-cancel-submit"
                 type="button"
                 onClick={() => setShowBatchConfirmModal(false)}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer"
               >
                 Kiểm tra lại
               </button>
-              <button
+              <button data-cy="learning-confirm-submit"
                 type="button"
                 onClick={handleFinalSubmit}
                 disabled={missingReasoningIndices.length > 0}

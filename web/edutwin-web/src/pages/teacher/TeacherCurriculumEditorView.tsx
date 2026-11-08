@@ -378,6 +378,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
               <button
                 type="button"
                 className="th-button-secondary"
+                data-cy="curriculum-open-archive"
                 onClick={() => setIsArchiveDialogOpen(true)}
                 disabled={archiveMutation.isPending}
                 style={{ color: "var(--th-warning)" }}
@@ -387,7 +388,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
             )}
 
             {!isCreateMode && canCreate && (status === "Published" || status === "Archived") && (
-              <button
+              <button data-cy="curriculum-open-clone"
                 type="button"
                 className="th-button-secondary"
                 onClick={() => {
@@ -401,7 +402,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
             )}
 
             {isDraft && (
-              <button
+              <button data-cy="curriculum-save"
                 type="button"
                 className="th-primary-button"
                 onClick={() => saveMutation.mutate()}
@@ -513,7 +514,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                     </label>
                     <span style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>{title.length}/200 ký tự</span>
                   </div>
-                  <input
+                  <input data-cy="curriculum-title"
                     type="text"
                     maxLength={200}
                     className="th-input"
@@ -529,7 +530,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                   <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
                     Môn học <span style={{ color: "var(--th-danger)" }}>*</span>
                   </label>
-                  <select
+                  <select data-cy="curriculum-subject"
                     className="th-select"
                     value={subjectId}
                     onChange={(e) => {
@@ -551,7 +552,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                   <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
                     Khối học áp dụng
                   </label>
-                  <select
+                  <select data-cy="curriculum-grade"
                     className="th-select"
                     value={gradeLevel}
                     onChange={(e) => { setGradeLevel(e.target.value ? Number(e.target.value) : ""); setGraphVersionId(""); }}
@@ -585,7 +586,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
                     </label>
                     <span style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>{description.length}/2000 ký tự</span>
                   </div>
-                  <textarea
+                  <textarea data-cy="curriculum-description"
                     className="th-textarea"
                     rows={4}
                     maxLength={2000}
@@ -859,7 +860,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
             >
               Hủy
             </button>
-            <button
+            <button data-cy="curriculum-confirm-clone"
               type="button"
               className="th-primary-button"
               onClick={() => cloneMutation.mutate(cloneTitle)}
@@ -875,7 +876,7 @@ export const TeacherCurriculumEditorView: React.FC = () => {
             <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
               Tên giáo trình mới <span style={{ color: "var(--th-danger)" }}>*</span>
             </label>
-            <input
+            <input data-cy="curriculum-clone-title"
               type="text"
               maxLength={200}
               className="th-input"

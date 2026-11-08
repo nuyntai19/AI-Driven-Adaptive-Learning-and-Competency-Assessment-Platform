@@ -263,6 +263,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
                       const isSelected = selectedOption === opt.label || selectedOption === opt.optionId;
                       return (
                         <button
+                          data-cy="adaptive-option"
                           key={opt.optionId}
                           type="button"
                           onClick={() => setSelectedOption(opt.label)}
@@ -293,7 +294,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
                     <label htmlFor="text-ans" className="text-xs font-bold text-slate-700 dark:text-slate-300">
                       Nhập đáp án của bạn:
                     </label>
-                    <input
+                    <input data-cy="text-ans"
                       id="text-ans"
                       type="text"
                       value={textAnswer}
@@ -310,7 +311,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
                     <summary className="cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 font-semibold select-none">
                       + Thêm lời giải thích / lập luận (không bắt buộc)
                     </summary>
-                    <textarea
+                    <textarea data-cy="adaptive-reasoning"
                       value={reasoningText}
                       onChange={(e) => setReasoningText(e.target.value)}
                       placeholder="Ghi lại các bước suy luận của bạn..."
@@ -341,7 +342,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
                   </div>
 
                   {/* Submit Button */}
-                  <button
+                  <button data-cy="adaptive-submit"
                     type="button"
                     onClick={() => submitMutation.mutate()}
                     disabled={!answerEntered || submitMutation.isPending}

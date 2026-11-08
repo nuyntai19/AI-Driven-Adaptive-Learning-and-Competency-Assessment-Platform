@@ -538,6 +538,7 @@ export const LoginPage = () => {
               </label>
               <input
                 id="centerCode"
+                data-cy="login-center-code"
                 name="centerCode"
                 type="text"
                 required
@@ -561,6 +562,7 @@ export const LoginPage = () => {
               </label>
               <input
                 id="username"
+                data-cy="login-username"
                 name="username"
                 type="text"
                 required
@@ -582,6 +584,7 @@ export const LoginPage = () => {
               <div className="relative">
                 <input
                   id="password"
+                  data-cy="login-password"
                   name="password"
                   type={showPassword ? "text" : "password"}
                   required
@@ -629,6 +632,7 @@ export const LoginPage = () => {
 
             <button
               type="submit"
+              data-cy="login-submit"
               disabled={isLoading}
               className="mt-6 w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50 transition-all cursor-pointer"
             >

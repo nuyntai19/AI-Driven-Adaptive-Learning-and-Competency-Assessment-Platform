@@ -6,6 +6,9 @@
   "engines": { "node": "^22 || ^24 || >=26" },
   "scripts": {
     "e2e": "node scripts/run-cypress.cjs",
+    "e2e:api": "node scripts/run-cypress.cjs --spec \"cypress/e2e/api/*.cy.js\"",
+    "e2e:ui": "node scripts/run-cypress.cjs --spec \"cypress/e2e/ui/**/*.cy.js\"",
+    "e2e:ui:validation": "node scripts/run-cypress.cjs --spec \"cypress/e2e/ui/validation/*.cy.js\"",
     "e2e:existing": "node scripts/run-cypress.cjs --reuse-stack",
     "e2e:open": "cypress open --config-file cypress.config.cjs",
     "test:harness": "node --test cypress/plugins/*.test.cjs",

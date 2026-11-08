@@ -2,7 +2,7 @@
 
 const path = require('node:path');
 
-const help = `Usage: npm run e2e -- [--reuse-stack] [--headed] [--browser electron|chrome|edge|firefox] [--spec cypress/e2e/example.cy.cjs]
+const help = `Usage: npm run e2e -- [--reuse-stack] [--headed] [--browser electron|chrome|edge|firefox] [--spec cypress/e2e/api/example.cy.js]
 
 The default run creates and cleans up the repository's disposable acceptance stack.
 --reuse-stack keeps an already running, ownership-verified acceptance stack alive.

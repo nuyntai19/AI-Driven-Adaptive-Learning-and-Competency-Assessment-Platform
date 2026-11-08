@@ -350,7 +350,7 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
             <label htmlFor="goal-subject-select" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
               Môn học <span className="text-rose-400">*</span>
             </label>
-            <select
+            <select data-cy="goal-subject-select"
               id="goal-subject-select"
               value={selectedSubjectId}
               onChange={(e) => setSelectedSubjectId(e.target.value)}
@@ -375,7 +375,7 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
               <label htmlFor="goal-target-score" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                 Điểm mục tiêu (0.00 – 10.00) <span className="text-rose-400">*</span>
               </label>
-              <input
+              <input data-cy="goal-target-score"
                 type="number"
                 id="goal-target-score"
                 step="0.01"
@@ -394,7 +394,7 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
               <label htmlFor="goal-remaining-days" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                 Thời hạn còn lại (0 – 3650 ngày) <span className="text-rose-400">*</span>
               </label>
-              <input
+              <input data-cy="goal-remaining-days"
                 type="number"
                 id="goal-remaining-days"
                 step="1"
@@ -425,7 +425,7 @@ export const SubjectGoalsModal: React.FC<SubjectGoalsModalProps> = ({
             >
               Đóng
             </button>
-            <button
+            <button data-cy="btn-submit-subject-goal"
               type="submit"
               id="btn-submit-subject-goal"
               disabled={isFormDisabled}

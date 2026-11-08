@@ -1,6 +1,6 @@
-const { expectProblem } = require('../support/validation');
+const { expectProblem } = require('../../support/validation');
 
-describe('Authentication validation and browser input safety', () => {
+describe('Authentication API validation and input safety', () => {
   const valid = { centerCode: 'EDUTWIN_A', username: 'student01', password: 'Disposable-wrong-password!' };
   for (const [name, patch] of [
     ['missing center', { centerCode: '' }], ['whitespace center', { centerCode: '   ' }],
@@ -23,19 +23,5 @@ describe('Authentication validation and browser input safety', () => {
       cy.api(null, 'POST', '/auth/login', { ...a, centerCode: ` ${a.centerCode} `, username: ` ${a.username} ` })
         .its('status').should('eq', 200);
     });
-  });
-  it('the browser blocks empty required fields before issuing a login request', () => {
-    let requests = 0;
-    cy.intercept('POST', '**/api/v1/auth/login', () => { requests++; });
-    cy.visit('/dang-nhap');
-    cy.get('form button[type="submit"]').click();
-    cy.get('#centerCode').then($input => expect($input[0].validity.valid).to.eq(false));
-    cy.then(() => expect(requests).to.eq(0));
-    cy.location('pathname').should('eq', '/dang-nhap');
-  });
-  it('a real browser login reaches the student workspace', () => {
-    cy.uiLogin('student');
-    cy.get('a[href^="/hoc-tap/tong-quan"]').should('exist');
-    cy.location('pathname').should('not.eq', '/dang-nhap');
   });
 });

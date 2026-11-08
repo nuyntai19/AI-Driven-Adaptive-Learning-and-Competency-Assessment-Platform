@@ -22,6 +22,9 @@ test('runner restricts CLI spec selection to local Cypress specs', () => {
     assert.throws(() => parseArgs(['--spec', spec]));
   }
   assert.equal(parseArgs(['--spec', 'cypress/e2e/auth.cy.cjs']).spec, 'cypress/e2e/auth.cy.cjs');
+  for (const spec of ['cypress/e2e/api/*.cy.js', 'cypress/e2e/ui/**/*.cy.js', 'cypress/e2e/ui/validation/*.cy.js', 'cypress/e2e/ui/01-authentication.cy.js']) {
+    assert.equal(parseArgs(['--spec', spec]).spec, spec);
+  }
   assert.throws(() => parseArgs(['--baseUrl', 'http://localhost:3000']));
 });
 

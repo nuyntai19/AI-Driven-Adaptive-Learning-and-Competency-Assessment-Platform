@@ -643,7 +643,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
         actions={
           <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
             {canCreateEdges && selectedSubjectId && (
-              <button
+              <button data-cy="graph-create-edge"
                 type="button"
                 className="th-secondary-button"
                 disabled={edgeAuthoringSources.length < 2 || edgeAuthoringTargets.length < 1}
@@ -661,7 +661,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
             )}
 
             {canCreateNodes && selectedSubjectId && (
-              <button
+              <button data-cy="graph-create-node"
                 type="button"
                 className="th-primary-button"
                 onClick={() => setIsAddNodeOpen(true)}
@@ -1141,7 +1141,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
 
                 {/* Edit Form */}
                 {canUpdateNodes ? (
-                  <form onSubmit={handleEditNodeSubmit} style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px solid var(--th-border-subtle)", paddingTop: "12px" }}>
+                  <form data-cy="graph-edit-node-form" onSubmit={handleEditNodeSubmit} style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px solid var(--th-border-subtle)", paddingTop: "12px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <h4 style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", color: "var(--th-text-muted)", margin: 0 }}>
                         Chỉnh sửa điểm tri thức
@@ -1158,7 +1158,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                       <label style={{ display: "block", fontSize: "0.75rem", color: "var(--th-text-secondary)", marginBottom: "4px" }}>
                         Tên nút <span style={{ color: "var(--th-danger)" }}>*</span>
                       </label>
-                      <input
+                      <input data-cy="graph-edit-node-name"
                         type="text"
                         maxLength={200}
                         className="th-input"
@@ -1346,7 +1346,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                 </div>
 
                 {canUpdateEdges ? (
-                  <form onSubmit={handleEditEdgeSubmit} style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px solid var(--th-border-subtle)", paddingTop: "12px" }}>
+                  <form data-cy="graph-edit-edge-form" onSubmit={handleEditEdgeSubmit} style={{ display: "flex", flexDirection: "column", gap: "10px", borderTop: "1px solid var(--th-border-subtle)", paddingTop: "12px" }}>
                     <div>
                       <label style={{ display: "block", fontSize: "0.75rem", color: "var(--th-text-secondary)", marginBottom: "4px" }}>
                         Trọng số phụ thuộc (0.00 – 1.00) <span style={{ color: "var(--th-danger)" }}>*</span>
@@ -1438,7 +1438,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
         title="Thêm Điểm Tri Thức Mới"
         maxWidth="520px"
       >
-        <form onSubmit={handleCreateNodeSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        <form data-cy="graph-create-node-form" onSubmit={handleCreateNodeSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
               <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)" }}>
@@ -1446,7 +1446,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
               </label>
               <span style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>{newNodeName.length}/200 ký tự</span>
             </div>
-            <input
+            <input data-cy="graph-node-name"
               type="text"
               maxLength={200}
               className="th-input"
@@ -1466,7 +1466,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                 </label>
                 <span style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>{newNodeCode.length}/50</span>
               </div>
-              <input
+              <input data-cy="graph-node-code"
                 type="text"
                 maxLength={50}
                 className="th-input"
@@ -1500,7 +1500,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
               <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
                 Trọng số thi (%)
               </label>
-              <input
+              <input data-cy="graph-node-importance"
                 type="number"
                 min="0"
                 max="100"
@@ -1514,7 +1514,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
               <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
                 Thời lượng (phút)
               </label>
-              <input
+              <input data-cy="graph-node-minutes"
                 type="number"
                 min="5"
                 max="300"
@@ -1554,7 +1554,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
               </label>
               <span style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>{newNodeDesc.length}/1000 ký tự</span>
             </div>
-            <textarea
+            <textarea data-cy="graph-node-description"
               className="th-textarea"
               rows={3}
               maxLength={1000}
@@ -1590,12 +1590,12 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
         title="Thiết Lập Liên Kết Tiên Quyết (Prerequisite Edge)"
         maxWidth="500px"
       >
-        <form onSubmit={handleCreateEdgeSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+        <form data-cy="graph-create-edge-form" onSubmit={handleCreateEdgeSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <div>
             <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
               Chủ đề Tiên quyết (Học trước) <span style={{ color: "var(--th-danger)" }}>*</span>
             </label>
-            <select
+            <select data-cy="graph-edge-source"
               className="th-select"
               value={edgeSourceId}
               onChange={(e) => setEdgeSourceId(e.target.value)}
@@ -1615,7 +1615,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
             <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
               Chủ đề Phụ thuộc (Học sau) <span style={{ color: "var(--th-danger)" }}>*</span>
             </label>
-            <select
+            <select data-cy="graph-edge-target"
               className="th-select"
               value={edgeTargetId}
               onChange={(e) => setEdgeTargetId(e.target.value)}
@@ -1657,7 +1657,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
             <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
               Trọng số liên kết (0.00 – 1.00) <span style={{ color: "var(--th-danger)" }}>*</span>
             </label>
-            <input
+            <input data-cy="graph-edge-weight"
               type="number"
               min="0.0"
               max="1.0"

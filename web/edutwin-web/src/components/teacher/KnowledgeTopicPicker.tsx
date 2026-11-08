@@ -1,10 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { knowledgeTopicGroups, type TopicOptionNode } from "../../utils/knowledgeTopicOptions";
 
-interface Props { id?: string; nodes: readonly TopicOptionNode[]; value: string; onChange: (value: string) => void;
+interface Props { id?: string; dataCy?: string; nodes: readonly TopicOptionNode[]; value: string; onChange: (value: string) => void;
   disabled?: boolean; placeholder?: string; emptyLabel?: string; label?: string }
 
-export function KnowledgeTopicPicker({ id, nodes, value, onChange, disabled, placeholder = "Chọn chủ đề kiến thức", emptyLabel, label = "Chủ đề kiến thức" }: Props) {
+export function KnowledgeTopicPicker({ id, dataCy, nodes, value, onChange, disabled, placeholder = "Chọn chủ đề kiến thức", emptyLabel, label = "Chủ đề kiến thức" }: Props) {
   const generatedId = useId(), panelId = `${generatedId}-panel`;
   const root = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false), [query, setQuery] = useState(""), [groupId, setGroupId] = useState("");
@@ -20,7 +20,7 @@ export function KnowledgeTopicPicker({ id, nodes, value, onChange, disabled, pla
     return () => document.removeEventListener("pointerdown", outside);
   }, [open]);
   return <div ref={root} className="relative min-w-0" onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); close(); } }}>
-    <button ref={trigger} id={id} type="button" aria-label={label} aria-haspopup="dialog" aria-expanded={open && !disabled} aria-controls={panelId}
+    <button ref={trigger} id={id} data-cy={dataCy} type="button" aria-label={label} aria-haspopup="dialog" aria-expanded={open && !disabled} aria-controls={panelId}
       disabled={disabled} className="th-select flex min-h-10 w-full items-center justify-between gap-2 text-left text-xs"
       onClick={() => { setQuery(""); setGroupId(""); setOpen(!open); }}>
       <span className="min-w-0 break-words">{selected?.nodeName || (value ? `Chủ đề #${value} · chưa xác minh` : placeholder)}</span><span aria-hidden="true">⌄</span>
@@ -34,7 +34,7 @@ export function KnowledgeTopicPicker({ id, nodes, value, onChange, disabled, pla
       <div className="mt-2 max-h-72 overflow-y-auto overscroll-contain space-y-2" aria-label="Danh sách chủ đề">
         {emptyLabel && <button type="button" onClick={() => choose("")} className="th-secondary-button w-full text-left text-xs">{emptyLabel}</button>}
         {filtered.map(g => <section key={g.id}><h3 className="sticky top-0 bg-[var(--th-surface)] py-2 text-xs font-bold text-[var(--th-text-secondary)]">{g.name}</h3>
-          {g.topics.map(n => <button key={n.nodeId} type="button" aria-pressed={n.nodeId === value} onClick={() => choose(n.nodeId)}
+          {g.topics.map(n => <button key={n.nodeId} data-cy={dataCy ? `${dataCy}-option` : undefined} type="button" aria-pressed={n.nodeId === value} onClick={() => choose(n.nodeId)}
             className={`block w-full rounded-lg p-2 text-left hover:bg-[var(--th-surface-subtle)] focus-visible:outline-2 focus-visible:outline-teal-500 ${n.nodeId === value ? "bg-teal-500/15 ring-1 ring-teal-500" : ""}`}>
             <span className="block break-words text-sm font-medium">{n.nodeName}</span><span className="block break-all text-[10px] text-[var(--th-text-muted)]">{n.nodeCode}</span>
           </button>)}</section>)}

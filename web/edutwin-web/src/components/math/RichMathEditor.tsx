@@ -31,6 +31,8 @@ export interface RichMathEditorProps {
   label?: string;
   className?: string;
   id?: string;
+  /** Stable hook for the editable DOM surface, independent of surrounding layout. */
+  dataCy?: string;
   variant?: "center-manager" | "teacher" | "student" | "neutral";
   onFocus?: () => void;
 }
@@ -67,6 +69,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       label,
       className = "",
       id,
+      dataCy,
       variant = "center-manager",
       onFocus,
     },
@@ -855,6 +858,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
         {viewMode === "visual" ? (
           <div
             id={id}
+            data-cy={dataCy}
             ref={editorRef}
             contentEditable={!disabled}
             suppressContentEditableWarning

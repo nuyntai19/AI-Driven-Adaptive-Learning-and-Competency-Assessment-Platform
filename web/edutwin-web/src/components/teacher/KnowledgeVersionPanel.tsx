@@ -92,7 +92,7 @@ export function KnowledgeVersionPanel({ subjectId, gradeLevel, versionId, canEdi
         </select>
       </label>
       {canCreateVersion && <div className="flex flex-wrap gap-2 items-end">
-        <label className="text-sm">Tên bản nháp<input className="th-input block mt-1" maxLength={200} value={title} onChange={e => setTitle(e.target.value)} placeholder={`Khung tri thức Khối ${gradeLevel}`} /></label>
+        <label className="text-sm">Tên bản nháp<input data-cy="graph-version-title" className="th-input block mt-1" maxLength={200} value={title} onChange={e => setTitle(e.target.value)} placeholder={`Khung tri thức Khối ${gradeLevel}`} /></label>
         <button className="th-secondary-button" disabled={busy || dirty} onClick={() => create.mutate(undefined)}>Tạo khung trống</button>
         <button className="th-secondary-button" disabled={busy || dirty || !selected} onClick={() => selected && create.mutate(selected.graphVersionId)}>Sao chép thành bản nháp</button>
       </div>}
@@ -134,8 +134,8 @@ export function KnowledgeVersionPanel({ subjectId, gradeLevel, versionId, canEdi
         {!!invalidEdges.length && <p role="alert">Có {invalidEdges.length} quan hệ thiếu điểm đích trong khung hoặc thiếu khung nguồn tiên quyết. Bổ sung điểm tri thức hoặc bỏ chọn quan hệ trước khi lưu.</p>}
         <div className="flex flex-wrap gap-2"><button className="th-primary-button" disabled={busy || !dirty || stale || catalog.isError || invalidEdges.length > 0} onClick={() => save.mutate()}>Lưu cấu trúc nháp</button>
           {dirty && <button className="th-secondary-button" disabled={busy} onClick={() => { setDirty(false); setReviewed(false); }}>Hủy lựa chọn chưa lưu</button>}</div>
-        <label className="flex gap-2 text-sm"><input type="checkbox" checked={reviewed} disabled={dirty || busy} onChange={e => setReviewed(e.target.checked)} />Tôi đã rà soát chủ đề, cây và quan hệ phù hợp Khối {gradeLevel}.</label>
-        <button className="th-primary-button" disabled={busy || dirty || !reviewed || !nodes.length} onClick={() => publish.mutate()}>Duyệt và dùng làm khung hiện hành</button>
+        <label className="flex gap-2 text-sm"><input data-cy="graph-version-reviewed" type="checkbox" checked={reviewed} disabled={dirty || busy} onChange={e => setReviewed(e.target.checked)} />Tôi đã rà soát chủ đề, cây và quan hệ phù hợp Khối {gradeLevel}.</label>
+        <button data-cy="graph-version-publish" className="th-primary-button" disabled={busy || dirty || !reviewed || !nodes.length} onClick={() => publish.mutate()}>Duyệt và dùng làm khung hiện hành</button>
       </>}
       {message && <p role="status" className="text-sm">{message}</p>}
     </div>}

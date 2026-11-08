@@ -228,6 +228,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
               </Link>
             ) : firstUnfinishedQuestion ? (
               <Link
+                data-cy="student-assignment-start"
                 to={studentScopeUrl(`/hoc-tap/luyen-tap/${firstUnfinishedQuestion.questionId}`, searchParams, { assignmentId:assignment.assignmentId })}
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 px-5 py-2 text-xs sm:text-sm font-semibold text-white dark:text-stone-900 transition-colors cursor-pointer self-start sm:self-auto"
               >

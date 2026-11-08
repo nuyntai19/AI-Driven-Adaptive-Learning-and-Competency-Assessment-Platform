@@ -1,4 +1,4 @@
-const { IDS, teacher, student, klass, unique } = require('../support/validation');
+const { IDS, teacher, student, klass, unique } = require('../../fixtures/builders');
 
 describe('Organization request boundaries', () => {
   it('reads teacher notes from the freshly migrated database', () => cy.apiLogin('teacher').then(token =>

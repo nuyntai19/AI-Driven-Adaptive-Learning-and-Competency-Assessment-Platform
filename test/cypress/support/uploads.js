@@ -1,6 +1,7 @@
 // Real same-origin multipart fetch from a browser; no cy.intercept response stubs.
+const { loginScreen } = require('../screens/login.screen');
 function upload(token, route, { name, type = 'application/octet-stream', text = '', base64, fields = {} }) {
-  cy.visit('/dang-nhap');
+  loginScreen.open();
   return cy.window({ log: false }).then(async win => {
     const bytes = base64 ? Uint8Array.from(win.atob(base64), c => c.charCodeAt(0)) : text;
     const form = new win.FormData();

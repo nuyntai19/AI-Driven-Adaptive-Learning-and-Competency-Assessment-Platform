@@ -267,7 +267,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
             >
               Danh sách Quản lý ({data?.totalCount ?? 0})
             </button>
-            <button
+            <button data-cy="manager-create-tab"
               onClick={() => {
                 setActiveTab("create");
                 setErrorMessage("");
@@ -403,7 +403,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                                   Đặt làm Chính
                                 </button>
                               )}
-                              <button
+                              <button data-cy="manager-open-status"
                                 onClick={() => {
                                   setStatusTargetUser(m);
                                   setNewStatus(m.status);
@@ -413,7 +413,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                               >
                                 Trạng thái
                               </button>
-                              <button
+                              <button data-cy="manager-open-password"
                                 onClick={() => {
                                   setPasswordTargetUser(m);
                                   setNewPassword("");
@@ -492,7 +492,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                 <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
                   Tên đăng nhập *
                 </label>
-                  <input
+                  <input data-cy="center-manager-username"
                     type="text"
                     required
                     maxLength={100}
@@ -512,7 +512,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                 <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
                   Họ và tên hiển thị *
                 </label>
-                <input
+                <input data-cy="center-manager-name"
                   type="text"
                   required
                   maxLength={200}
@@ -527,7 +527,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                 <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
                   Mật khẩu khởi tạo (tối thiểu 12 ký tự) *
                 </label>
-                <input
+                <input data-cy="center-manager-password"
                   type="password"
                   required
                   minLength={12}
@@ -542,7 +542,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                 <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
                   Lý do tạo tài khoản quản lý *
                 </label>
-                <textarea
+                <textarea data-cy="center-manager-reason"
                   required
                   rows={2}
                   value={createReason}
@@ -610,7 +610,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                 <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
                   Lý do thay đổi Quản lý chính *
                 </label>
-                <textarea
+                <textarea data-cy="manager-primary-reason"
                   required
                   rows={2}
                   value={primaryReason}
@@ -695,7 +695,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                 <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
                   Lý do thay đổi trạng thái *
                 </label>
-                <textarea
+                <textarea data-cy="manager-status-reason"
                   required
                   rows={2}
                   value={statusReason}
@@ -713,7 +713,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                 >
                   Hủy
                 </button>
-                <button
+                <button data-cy="manager-confirm-status"
                   type="button"
                   disabled={!statusReason.trim() || updateStatusMutation.isPending}
                   onClick={() => {
@@ -752,7 +752,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                 <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
                   Mật khẩu mới (tối thiểu 12 ký tự) *
                 </label>
-                <input
+                <input data-cy="manager-reset-password"
                   type="password"
                   required
                   minLength={12}
@@ -767,7 +767,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                 <label className="block text-xs font-semibold uppercase text-slate-400 mb-1">
                   Lý do đặt lại mật khẩu *
                 </label>
-                <textarea
+                <textarea data-cy="manager-reset-reason"
                   required
                   rows={2}
                   value={passwordReason}
@@ -785,7 +785,7 @@ export const CenterManagersModal: React.FC<CenterManagersModalProps> = ({
                 >
                   Hủy
                 </button>
-                <button
+                <button data-cy="manager-confirm-password"
                   type="button"
                   disabled={newPassword.length < 12 || !passwordReason.trim() || resetPasswordMutation.isPending}
                   onClick={() => {

@@ -103,7 +103,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
             <label htmlFor="subject-select" className="text-xs font-medium text-slate-600 dark:text-slate-400">
               Môn học:
             </label>
-            <select
+            <select data-cy="subject-select"
               id="subject-select"
               value={effectiveSubjectId}
               onChange={(e) => handleSubjectChange(e.target.value)}
@@ -224,7 +224,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
                   { minutes: 15, label: "15 phút", desc: "5 – 12 câu (Khuyên dùng)" },
                   { minutes: 20, label: "20 phút", desc: "6 – 15 câu" },
                 ].map((item) => (
-                  <button
+                  <button data-cy="adaptive-duration"
                     key={item.minutes}
                     type="button"
                     onClick={() => setTimeBudget(item.minutes)}
@@ -243,7 +243,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
 
             {/* CTA Button */}
             <div className="pt-2">
-              <button
+              <button data-cy="adaptive-start"
                 type="button"
                 onClick={() => createSessionMutation.mutate()}
                 disabled={createSessionMutation.isPending || !proposal}
@@ -301,7 +301,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
                 <label htmlFor="topic-dropdown" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Chọn chủ đề cụ thể:
                 </label>
-                <select
+                <select data-cy="topic-dropdown"
                   id="topic-dropdown"
                   value={selectedTopicId || proposal.topicNodeId}
                   onChange={(e) => setSelectedTopicId(e.target.value)}

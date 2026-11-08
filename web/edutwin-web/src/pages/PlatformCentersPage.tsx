@@ -278,7 +278,7 @@ export const PlatformCentersPage: React.FC = () => {
         </div>
 
         {canManageCenters && (
-          <button
+          <button data-cy="platform-create-center"
             type="button"
             onClick={() => {
               setErrorMessage("");
@@ -568,7 +568,7 @@ export const PlatformCentersPage: React.FC = () => {
               {isFiltered ? "Không tìm thấy trung tâm nào khớp với điều kiện lọc." : "Chưa có trung tâm giáo dục nào được khởi tạo trên nền tảng."}
             </p>
             {canManageCenters && !isFiltered && (
-              <button
+              <button data-cy="platform-create-center"
                 type="button"
                 onClick={() => {
                   setErrorMessage("");
@@ -684,7 +684,7 @@ export const PlatformCentersPage: React.FC = () => {
                     <td className="py-4 px-6 text-right">
                       <div className="flex items-center justify-end gap-2">
                         {/* Manage Personnel Button */}
-                        <button
+                        <button data-cy="platform-managers"
                           type="button"
                           onClick={() => setManagersModalCenter(center)}
                           className="px-3 py-1.5 text-xs font-semibold rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 border border-blue-200 dark:border-blue-800/60 transition-colors"
@@ -695,7 +695,7 @@ export const PlatformCentersPage: React.FC = () => {
 
                         {/* Edit Metadata Button */}
                         {canManageCenters && (
-                          <button
+                          <button data-cy="platform-edit-center"
                             type="button"
                             onClick={() => {
                               setEditMetadataCenter(center);
@@ -714,7 +714,7 @@ export const PlatformCentersPage: React.FC = () => {
 
                         {/* Status Toggle Button */}
                         {canManageCenters && (
-                          <button
+                          <button data-cy="platform-open-status"
                             type="button"
                             onClick={() => {
                               setStatusModalCenter(center);
@@ -796,7 +796,7 @@ export const PlatformCentersPage: React.FC = () => {
               </div>
             )}
 
-            <form
+            <form data-cy="platform-create-form"
               onSubmit={(e) => {
                 e.preventDefault();
                 setCreateModalError("");
@@ -851,7 +851,7 @@ export const PlatformCentersPage: React.FC = () => {
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     Mã Trung Tâm *
                   </label>
-                  <input
+                  <input data-cy="platform-center-code"
                     type="text"
                     required
                     placeholder="VD: CENTER_A, HN-01"
@@ -892,7 +892,7 @@ export const PlatformCentersPage: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Tên Trung Tâm *
                 </label>
-                <input
+                <input data-cy="platform-center-name"
                   type="text"
                   required
                   placeholder="VD: Trung tâm Ngoại ngữ Tin học EduTwin"
@@ -914,7 +914,7 @@ export const PlatformCentersPage: React.FC = () => {
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                       Tên Đăng Nhập Quản Lý *
                     </label>
-                    <input
+                    <input data-cy="platform-manager-username"
                       type="text"
                       required
                       placeholder="VD: manager_primary, db"
@@ -939,7 +939,7 @@ export const PlatformCentersPage: React.FC = () => {
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                       Họ Và Tên Quản Lý *
                     </label>
-                    <input
+                    <input data-cy="platform-manager-display-name"
                       type="text"
                       required
                       placeholder="VD: Nguyễn Văn Quản Trị"
@@ -956,7 +956,7 @@ export const PlatformCentersPage: React.FC = () => {
                       Mật Khẩu Ban Đầu (tối thiểu 12 ký tự) *
                     </label>
                     <div className="relative">
-                      <input
+                      <input data-cy="platform-manager-password"
                         type={showCreatePassword ? "text" : "password"}
                         required
                         minLength={12}
@@ -1045,7 +1045,7 @@ export const PlatformCentersPage: React.FC = () => {
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Lý do thay đổi trạng thái (tối thiểu 5 ký tự) *
               </label>
-              <textarea
+              <textarea data-cy="platform-status-reason"
                 required
                 minLength={5}
                 value={statusReason}
@@ -1063,7 +1063,7 @@ export const PlatformCentersPage: React.FC = () => {
               >
                 Hủy
               </button>
-              <button
+              <button data-cy="platform-confirm-status"
                 type="button"
                 onClick={handleToggleStatusConfirm}
                 disabled={updateStatusMutation.isPending || statusReason.trim().length < 5}
@@ -1113,7 +1113,7 @@ export const PlatformCentersPage: React.FC = () => {
                 <span className="flex-1 leading-relaxed">{editModalError}</span>
               </div>
             )}
-            <form onSubmit={handleEditMetadataConfirm} className="space-y-4">
+            <form data-cy="platform-edit-form" onSubmit={handleEditMetadataConfirm} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Mã Trung Tâm (Bất biến)
@@ -1129,7 +1129,7 @@ export const PlatformCentersPage: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Tên Trung Tâm *
                 </label>
-                <input
+                <input data-cy="platform-edit-center-name"
                   type="text"
                   required
                   minLength={3}
@@ -1160,7 +1160,7 @@ export const PlatformCentersPage: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Lý do cập nhật *
                 </label>
-                <textarea
+                <textarea data-cy="platform-edit-reason"
                   required
                   minLength={3}
                   value={editReason}

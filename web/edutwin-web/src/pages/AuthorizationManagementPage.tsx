@@ -478,7 +478,7 @@ const RolePermissionPanel = ({
             <p className="text-xs text-[var(--cm-text-muted)]">{rolesMeta?.totalItems ?? roles.length} vai trò trong trung tâm</p>
           </div>
           {canCreate && (
-            <button
+            <button data-cy="btn-open-create-role"
               type="button"
               id="btn-open-create-role"
               onClick={() => setShowCreate((v) => !v)}
@@ -506,7 +506,7 @@ const RolePermissionPanel = ({
             <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--cm-primary)]">Tạo vai trò tùy chỉnh mới</h3>
             <div>
               <label className="block text-xs font-medium text-[var(--cm-text-secondary)]">Mã vai trò (RoleCode)</label>
-              <input
+              <input data-cy="role-code"
                 aria-label="Mã role"
                 required
                 maxLength={64}
@@ -520,7 +520,7 @@ const RolePermissionPanel = ({
             </div>
             <div>
               <label className="block text-xs font-medium text-[var(--cm-text-secondary)]">Tên vai trò</label>
-              <input
+              <input data-cy="role-name"
                 aria-label="Tên role"
                 required
                 maxLength={150}
@@ -545,7 +545,7 @@ const RolePermissionPanel = ({
             </div>
             <div>
               <label className="block text-xs font-medium text-[var(--cm-text-secondary)]">Mô tả mục đích</label>
-              <textarea
+              <textarea data-cy="role-description"
                 aria-label="Mô tả role"
                 maxLength={500}
                 value={createDescription}
@@ -567,7 +567,7 @@ const RolePermissionPanel = ({
 
         {/* Filters */}
         <div className="space-y-2">
-          <input
+          <input data-cy="role-search"
             type="search"
             placeholder="Tìm theo mã hoặc tên vai trò..."
             value={searchRole}
@@ -616,7 +616,7 @@ const RolePermissionPanel = ({
         ) : (
           <div className="max-h-[34rem] space-y-2 overflow-y-auto pr-1">
             {roles.map((role) => (
-              <button
+              <button data-cy="role-select"
                 key={role.roleId}
                 type="button"
                 id={`role-item-${role.roleCode}`}
@@ -728,7 +728,7 @@ const RolePermissionPanel = ({
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-xs font-semibold text-[var(--cm-text-secondary)]">Tên hiển thị vai trò</label>
-                <input
+                <input data-cy="role-edit-name"
                   disabled={!canUpdate || isSystemRole}
                   value={roleName}
                   onChange={(e) => setRoleName(e.target.value)}
@@ -788,7 +788,7 @@ const RolePermissionPanel = ({
                   <label className="block text-xs font-semibold text-[var(--cm-text-secondary)]">
                     Lý do chỉnh sửa thông tin vai trò <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <input data-cy="role-info-reason"
                     type="text"
                     disabled={roleInfoUnchanged}
                     value={roleInfoReason}
@@ -818,7 +818,7 @@ const RolePermissionPanel = ({
                     ? "Vui lòng nhập lý do chỉnh sửa thông tin vai trò để lưu"
                     : "Sẵn sàng lưu thông tin vai trò"}
                 </span>
-                <button
+                <button data-cy="btn-save-role-info"
                   type="button"
                   id="btn-save-role-info"
                   disabled={roleInfoUnchanged || !roleInfoReasonValid || updateMutation.isPending}
@@ -921,7 +921,8 @@ const RolePermissionPanel = ({
                               >
                                 <input
                                   type="checkbox"
-                                  id={checkboxId}
+                              data-cy="role-permission-toggle"
+                              id={checkboxId}
                                   disabled={!evalResult.canToggle}
                                   checked={evalResult.isAssigned}
                                   onChange={() => handleTogglePermission(permission.permissionCode)}
@@ -990,7 +991,7 @@ const RolePermissionPanel = ({
               <div className="rounded-xl bg-[var(--cm-surface-raised)] p-4 border border-[var(--cm-border-subtle)] space-y-3">
                 <label className="block text-xs font-bold text-[var(--cm-text-secondary)]">
                   Lý do thay đổi phân quyền <span className="text-red-500">*</span>
-                  <input
+                  <input data-cy="role-permissions-reason"
                     required
                     maxLength={1000}
                     disabled={permissionsUnchanged}
@@ -1016,7 +1017,7 @@ const RolePermissionPanel = ({
                       ? "Vui lòng nhập lý do thay đổi phân quyền để lưu"
                       : "Ma trận quyền đã thay đổi và sẵn sàng cập nhật"}
                   </span>
-                  <button
+                  <button data-cy="btn-replace-role-permissions"
                     type="button"
                     id="btn-replace-role-permissions"
                     disabled={
@@ -1656,7 +1657,7 @@ const UserRolePanel = ({
               <div className="rounded-xl bg-[var(--cm-surface-raised)] p-4 border border-[var(--cm-border-subtle)] space-y-3">
                 <label className="block text-xs font-bold text-[var(--cm-text-secondary)]">
                   Lý do thay đổi vai trò người dùng <span className="text-red-500">*</span>
-                  <input
+                  <input data-cy="user-role-reason"
                     required
                     maxLength={1000}
                     value={reason}
@@ -1672,7 +1673,7 @@ const UserRolePanel = ({
                       ? "Danh sách vai trò chưa thay đổi"
                       : "Danh sách vai trò đã thay đổi và cần lưu"}
                   </span>
-                  <button
+                  <button data-cy="btn-save-user-roles"
                     type="button"
                     id="btn-save-user-roles"
                     disabled={

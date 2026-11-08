@@ -100,7 +100,7 @@ export const CurriculumApplicationPanel = ({ curriculumId, subjectId, gradeLevel
       {!showExceptions && groups.exceptions.some(c => selected.includes(c.classId)) &&
         <p className="text-sm">Có lớp ngoại lệ đang được chọn; ẩn danh sách không bỏ gán lớp.</p>}
       <label className="block text-sm">Lý do thay/ngừng áp dụng (bắt buộc nếu thay hoặc ngừng giáo trình cũ)
-        <textarea className="th-input block w-full mt-1" disabled={save.isPending} maxLength={500} value={reason} onChange={e => setReason(e.target.value)} />
+        <textarea data-cy="curriculum-application-reason" className="th-input block w-full mt-1" disabled={save.isPending} maxLength={500} value={reason} onChange={e => setReason(e.target.value)} />
       </label>
       {(showExceptions || requiresGradeReason) && <label className="block text-sm">Lý do ngoại lệ khác khối {requiresGradeReason ? "(bắt buộc)" : "(chỉ khi gán ngoại lệ mới)"}
         <textarea className="th-input block w-full mt-1" disabled={save.isPending} required={requiresGradeReason} maxLength={500}

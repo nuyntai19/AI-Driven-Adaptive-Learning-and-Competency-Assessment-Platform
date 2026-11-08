@@ -370,7 +370,7 @@ const CenterManagerSubjectListView: React.FC = () => {
             Chi tiết
           </button>
           {canUpdate && (
-            <button
+            <button data-cy="subject-edit"
               type="button"
               id={`btn-open-edit-subject-${subject.subjectId}`}
               onClick={() => handleOpenEdit(subject)}
@@ -404,7 +404,7 @@ const CenterManagerSubjectListView: React.FC = () => {
             description="Danh mục các môn học giảng dạy tại trung tâm, liên kết đồ thị tri thức và cấu hình hoạt động."
             actions={
               canCreate && (
-                <button
+                <button data-cy="btn-open-create-subject"
                   type="button"
                   id="btn-open-create-subject"
                   onClick={handleOpenCreate}
@@ -463,7 +463,7 @@ const CenterManagerSubjectListView: React.FC = () => {
                 <label htmlFor="subject-status-filter" className="text-xs text-[var(--cm-text-secondary)]">
                   Trạng thái:
                 </label>
-                <select
+                <select data-cy="subject-status-filter"
                   id="subject-status-filter"
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
@@ -477,7 +477,7 @@ const CenterManagerSubjectListView: React.FC = () => {
             }
             actions={
               (searchTerm !== "" || statusFilter !== "all") ? (
-                <button
+                <button data-cy="btn-reset-subjects"
                   type="button"
                   id="btn-reset-subjects"
                   onClick={() => {
@@ -530,7 +530,7 @@ const CenterManagerSubjectListView: React.FC = () => {
                   <label htmlFor="input-create-subject-code" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Mã môn học <span className="text-rose-400">*</span>
                   </label>
-                  <input
+                  <input data-cy="input-create-subject-code"
                     type="text"
                     id="input-create-subject-code"
                     value={createCode}
@@ -547,7 +547,7 @@ const CenterManagerSubjectListView: React.FC = () => {
                   <label htmlFor="input-create-subject-name" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Tên môn học <span className="text-rose-400">*</span>
                   </label>
-                  <input
+                  <input data-cy="input-create-subject-name"
                     type="text"
                     id="input-create-subject-name"
                     value={createName}
@@ -564,7 +564,7 @@ const CenterManagerSubjectListView: React.FC = () => {
                   <label htmlFor="input-create-subject-desc" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Mô tả
                   </label>
-                  <textarea
+                  <textarea data-cy="input-create-subject-desc"
                     id="input-create-subject-desc"
                     rows={3}
                     value={createDescription}
@@ -585,7 +585,7 @@ const CenterManagerSubjectListView: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-submit-create-subject"
                     type="submit"
                     id="btn-submit-create-subject"
                     disabled={createMutation.isPending}
@@ -617,7 +617,7 @@ const CenterManagerSubjectListView: React.FC = () => {
                   <label htmlFor="input-edit-subject-code" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Mã môn học <span className="text-rose-400">*</span>
                   </label>
-                  <input
+                  <input data-cy="input-edit-subject-code"
                     type="text"
                     id="input-edit-subject-code"
                     value={editCode}
@@ -633,7 +633,7 @@ const CenterManagerSubjectListView: React.FC = () => {
                   <label htmlFor="input-edit-subject-name" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Tên môn học <span className="text-rose-400">*</span>
                   </label>
-                  <input
+                  <input data-cy="input-edit-subject-name"
                     type="text"
                     id="input-edit-subject-name"
                     value={editName}
@@ -649,7 +649,7 @@ const CenterManagerSubjectListView: React.FC = () => {
                   <label htmlFor="input-edit-subject-desc" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Mô tả
                   </label>
-                  <textarea
+                  <textarea data-cy="input-edit-subject-desc"
                     id="input-edit-subject-desc"
                     rows={3}
                     value={editDescription}
@@ -662,7 +662,7 @@ const CenterManagerSubjectListView: React.FC = () => {
 
                 <div>
                   <label className="flex items-center gap-2 text-xs text-[var(--cm-text)] cursor-pointer">
-                    <input
+                    <input data-cy="checkbox-edit-subject-active"
                       type="checkbox"
                       id="checkbox-edit-subject-active"
                       checked={editIsActive}
@@ -683,7 +683,7 @@ const CenterManagerSubjectListView: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-save-edit-subject"
                     type="submit"
                     id="btn-save-edit-subject"
                     disabled={updateMutation.isPending}
@@ -791,7 +791,7 @@ const CenterManagerSubjectListView: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-confirm-delete-subject"
                     type="button"
                     id="btn-confirm-delete-subject"
                     onClick={handleDeleteConfirm}
@@ -1143,7 +1143,7 @@ const LegacySubjectListPage: React.FC = () => {
                 >
                   Tìm kiếm môn học
                 </label>
-                <input
+                <input data-cy="subject-search-input"
                   id="subject-search-input"
                   type="text"
                   value={searchTerm}
@@ -1160,7 +1160,7 @@ const LegacySubjectListPage: React.FC = () => {
                 >
                   Trạng thái
                 </label>
-                <select
+                <select data-cy="subject-status-filter"
                   id="subject-status-filter"
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "inactive")}
@@ -1175,7 +1175,7 @@ const LegacySubjectListPage: React.FC = () => {
 
             {canCreate && (
               <div>
-                <button
+                <button data-cy="btn-open-create-subject"
                   type="button"
                   id="btn-open-create-subject"
                   onClick={handleOpenCreate}
@@ -1290,7 +1290,7 @@ const LegacySubjectListPage: React.FC = () => {
                           Chi tiết
                         </button>
                         {canUpdate && (
-                          <button
+                          <button data-cy="subject-edit"
                             type="button"
                             id={`btn-open-edit-subject-${subject.subjectId}`}
                             onClick={() => handleOpenEdit(subject)}
@@ -1332,7 +1332,7 @@ const LegacySubjectListPage: React.FC = () => {
                   <label htmlFor="input-create-subject-code" className="block text-xs font-semibold uppercase text-slate-600 mb-1">
                     Mã môn học <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <input data-cy="input-create-subject-code"
                     id="input-create-subject-code"
                     type="text"
                     required
@@ -1347,7 +1347,7 @@ const LegacySubjectListPage: React.FC = () => {
                   <label htmlFor="input-create-subject-name" className="block text-xs font-semibold uppercase text-slate-600 mb-1">
                     Tên môn học <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <input data-cy="input-create-subject-name"
                     id="input-create-subject-name"
                     type="text"
                     required
@@ -1362,7 +1362,7 @@ const LegacySubjectListPage: React.FC = () => {
                   <label htmlFor="input-create-subject-desc" className="block text-xs font-semibold uppercase text-slate-600 mb-1">
                     Mô tả
                   </label>
-                  <textarea
+                  <textarea data-cy="input-create-subject-desc"
                     id="input-create-subject-desc"
                     rows={3}
                     maxLength={500}
@@ -1380,7 +1380,7 @@ const LegacySubjectListPage: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-submit-create-subject"
                     type="submit"
                     id="btn-submit-create-subject"
                     disabled={createMutation.isPending}
@@ -1408,7 +1408,7 @@ const LegacySubjectListPage: React.FC = () => {
                   <label htmlFor="input-edit-subject-code" className="block text-xs font-semibold uppercase text-slate-600 mb-1">
                     Mã môn học <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <input data-cy="input-edit-subject-code"
                     id="input-edit-subject-code"
                     type="text"
                     required
@@ -1422,7 +1422,7 @@ const LegacySubjectListPage: React.FC = () => {
                   <label htmlFor="input-edit-subject-name" className="block text-xs font-semibold uppercase text-slate-600 mb-1">
                     Tên môn học <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <input data-cy="input-edit-subject-name"
                     id="input-edit-subject-name"
                     type="text"
                     required
@@ -1436,7 +1436,7 @@ const LegacySubjectListPage: React.FC = () => {
                   <label htmlFor="input-edit-subject-desc" className="block text-xs font-semibold uppercase text-slate-600 mb-1">
                     Mô tả
                   </label>
-                  <textarea
+                  <textarea data-cy="input-edit-subject-desc"
                     id="input-edit-subject-desc"
                     rows={3}
                     maxLength={500}
@@ -1446,7 +1446,7 @@ const LegacySubjectListPage: React.FC = () => {
                   />
                 </div>
                 <div className="flex items-center">
-                  <input
+                  <input data-cy="checkbox-edit-subject-active"
                     id="checkbox-edit-subject-active"
                     type="checkbox"
                     checked={editIsActive}
@@ -1465,7 +1465,7 @@ const LegacySubjectListPage: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-save-edit-subject"
                     type="submit"
                     id="btn-save-edit-subject"
                     disabled={updateMutation.isPending}
@@ -1599,7 +1599,7 @@ const LegacySubjectListPage: React.FC = () => {
                 >
                   Hủy
                 </button>
-                <button
+                <button data-cy="btn-confirm-delete-subject"
                   type="button"
                   id="btn-confirm-delete-subject"
                   onClick={handleDeleteConfirm}

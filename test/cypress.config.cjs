@@ -18,6 +18,7 @@ module.exports = defineConfig({
     requestTimeout: 15000,
     responseTimeout: 30000,
     testIsolation: true,
+    experimentalRunAllSpecs: true,
     setupNodeEvents: register,
   },
 });

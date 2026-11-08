@@ -551,7 +551,7 @@ const CenterManagerClassListView: React.FC = () => {
       header: "Tên lớp học",
       render: (cls) => (
         <div>
-          <span className="font-semibold text-[var(--cm-text)]">{cls.className}</span>
+          <span data-cy="manager-class-name" className="font-semibold text-[var(--cm-text)]">{cls.className}</span>
           <span className="block text-xs text-[var(--cm-text-secondary)]">{cls.academicYear}</span>
         </div>
       ),
@@ -633,7 +633,7 @@ const CenterManagerClassListView: React.FC = () => {
             Chi tiết
           </button>
           {canUpdateClass && (
-            <button
+            <button data-cy="class-edit"
               type="button"
               id={`btn-edit-class-${cls.classId}`}
               onClick={() => handleOpenEdit(cls)}
@@ -670,7 +670,7 @@ const CenterManagerClassListView: React.FC = () => {
             description="Tổ chức lớp học theo môn và năm học, chỉ định giáo viên phụ trách và quản lý thành viên học viên."
             actions={
               canCreateClass && (
-                <button
+                <button data-cy="btn-open-create-class"
                   type="button"
                   id="btn-open-create-class"
                   onClick={() => setIsCreateModalOpen(true)}
@@ -726,7 +726,7 @@ const CenterManagerClassListView: React.FC = () => {
                   <label htmlFor="filter-class-status" className="text-xs text-[var(--cm-text-secondary)]">
                     Trạng thái:
                   </label>
-                  <select
+                  <select data-cy="filter-class-status"
                     id="filter-class-status"
                     value={statusInput}
                     onChange={(e) => setStatusInput(e.target.value as ClassStatus | "")}
@@ -741,7 +741,7 @@ const CenterManagerClassListView: React.FC = () => {
                   <label htmlFor="filter-class-grade" className="text-xs text-[var(--cm-text-secondary)]">
                     Khối:
                   </label>
-                  <select
+                  <select data-cy="filter-class-grade"
                     id="filter-class-grade"
                     value={gradeLevelInput}
                     onChange={(e) => setGradeLevelInput(e.target.value === "" ? "" : Number(e.target.value))}
@@ -757,7 +757,7 @@ const CenterManagerClassListView: React.FC = () => {
             }
             actions={
               <div className="flex items-center gap-2">
-                <button
+                <button data-cy="btn-filter-classes"
                   type="button"
                   id="btn-filter-classes"
                   onClick={handleFilter}
@@ -767,7 +767,7 @@ const CenterManagerClassListView: React.FC = () => {
                   Lọc danh sách
                 </button>
                 {(statusInput !== "" || status !== "" || gradeLevelInput !== "" || gradeLevel !== "") && (
-                  <button
+                  <button data-cy="btn-reset-classes"
                     type="button"
                     id="btn-reset-classes"
                     onClick={() => {
@@ -828,7 +828,7 @@ const CenterManagerClassListView: React.FC = () => {
                   <label htmlFor="input-class-name" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Tên lớp học <span className="text-rose-400">*</span>
                   </label>
-                  <input
+                  <input data-cy="input-class-name"
                     type="text"
                     id="input-class-name"
                     value={className}
@@ -845,7 +845,7 @@ const CenterManagerClassListView: React.FC = () => {
                   <label htmlFor="input-academic-year" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Năm học <span className="text-rose-400">*</span>
                   </label>
-                  <input
+                  <input data-cy="input-academic-year"
                     type="text"
                     id="input-academic-year"
                     value={academicYear}
@@ -862,7 +862,7 @@ const CenterManagerClassListView: React.FC = () => {
                   <label htmlFor="select-subject" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Môn học <span className="text-rose-400">*</span>
                   </label>
-                  <select
+                  <select data-cy="select-subject"
                     id="select-subject"
                     value={subjectId}
                     onChange={(e) => setSubjectId(e.target.value)}
@@ -883,7 +883,7 @@ const CenterManagerClassListView: React.FC = () => {
                   <label htmlFor="select-teacher" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Giáo viên phụ trách <span className="text-rose-400">*</span>
                   </label>
-                  <select
+                  <select data-cy="select-teacher"
                     id="select-teacher"
                     value={teacherId}
                     onChange={(e) => setTeacherId(e.target.value)}
@@ -904,7 +904,7 @@ const CenterManagerClassListView: React.FC = () => {
                   <label htmlFor="select-grade-level" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Khối lớp áp dụng
                   </label>
-                  <select
+                  <select data-cy="select-grade-level"
                     id="select-grade-level"
                     value={createGradeLevel}
                     onChange={(e) => setCreateGradeLevel(e.target.value === "" ? "" : Number(e.target.value))}
@@ -930,7 +930,7 @@ const CenterManagerClassListView: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-submit-create-class"
                     type="submit"
                     id="btn-submit-create-class"
                     disabled={createClassMutation.isPending}
@@ -962,7 +962,7 @@ const CenterManagerClassListView: React.FC = () => {
                   <label htmlFor="input-edit-class-name" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Tên lớp học <span className="text-rose-400">*</span>
                   </label>
-                  <input
+                  <input data-cy="input-edit-class-name"
                     type="text"
                     id="input-edit-class-name"
                     value={editClassName}
@@ -978,7 +978,7 @@ const CenterManagerClassListView: React.FC = () => {
                   <label htmlFor="select-edit-teacher" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Giáo viên phụ trách <span className="text-rose-400">*</span>
                   </label>
-                  <select
+                  <select data-cy="select-edit-teacher"
                     id="select-edit-teacher"
                     value={editTeacherId}
                     onChange={(e) => setEditTeacherId(e.target.value)}
@@ -998,7 +998,7 @@ const CenterManagerClassListView: React.FC = () => {
                   <label htmlFor="select-edit-status" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Trạng thái
                   </label>
-                  <select
+                  <select data-cy="select-edit-status"
                     id="select-edit-status"
                     value={editStatus}
                     onChange={(e) => setEditStatus(e.target.value as ClassStatus)}
@@ -1020,7 +1020,7 @@ const CenterManagerClassListView: React.FC = () => {
                   <label htmlFor="select-edit-grade-level" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Khối lớp áp dụng
                   </label>
-                  <select
+                  <select data-cy="select-edit-grade-level"
                     id="select-edit-grade-level"
                     value={editGradeLevel}
                     onChange={(e) => setEditGradeLevel(e.target.value === "" ? "" : Number(e.target.value))}
@@ -1043,7 +1043,7 @@ const CenterManagerClassListView: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-save-edit-class"
                     type="submit"
                     id="btn-save-edit-class"
                     disabled={updateClassMutation.isPending}
@@ -1110,7 +1110,7 @@ const CenterManagerClassListView: React.FC = () => {
                   >
                     Hủy bỏ
                   </button>
-                  <button
+                  <button data-cy="btn-confirm-delete-class"
                     type="button"
                     id="btn-confirm-delete-class"
                     className="rounded-xl px-4 py-2 text-sm font-semibold text-white bg-rose-600 hover:bg-rose-500 border border-rose-500/80 shadow-lg shadow-rose-950/50 disabled:opacity-50"
@@ -1188,7 +1188,7 @@ const CenterManagerClassListView: React.FC = () => {
                         Danh sách học sinh trong lớp ({classStudentsData?.meta?.totalItems ?? 0})
                       </h3>
                       {canAddMembers && classDetail.status === "Active" && (
-                        <button
+                        <button data-cy="btn-open-add-students"
                           type="button"
                           id="btn-open-add-students"
                           onClick={handleOpenAddStudents}
@@ -1207,7 +1207,7 @@ const CenterManagerClassListView: React.FC = () => {
                         onChange={(e) => setMemberSearchInput(e.target.value)}
                         className="cm-field flex-1 px-3 text-xs"
                       />
-                      <button
+                      <button data-cy="btn-search-members"
                         type="submit"
                         id="btn-search-members"
                         className="cm-secondary-button text-xs"
@@ -1296,7 +1296,7 @@ const CenterManagerClassListView: React.FC = () => {
                   Khối lớp hiện tại: <strong className="text-[var(--cm-cyan)]">{classDetail?.gradeLevel ? `Khối ${classDetail.gradeLevel}` : "Chưa phân loại"}</strong>
                 </span>
                 <label className="flex items-center gap-2 cursor-pointer text-[var(--cm-text-muted)] hover:text-white">
-                  <input
+                  <input data-cy="checkbox-include-other-grades"
                     type="checkbox"
                     id="checkbox-include-other-grades"
                     checked={includeOtherGrades}
@@ -1318,7 +1318,7 @@ const CenterManagerClassListView: React.FC = () => {
                   onChange={(e) => setCandidateSearchInput(e.target.value)}
                   className="cm-field flex-1 px-3 text-xs"
                 />
-                <button
+                <button data-cy="btn-search-candidates"
                   type="submit"
                   id="btn-search-candidates"
                   className="cm-secondary-button text-xs"
@@ -1341,7 +1341,7 @@ const CenterManagerClassListView: React.FC = () => {
                 <span>Đã chọn: <strong className="text-white">{selectedStudentIds.length}</strong> học sinh</span>
                 {candidateList.length > 0 && (
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input
+                    <input data-cy="checkbox-select-all-candidates"
                       type="checkbox"
                       id="checkbox-select-all-candidates"
                       checked={allCurrentPageSelected}
@@ -1410,7 +1410,7 @@ const CenterManagerClassListView: React.FC = () => {
                 <div className="flex items-center justify-between pt-3 text-xs text-[var(--cm-text-secondary)]">
                   <span>Trang {candidatePage} / {candidateMeta.totalPages} ({candidateMeta.totalItems} học sinh)</span>
                   <div className="flex gap-2">
-                    <button
+                    <button data-cy="btn-prev-candidates"
                       type="button"
                       id="btn-prev-candidates"
                       disabled={candidatePage <= 1 || isFetchingCandidates}
@@ -1419,7 +1419,7 @@ const CenterManagerClassListView: React.FC = () => {
                     >
                       Trước
                     </button>
-                    <button
+                    <button data-cy="btn-next-candidates"
                       type="button"
                       id="btn-next-candidates"
                       disabled={candidatePage >= candidateMeta.totalPages || isFetchingCandidates}
@@ -1447,7 +1447,7 @@ const CenterManagerClassListView: React.FC = () => {
                     Bạn đang chọn học sinh khác khối {classDetail?.gradeLevel}. Cần xác nhận ngoại lệ và ghi rõ lý do trước khi thêm.
                   </p>
                   <label className="flex items-center gap-2 cursor-pointer mb-2 font-medium">
-                    <input
+                    <input data-cy="checkbox-allow-grade-mismatch"
                       type="checkbox"
                       id="checkbox-allow-grade-mismatch"
                       checked={allowGradeMismatch}
@@ -1457,7 +1457,7 @@ const CenterManagerClassListView: React.FC = () => {
                     <span>Xác nhận cho phép thêm học sinh khác khối vào lớp</span>
                   </label>
                   {allowGradeMismatch && (
-                    <input
+                    <input data-cy="input-grade-mismatch-reason"
                       type="text"
                       id="input-grade-mismatch-reason"
                       placeholder="Nhập lý do ngoại lệ (ví dụ: Học sinh đạt chuẩn bồi dưỡng vượt cấp...)"
@@ -1479,7 +1479,7 @@ const CenterManagerClassListView: React.FC = () => {
                 >
                   Hủy
                 </button>
-                <button
+                <button data-cy="btn-submit-add-students"
                   type="button"
                   id="btn-submit-add-students"
                   onClick={handleAddStudentsSubmit}
@@ -1526,7 +1526,7 @@ const CenterManagerClassListView: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-confirm-remove-student"
                     type="button"
                     id="btn-confirm-remove-student"
                     onClick={handleConfirmRemoveStudent}
@@ -2021,7 +2021,7 @@ const LegacyClassListPage: React.FC = () => {
               Về trang chủ
             </Link>
             {canCreateClass && (
-              <button
+              <button data-cy="btn-open-create-class"
                 type="button"
                 id="btn-open-create-class"
                 onClick={() => setIsCreateModalOpen(true)}
@@ -2076,7 +2076,7 @@ const LegacyClassListPage: React.FC = () => {
               <label htmlFor="select-filter-status" className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
                 Trạng thái lớp
               </label>
-              <select
+              <select data-cy="select-filter-status"
                 id="select-filter-status"
                 value={statusInput}
                 onChange={(e) => setStatusInput(e.target.value as ClassStatus | "")}
@@ -2087,7 +2087,7 @@ const LegacyClassListPage: React.FC = () => {
                 <option value="Archived">Đã lưu trữ (Archived)</option>
               </select>
             </div>
-            <button
+            <button data-cy="btn-apply-filter"
               type="submit"
               id="btn-apply-filter"
               disabled={isFetching}
@@ -2150,7 +2150,7 @@ const LegacyClassListPage: React.FC = () => {
                 ) : (
                   data.data.map((cls) => (
                     <tr key={cls.classId} className="hover:bg-gray-50">
-                      <td className="whitespace-nowrap px-6 py-4 text-sm font-bold text-gray-900">
+                      <td data-cy="manager-class-name" className="whitespace-nowrap px-6 py-4 text-sm font-bold text-gray-900">
                         {cls.className}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
@@ -2194,7 +2194,7 @@ const LegacyClassListPage: React.FC = () => {
                           Chi tiết & Thành viên
                         </button>
                         {canUpdateClass && (
-                          <button
+                          <button data-cy="class-edit"
                             type="button"
                             id={`btn-edit-class-${cls.classId}`}
                             onClick={() => handleOpenEdit(cls)}
@@ -2241,7 +2241,7 @@ const LegacyClassListPage: React.FC = () => {
                 </div>
                 <div>
                   <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
-                    <button
+                    <button data-cy="btn-prev-page"
                       type="button"
                       id="btn-prev-page"
                       onClick={() => setPage((p) => Math.max(p - 1, 1))}
@@ -2250,7 +2250,7 @@ const LegacyClassListPage: React.FC = () => {
                     >
                       ‹
                     </button>
-                    <button
+                    <button data-cy="btn-next-page"
                       type="button"
                       id="btn-next-page"
                       onClick={() => setPage((p) => Math.min(p + 1, data.meta.totalPages))}
@@ -2282,7 +2282,7 @@ const LegacyClassListPage: React.FC = () => {
                   <label htmlFor="input-class-name" className="block text-sm font-medium text-gray-700">
                     Tên lớp học <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <input data-cy="input-class-name"
                     type="text"
                     id="input-class-name"
                     required
@@ -2297,7 +2297,7 @@ const LegacyClassListPage: React.FC = () => {
                   <label htmlFor="input-academic-year" className="block text-sm font-medium text-gray-700">
                     Năm học <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <input data-cy="input-academic-year"
                     type="text"
                     id="input-academic-year"
                     required
@@ -2312,7 +2312,7 @@ const LegacyClassListPage: React.FC = () => {
                   <label htmlFor="select-subject" className="block text-sm font-medium text-gray-700">
                     Môn học <span className="text-red-500">*</span>
                   </label>
-                  <select
+                  <select data-cy="select-subject"
                     id="select-subject"
                     required
                     value={subjectId}
@@ -2332,7 +2332,7 @@ const LegacyClassListPage: React.FC = () => {
                   <label htmlFor="select-teacher" className="block text-sm font-medium text-gray-700">
                     Giáo viên phụ trách <span className="text-red-500">*</span>
                   </label>
-                  <select
+                  <select data-cy="select-teacher"
                     id="select-teacher"
                     required
                     value={teacherId}
@@ -2352,7 +2352,7 @@ const LegacyClassListPage: React.FC = () => {
                   <label htmlFor="legacy-select-grade" className="block text-sm font-medium text-gray-700">
                     Khối lớp áp dụng <span className="text-red-500">*</span>
                   </label>
-                  <select
+                  <select data-cy="legacy-select-grade"
                     id="legacy-select-grade"
                     required
                     value={legacyGradeLevel}
@@ -2373,7 +2373,7 @@ const LegacyClassListPage: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-submit-create-class"
                     type="submit"
                     id="btn-submit-create-class"
                     disabled={createClassMutation.isPending}
@@ -2403,7 +2403,7 @@ const LegacyClassListPage: React.FC = () => {
                   <label htmlFor="input-edit-class-name" className="block text-sm font-medium text-gray-700">
                     Tên lớp học <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <input data-cy="input-edit-class-name"
                     type="text"
                     id="input-edit-class-name"
                     required
@@ -2417,7 +2417,7 @@ const LegacyClassListPage: React.FC = () => {
                   <label htmlFor="select-edit-teacher" className="block text-sm font-medium text-gray-700">
                     Giáo viên phụ trách <span className="text-red-500">*</span>
                   </label>
-                  <select
+                  <select data-cy="select-edit-teacher"
                     id="select-edit-teacher"
                     required
                     value={editTeacherId}
@@ -2436,7 +2436,7 @@ const LegacyClassListPage: React.FC = () => {
                   <label htmlFor="select-edit-status" className="block text-sm font-medium text-gray-700">
                     Trạng thái
                   </label>
-                  <select
+                  <select data-cy="select-edit-status"
                     id="select-edit-status"
                     value={editStatus}
                     onChange={(e) => setEditStatus(e.target.value as ClassStatus)}
@@ -2454,7 +2454,7 @@ const LegacyClassListPage: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-save-edit-class"
                     type="submit"
                     id="btn-save-edit-class"
                     disabled={updateClassMutation.isPending}
@@ -2502,7 +2502,7 @@ const LegacyClassListPage: React.FC = () => {
                     onChange={(e) => setMemberSearchInput(e.target.value)}
                     className="rounded-md border border-gray-300 px-3 py-1.5 text-xs focus:border-indigo-500 focus:outline-none w-full sm:w-60"
                   />
-                  <button
+                  <button data-cy="btn-search-members"
                     type="submit"
                     id="btn-search-members"
                     className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200"
@@ -2512,7 +2512,7 @@ const LegacyClassListPage: React.FC = () => {
                 </form>
 
                 {canAddMembers && classDetail?.status === "Active" && (
-                  <button
+                  <button data-cy="btn-open-add-students"
                     type="button"
                     id="btn-open-add-students"
                     onClick={handleOpenAddStudents}
@@ -2660,7 +2660,7 @@ const LegacyClassListPage: React.FC = () => {
                   Khối lớp hiện tại: <strong className="text-indigo-600">{classDetail?.gradeLevel ? `Khối ${classDetail.gradeLevel}` : "Chưa phân loại"}</strong>
                 </span>
                 <label className="flex items-center gap-1.5 cursor-pointer text-gray-500 hover:text-gray-800">
-                  <input
+                  <input data-cy="checkbox-include-other-grades-legacy"
                     type="checkbox"
                     id="checkbox-include-other-grades-legacy"
                     checked={includeOtherGrades}
@@ -2682,7 +2682,7 @@ const LegacyClassListPage: React.FC = () => {
                   onChange={(e) => setCandidateSearchInput(e.target.value)}
                   className="rounded-md border border-gray-300 px-3 py-1.5 text-xs focus:border-indigo-500 focus:outline-none flex-1"
                 />
-                <button
+                <button data-cy="btn-search-candidates"
                   type="submit"
                   id="btn-search-candidates"
                   className="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200"
@@ -2706,7 +2706,7 @@ const LegacyClassListPage: React.FC = () => {
                 </span>
                 {candidateList.length > 0 && (
                   <label className="flex items-center gap-1 cursor-pointer">
-                    <input
+                    <input data-cy="checkbox-select-all-candidates"
                       type="checkbox"
                       id="checkbox-select-all-candidates"
                       checked={allCurrentPageSelected}
@@ -2825,7 +2825,7 @@ const LegacyClassListPage: React.FC = () => {
                     Bạn đang chọn học sinh khác khối {classDetail?.gradeLevel}. Cần xác nhận ngoại lệ và ghi rõ lý do trước khi thêm.
                   </p>
                   <label className="flex items-center gap-1.5 cursor-pointer mb-2 font-medium">
-                    <input
+                    <input data-cy="checkbox-allow-grade-mismatch-legacy"
                       type="checkbox"
                       id="checkbox-allow-grade-mismatch-legacy"
                       checked={allowGradeMismatch}
@@ -2835,7 +2835,7 @@ const LegacyClassListPage: React.FC = () => {
                     <span>Xác nhận cho phép thêm học sinh khác khối vào lớp</span>
                   </label>
                   {allowGradeMismatch && (
-                    <input
+                    <input data-cy="input-grade-mismatch-reason-legacy"
                       type="text"
                       id="input-grade-mismatch-reason-legacy"
                       placeholder="Nhập lý do ngoại lệ (ví dụ: Học sinh đạt chuẩn bồi dưỡng vượt cấp...)"
@@ -2856,7 +2856,7 @@ const LegacyClassListPage: React.FC = () => {
                 >
                   Hủy
                 </button>
-                <button
+                <button data-cy="btn-submit-add-students"
                   type="button"
                   id="btn-submit-add-students"
                   onClick={handleAddStudentsSubmit}
@@ -2894,7 +2894,7 @@ const LegacyClassListPage: React.FC = () => {
                 >
                   Hủy
                 </button>
-                <button
+                <button data-cy="btn-confirm-remove-student"
                   type="button"
                   id="btn-confirm-remove-student"
                   onClick={handleConfirmRemoveStudent}

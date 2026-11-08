@@ -270,7 +270,7 @@ function Activity({ activity: a, onSubmitted, paused }: { activity: ActivityRunD
   const lastHint = hints[hints.length - 1];
   const moreHints = !lastHint || !!lastHint.hasMoreHints;
   const field = "mt-2 w-full rounded-lg border border-slate-300 bg-white p-3 dark:bg-slate-900";
-  return <form className="space-y-5" onSubmit={e => { e.preventDefault(); submit.mutate(false); }}>
+  return <form data-cy="mission-activity-form" className="space-y-5" onSubmit={e => { e.preventDefault(); submit.mutate(false); }}>
     <div><p className="text-sm font-semibold text-indigo-600">{a.stage || activityNames[a.activityType] || a.activityType} · Câu / hoạt động {a.activityOrder}</p>
       {independent && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Tự làm, không có gợi ý hoặc lời giải trước khi nộp. Kết quả còn qua chấm và kiểm duyệt bằng chứng.</p>}</div>
     {a.content && <article className="space-y-3 rounded-xl bg-slate-50 p-4 dark:bg-slate-800"><h3 className="text-lg font-semibold">{a.content.title}</h3>

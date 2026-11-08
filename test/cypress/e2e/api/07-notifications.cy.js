@@ -1,4 +1,5 @@
-const { IDS, expectProblem } = require('../support/validation');
+const { IDS } = require('../../fixtures/builders');
+const { expectProblem } = require('../../support/validation');
 
 describe('Notification content and preview/send integrity', () => {
   // Five preview POSTs maximum for this actor/endpoint: the production limit is 5/minute.

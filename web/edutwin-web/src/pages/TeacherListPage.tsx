@@ -356,7 +356,7 @@ const CenterManagerTeacherListView: React.FC = () => {
             </button>
           )}
           {canUpdateTeacher && (
-            <button
+            <button data-cy="teacher-edit"
               type="button"
               id={`btn-edit-teacher-${teacher.teacherId}`}
               onClick={() => openEditModal(teacher)}
@@ -366,7 +366,7 @@ const CenterManagerTeacherListView: React.FC = () => {
             </button>
           )}
           {canResetPassword && (
-            <button
+            <button data-cy="teacher-reset"
               type="button"
               id={`btn-reset-password-${teacher.teacherId}`}
               onClick={() => openResetPasswordModal(teacher)}
@@ -400,7 +400,7 @@ const CenterManagerTeacherListView: React.FC = () => {
             description="Quản lý hồ sơ giáo viên, trạng thái tài khoản và phân công giảng dạy trong phạm vi trung tâm."
             actions={
               canCreateTeacher && (
-                <button
+                <button data-cy="btn-create-teacher"
                   type="button"
                   id="btn-create-teacher"
                   onClick={() => {
@@ -462,7 +462,7 @@ const CenterManagerTeacherListView: React.FC = () => {
             }
             actions={
               <div className="flex items-center gap-2">
-                <select
+                <select data-cy="status-teacher"
                   id="status-teacher"
                   value={statusInput}
                   onChange={(e) => setStatusInput(e.target.value as UserStatus | "")}
@@ -473,7 +473,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   <option value="Locked">Bị khóa</option>
                   <option value="Disabled">Vô hiệu hóa</option>
                 </select>
-                <button
+                <button data-cy="btn-search-teachers"
                   type="button"
                   id="btn-search-teachers"
                   onClick={handleSearch}
@@ -483,7 +483,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   Tìm kiếm
                 </button>
                 {(searchInput || statusInput || search || status) && (
-                  <button
+                  <button data-cy="btn-reset-teachers"
                     type="button"
                     id="btn-reset-teachers"
                     onClick={() => {
@@ -549,7 +549,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   <label htmlFor="create-username" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Tên đăng nhập <span className="text-rose-400">*</span>
                   </label>
-                  <input
+                  <input data-cy="create-username"
                     type="text"
                     id="create-username"
                     value={createUsername}
@@ -565,7 +565,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   <label htmlFor="create-password" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Mật khẩu tạm thời (tối thiểu 12 ký tự) <span className="text-rose-400">*</span>
                   </label>
-                  <input
+                  <input data-cy="create-password"
                     type="password"
                     id="create-password"
                     autoComplete="new-password"
@@ -583,7 +583,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   <label htmlFor="create-display-name" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Họ tên giáo viên <span className="text-rose-400">*</span>
                   </label>
-                  <input
+                  <input data-cy="create-display-name"
                     type="text"
                     id="create-display-name"
                     value={createDisplayName}
@@ -599,7 +599,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   <label htmlFor="create-department" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Bộ môn / Phòng ban
                   </label>
-                  <input
+                  <input data-cy="create-department"
                     type="text"
                     id="create-department"
                     value={createDepartment}
@@ -620,7 +620,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-submit-create-teacher"
                     type="submit"
                     id="btn-submit-create-teacher"
                     disabled={createMutation.isPending}
@@ -642,7 +642,7 @@ const CenterManagerTeacherListView: React.FC = () => {
               onClose={() => setViewingTeacherId(null)}
               footer={
                 <div className="flex justify-end">
-                  <button
+                  <button data-cy="btn-close-teacher-detail"
                     type="button"
                     id="btn-close-teacher-detail"
                     onClick={() => setViewingTeacherId(null)}
@@ -710,7 +710,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   <label htmlFor="edit-display-name" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Họ tên <span className="text-rose-400">*</span>
                   </label>
-                  <input
+                  <input data-cy="edit-display-name"
                     type="text"
                     id="edit-display-name"
                     value={editDisplayName}
@@ -726,7 +726,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   <label htmlFor="edit-department" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Bộ môn / Phòng ban
                   </label>
-                  <input
+                  <input data-cy="edit-department"
                     type="text"
                     id="edit-department"
                     value={editDepartment}
@@ -741,7 +741,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   <label htmlFor="edit-status" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Trạng thái tài khoản
                   </label>
-                  <select
+                  <select data-cy="edit-status"
                     id="edit-status"
                     value={editStatus}
                     onChange={(e) => setEditStatus(e.target.value as UserStatus)}
@@ -763,7 +763,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-save-edit-teacher"
                     type="submit"
                     id="btn-save-edit-teacher"
                     disabled={updateMutation.isPending}
@@ -793,7 +793,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   <label htmlFor="reset-new-password" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Mật khẩu mới (tối thiểu 12 ký tự) <span className="text-rose-400">*</span>
                   </label>
-                  <input
+                  <input data-cy="reset-new-password"
                     type="password"
                     id="reset-new-password"
                     autoComplete="new-password"
@@ -811,7 +811,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   <label htmlFor="reset-confirm-password" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Xác nhận mật khẩu mới <span className="text-rose-400">*</span>
                   </label>
-                  <input
+                  <input data-cy="reset-confirm-password"
                     type="password"
                     id="reset-confirm-password"
                     autoComplete="new-password"
@@ -829,7 +829,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   <label htmlFor="reset-reason" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
                     Lý do đặt lại mật khẩu <span className="text-rose-400">*</span>
                   </label>
-                  <textarea
+                  <textarea data-cy="reset-reason"
                     id="reset-reason"
                     rows={3}
                     value={resetReason}
@@ -852,7 +852,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-submit-reset-teacher-password"
                     type="submit"
                     id="btn-submit-reset-teacher-password"
                     disabled={resetPasswordMutation.isPending}
@@ -885,7 +885,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                     </p>
                   </div>
                   <div className="flex justify-end">
-                    <button
+                    <button data-cy="btn-close-delete-blocked"
                       type="button"
                       id="btn-close-delete-blocked"
                       onClick={() => setDeletingTeacher(null)}
@@ -914,7 +914,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                     >
                       Hủy
                     </button>
-                    <button
+                    <button data-cy="btn-confirm-delete-teacher"
                       type="button"
                       id="btn-confirm-delete-teacher"
                       onClick={handleDeleteSubmit}
@@ -1193,7 +1193,7 @@ const LegacyTeacherListPage: React.FC = () => {
           </div>
           <div className="flex gap-3">
             {canCreateTeacher && (
-              <button
+              <button data-cy="btn-create-teacher"
                 type="button"
                 id="btn-create-teacher"
                 onClick={() => {
@@ -1260,7 +1260,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   <label htmlFor="create-username" className="block text-sm font-medium text-gray-700">
                     Tên đăng nhập <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <input data-cy="create-username"
                     type="text"
                     id="create-username"
                     value={createUsername}
@@ -1276,7 +1276,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   <label htmlFor="create-password" className="block text-sm font-medium text-gray-700">
                     Mật khẩu tạm thời (tối thiểu 12 ký tự) <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <input data-cy="create-password"
                     type="password"
                     id="create-password"
                     autoComplete="new-password"
@@ -1294,7 +1294,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   <label htmlFor="create-display-name" className="block text-sm font-medium text-gray-700">
                     Họ tên giáo viên <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <input data-cy="create-display-name"
                     type="text"
                     id="create-display-name"
                     value={createDisplayName}
@@ -1310,7 +1310,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   <label htmlFor="create-department" className="block text-sm font-medium text-gray-700">
                     Bộ môn / Phòng ban
                   </label>
-                  <input
+                  <input data-cy="create-department"
                     type="text"
                     id="create-department"
                     value={createDepartment}
@@ -1331,7 +1331,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-submit-create-teacher"
                     type="submit"
                     id="btn-submit-create-teacher"
                     disabled={createMutation.isPending}
@@ -1400,7 +1400,7 @@ const LegacyTeacherListPage: React.FC = () => {
               ) : null}
 
               <div className="flex justify-end pt-4 mt-4 border-t border-gray-200">
-                <button
+                <button data-cy="btn-close-teacher-detail"
                   type="button"
                   id="btn-close-teacher-detail"
                   onClick={() => setViewingTeacherId(null)}
@@ -1428,7 +1428,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   <label htmlFor="edit-display-name" className="block text-sm font-medium text-gray-700">
                     Họ tên <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <input data-cy="edit-display-name"
                     type="text"
                     id="edit-display-name"
                     value={editDisplayName}
@@ -1444,7 +1444,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   <label htmlFor="edit-department" className="block text-sm font-medium text-gray-700">
                     Bộ môn / Phòng ban
                   </label>
-                  <input
+                  <input data-cy="edit-department"
                     type="text"
                     id="edit-department"
                     value={editDepartment}
@@ -1459,7 +1459,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   <label htmlFor="edit-status" className="block text-sm font-medium text-gray-700">
                     Trạng thái tài khoản
                   </label>
-                  <select
+                  <select data-cy="edit-status"
                     id="edit-status"
                     value={editStatus}
                     onChange={(e) => setEditStatus(e.target.value as UserStatus)}
@@ -1481,7 +1481,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-save-edit-teacher"
                     type="submit"
                     id="btn-save-edit-teacher"
                     disabled={updateMutation.isPending}
@@ -1514,7 +1514,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   <label htmlFor="reset-new-password" className="block text-sm font-medium text-gray-700">
                     Mật khẩu mới (tối thiểu 12 ký tự) <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <input data-cy="reset-new-password"
                     type="password"
                     id="reset-new-password"
                     autoComplete="new-password"
@@ -1532,7 +1532,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   <label htmlFor="reset-confirm-password" className="block text-sm font-medium text-gray-700">
                     Xác nhận mật khẩu mới <span className="text-red-500">*</span>
                   </label>
-                  <input
+                  <input data-cy="reset-confirm-password"
                     type="password"
                     id="reset-confirm-password"
                     autoComplete="new-password"
@@ -1550,7 +1550,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   <label htmlFor="reset-reason" className="block text-sm font-medium text-gray-700">
                     Lý do đặt lại mật khẩu <span className="text-red-500">*</span>
                   </label>
-                  <textarea
+                  <textarea data-cy="reset-reason"
                     id="reset-reason"
                     rows={3}
                     value={resetReason}
@@ -1573,7 +1573,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   >
                     Hủy
                   </button>
-                  <button
+                  <button data-cy="btn-submit-reset-teacher-password"
                     type="submit"
                     id="btn-submit-reset-teacher-password"
                     disabled={resetPasswordMutation.isPending}
@@ -1607,7 +1607,7 @@ const LegacyTeacherListPage: React.FC = () => {
                     </p>
                   </div>
                   <div className="flex justify-end">
-                    <button
+                    <button data-cy="btn-close-delete-blocked"
                       type="button"
                       id="btn-close-delete-blocked"
                       onClick={() => setDeletingTeacher(null)}
@@ -1634,7 +1634,7 @@ const LegacyTeacherListPage: React.FC = () => {
                     >
                       Hủy
                     </button>
-                    <button
+                    <button data-cy="btn-confirm-delete-teacher"
                       type="button"
                       id="btn-confirm-delete-teacher"
                       onClick={handleDeleteSubmit}
@@ -1658,7 +1658,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   Tìm kiếm
                 </label>
                 <div className="mt-1">
-                  <input
+                  <input data-cy="search-teacher"
                     type="text"
                     id="search-teacher"
                     value={searchInput}
@@ -1674,7 +1674,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   Trạng thái
                 </label>
                 <div className="mt-1">
-                  <select
+                  <select data-cy="status-teacher"
                     id="status-teacher"
                     value={statusInput}
                     onChange={(e) => setStatusInput(e.target.value as UserStatus | "")}
@@ -1689,7 +1689,7 @@ const LegacyTeacherListPage: React.FC = () => {
               </div>
 
               <div>
-                <button
+                <button data-cy="btn-search-teachers"
                   type="submit"
                   id="btn-search-teachers"
                   disabled={isFetching}
@@ -1787,7 +1787,7 @@ const LegacyTeacherListPage: React.FC = () => {
                           </button>
                         )}
                         {canUpdateTeacher && (
-                          <button
+                          <button data-cy="teacher-edit"
                             type="button"
                             id={`btn-edit-teacher-${teacher.teacherId}`}
                             onClick={() => openEditModal(teacher)}
@@ -1797,7 +1797,7 @@ const LegacyTeacherListPage: React.FC = () => {
                           </button>
                         )}
                         {canResetPassword && (
-                          <button
+                          <button data-cy="teacher-reset"
                             type="button"
                             id={`btn-reset-password-${teacher.teacherId}`}
                             onClick={() => openResetPasswordModal(teacher)}
@@ -1836,7 +1836,7 @@ const LegacyTeacherListPage: React.FC = () => {
                 </div>
                 <div>
                   <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Phân trang">
-                    <button
+                    <button data-cy="btn-prev-page"
                       type="button"
                       id="btn-prev-page"
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
@@ -1845,7 +1845,7 @@ const LegacyTeacherListPage: React.FC = () => {
                     >
                       ‹
                     </button>
-                    <button
+                    <button data-cy="btn-next-page"
                       type="button"
                       id="btn-next-page"
                       onClick={() => setPage((p) => Math.min(data.meta.totalPages, p + 1))}

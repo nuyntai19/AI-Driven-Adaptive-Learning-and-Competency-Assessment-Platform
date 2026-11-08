@@ -22,7 +22,7 @@ export function CurriculumArchiveDialog({ isOpen, curriculumId, title, isPending
     description="Không tự ngắt giáo trình của lớp đang học. Bài làm, điểm và dữ liệu năng lực cũ được giữ nguyên."
     footer={<div className="flex justify-end gap-3">
       <button className="th-secondary-button" disabled={isPending} onClick={onClose}>Hủy</button>
-      <button className="th-danger-button" disabled={isPending || usage.isFetching || !usage.data || usage.isError || blocked || !reason.trim()}
+      <button data-cy="curriculum-archive-confirm" className="th-danger-button" disabled={isPending || usage.isFetching || !usage.data || usage.isError || blocked || !reason.trim()}
         onClick={() => onConfirm(reason.trim())}>{isPending ? "Đang lưu trữ..." : "Xác nhận lưu trữ"}</button>
     </div>}>
     {usage.isPending ? <p>Đang kiểm tra tất cả lớp đang áp dụng...</p> : usage.isError ? <p role="alert">
@@ -34,7 +34,7 @@ export function CurriculumArchiveDialog({ isOpen, curriculumId, title, isPending
       <p className="mt-3">Giáo viên phụ trách cần thay/ngừng áp dụng và lưu lý do trước. Lớp đã lưu trữ không chặn thao tác này.</p>
     </div> : <p>Không còn lớp hoạt động đang áp dụng giáo trình này.</p>}
     <label className="block mt-4 font-semibold">Lý do lưu trữ
-      <textarea className="th-input mt-2 w-full" rows={3} maxLength={500} value={reason} disabled={isPending || blocked}
+      <textarea data-cy="curriculum-archive-reason" className="th-input mt-2 w-full" rows={3} maxLength={500} value={reason} disabled={isPending || blocked}
         onChange={event => setReason(event.target.value)} placeholder="Ví dụ: giáo trình đã được thay bằng phiên bản mới." />
     </label>
     {error && <p className="mt-3" role="alert">{error}</p>}

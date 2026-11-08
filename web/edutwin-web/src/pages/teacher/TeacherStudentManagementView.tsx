@@ -329,7 +329,7 @@ export function TeacherStudentManagementView() {
             {isClassesLoading ? (
               <span className="text-xs text-[var(--th-text-muted)]">Đang tải danh sách lớp...</span>
             ) : (
-              <select
+              <select data-cy="teacher-student-class"
                 value={selectedClassId}
                 onChange={(e) => {
                   setSelectedClassId(e.target.value);
@@ -461,7 +461,7 @@ export function TeacherStudentManagementView() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>
-            <input
+            <input data-cy="teacher-student-search"
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -675,7 +675,7 @@ export function TeacherStudentManagementView() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="flex items-center justify-end gap-1.5">
-                          <button
+                          <button data-cy="teacher-student-open"
                             type="button"
                             onClick={() => setSelectedStudent(student)}
                             className="th-secondary-button text-xs py-1 px-2.5 rounded-lg"
@@ -858,7 +858,7 @@ export function TeacherStudentManagementView() {
               >
                 🧠 Bản sao số (Twin)
               </button>
-              <button
+              <button data-cy="teacher-notes-tab"
                 type="button"
                 onClick={() => setActiveTab("notes")}
                 className={`py-2.5 px-3 border-b-2 transition-colors ${
@@ -1148,7 +1148,7 @@ export function TeacherStudentManagementView() {
                   </div>
                 </div>
 
-                <textarea
+                <textarea data-cy="teacher-local-notes"
                   value={teacherNotes[selectedStudent.studentId] || ""}
                   onChange={(e) => handleSaveNote(selectedStudent.studentId, e.target.value)}
                   placeholder="Nhập ghi chú nhận xét học lực, thái độ học tập, phương pháp kèm cặp hoặc dặn dò cho học sinh này..."

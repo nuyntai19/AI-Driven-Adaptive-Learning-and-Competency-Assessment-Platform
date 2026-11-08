@@ -516,7 +516,7 @@ export function TeacherQuestionEditorView() {
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
               Môn học <span className="text-rose-400">*</span>
             </label>
-            <select
+            <select data-cy="question-subject"
               value={subjectId}
               disabled={isEditing || subjectsLoading}
               onChange={(e) => {
@@ -539,6 +539,7 @@ export function TeacherQuestionEditorView() {
               Chủ đề Cây Tri thức (Topic Node) <span className="text-rose-400">*</span>
             </label>
             <KnowledgeTopicPicker
+              dataCy="question-topic"
               nodes={topicsData?.nodes || []}
               value={primaryTopicNodeId}
               disabled={!subjectId || !gradeLevel || topicsLoading}
@@ -553,7 +554,7 @@ export function TeacherQuestionEditorView() {
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
               Dạng câu hỏi <span className="text-rose-400">*</span>
             </label>
-            <select
+            <select data-cy="question-type"
               value={questionType}
               onChange={(e) => {
                 const newType = e.target.value as QuestionType;
@@ -616,7 +617,7 @@ export function TeacherQuestionEditorView() {
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
               Khối học áp dụng
             </label>
-            <select
+            <select data-cy="question-grade"
               value={gradeLevel}
               onChange={(e) => setGradeLevel(e.target.value ? Number(e.target.value) : "")}
               className="th-select w-full text-xs"
@@ -632,7 +633,7 @@ export function TeacherQuestionEditorView() {
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
               Điểm tối đa <span className="text-rose-400">*</span>
             </label>
-            <input
+            <input data-cy="question-max-score"
               type="number"
               min={1}
               max={100}
@@ -646,7 +647,7 @@ export function TeacherQuestionEditorView() {
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
               Thời gian ước tính (giây) <span className="text-rose-400">*</span>
             </label>
-            <input
+            <input data-cy="question-time"
               type="number"
               min={10}
               max={3600}
@@ -661,7 +662,7 @@ export function TeacherQuestionEditorView() {
         {/* Reasoning Required Toggle */}
         <div className="p-3.5 rounded-xl border border-[var(--th-border-subtle)] bg-[var(--th-surface-subtle)] flex items-center justify-between gap-4">
           <div className="flex items-start gap-3">
-            <input
+            <input data-cy="reasoningRequiredToggle"
               type="checkbox"
               id="reasoningRequiredToggle"
               checked={reasoningRequired}
@@ -696,6 +697,7 @@ export function TeacherQuestionEditorView() {
           </div>
 
           <RichMathEditor
+            dataCy="teacher-question-text"
             value={questionText}
             onChange={setQuestionText}
             placeholder="Nhập nội dung đề bài. Ví dụ: Cho hàm số $f(x) = x^3 - 3x^2 + 2$. Tìm giá trị cực đại của hàm số."
@@ -863,7 +865,7 @@ export function TeacherQuestionEditorView() {
                 Lời giải chi tiết (Solution) <span className="text-rose-400">*</span>
               </label>
             </div>
-            <RichMathEditor
+            <RichMathEditor dataCy="question-solution"
               value={solution}
               onChange={setSolution}
               placeholder="Nhập lời giải chuẩn từng bước để hỗ trợ học sinh... (Gõ $ để chèn công thức)"
@@ -876,7 +878,7 @@ export function TeacherQuestionEditorView() {
             <label className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1.5">
               Dự kiến suy luận của học sinh (Expected Reasoning)
             </label>
-            <textarea
+            <textarea data-cy="question-reasoning"
               rows={2}
               value={expectedReasoning}
               onChange={(e) => setExpectedReasoning(e.target.value)}
@@ -897,7 +899,7 @@ export function TeacherQuestionEditorView() {
           >
             Hủy bỏ
           </button>
-          <button
+          <button data-cy="question-save"
             type="button"
             onClick={handleSave}
             disabled={isPending}

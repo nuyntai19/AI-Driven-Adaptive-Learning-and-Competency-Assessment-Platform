@@ -202,7 +202,7 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
         </div>
 
         {/* Change Password Form */}
-        <form onSubmit={handleChangePasswordSubmit} className="space-y-3 pt-2">
+        <form data-cy="security-password-form" onSubmit={handleChangePasswordSubmit} className="space-y-3 pt-2">
           <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
             Đổi Mật Khẩu Cá Nhân
           </h4>
@@ -210,7 +210,7 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
             <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
               Mật khẩu hiện tại *
             </label>
-            <input
+            <input data-cy="security-current-password"
               type="password"
               required
               placeholder="••••••••••••"
@@ -224,7 +224,7 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                 Mật khẩu mới (≥12 ký tự) *
               </label>
-              <input
+              <input data-cy="security-new-password"
                 type="password"
                 required
                 minLength={12}
@@ -238,7 +238,7 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                 Xác nhận mật khẩu mới *
               </label>
-              <input
+              <input data-cy="security-confirm-password"
                 type="password"
                 required
                 minLength={12}
@@ -268,12 +268,12 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
           <p className="text-xs text-gray-500 dark:text-gray-400">
             Thao tác này thu hồi toàn bộ phiên đăng nhập của tài khoản, bao gồm phiên hiện tại. Bạn sẽ cần đăng nhập lại trên các thiết bị.
           </p>
-          <form onSubmit={handleRevokeSessionsSubmit} className="space-y-3">
+          <form data-cy="security-revoke-form" onSubmit={handleRevokeSessionsSubmit} className="space-y-3">
             <div>
               <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                 Lý do thu hồi (tùy chọn)
               </label>
-              <input
+              <input data-cy="security-revoke-reason"
                 type="text"
                 placeholder="VD: Chủ động thu hồi sau khi sử dụng thiết bị công cộng"
                 value={revokeReason}

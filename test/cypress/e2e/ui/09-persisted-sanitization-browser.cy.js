@@ -1,4 +1,8 @@
-const { IDS, XSS, klass, question, unique, noExecutableMarkup } = require('../support/validation');
+const { IDS, XSS, klass, question, unique } = require('../../fixtures/builders');
+const { noExecutableMarkup } = require('../../support/browser-safety');
+const { teacherQuestionScreen } = require('../../screens/teacher-question.screen');
+const { managerClassesScreen } = require('../../screens/manager-classes.screen');
+const { studentScreen } = require('../../screens/student.screen');
 
 describe('Persisted untrusted content rendered by real browser pages', () => {
   it('hydrates stored HTML and untrusted LaTeX safely in the real teacher math editor', () => {
@@ -15,14 +19,13 @@ describe('Persisted untrusted content rendered by real browser pages', () => {
         expect(stored.body.data.questionText).to.eq(authored);
       });
       cy.uiLogin('teacher');
-      cy.visit(`/giao-vien/cau-hoi/${id}`);
-      const editor = '[role="textbox"][contenteditable="true"]';
-      cy.get(editor).first().should('contain.text', marker).and('contain.text', XSS);
-      cy.get(editor).first().find('.katex').should('exist');
+      teacherQuestionScreen.open(id);
+      teacherQuestionScreen.questionText().should('contain.text', marker).and('contain.text', XSS);
+      teacherQuestionScreen.renderedQuestionMath().should('exist');
       noExecutableMarkup();
       cy.reload();
-      cy.get(editor).first().should('contain.text', marker).and('contain.text', XSS);
-      cy.get(editor).first().find('.katex').should('exist');
+      teacherQuestionScreen.questionText().should('contain.text', marker).and('contain.text', XSS);
+      teacherQuestionScreen.renderedQuestionMath().should('exist');
       noExecutableMarkup();
     }));
   });
@@ -40,30 +43,30 @@ describe('Persisted untrusted content rendered by real browser pages', () => {
     cy.intercept('GET', '**/api/v1/classes?*', req => {
       const url = new URL(req.url); url.searchParams.set('pageSize', '100'); req.url = url.toString(); req.continue();
     });
-    cy.visit('/quan-ly/lop-hoc');
-    cy.contains('td', name).should('be.visible');
+    managerClassesScreen.open();
+    managerClassesScreen.className(name).should('be.visible');
     noExecutableMarkup();
     cy.reload();
-    cy.contains('td', name).should('be.visible');
+    managerClassesScreen.className(name).should('be.visible');
     noExecutableMarkup();
   });
   it('renders a stored assignment title as inert text in the student assignment list', () => {
     const title = `${unique('CYP_STORED')} ${XSS}`;
     cy.task('isolated:assignment', { title }).then(fixture => {
       cy.uiLogin('student');
-      cy.visit('/hoc-tap/bai-tap');
-      cy.contains(fixture.fullTitle).should('be.visible');
+      studentScreen.openAssignments();
+      studentScreen.assignmentTitle(fixture.fullTitle).should('be.visible');
       noExecutableMarkup();
       cy.reload();
-      cy.contains(fixture.fullTitle).should('be.visible');
+      studentScreen.assignmentTitle(fixture.fullTitle).should('be.visible');
       noExecutableMarkup();
     });
   });
   it('keeps malicious URL input from turning a navigation parameter into an executable URL', () => {
     cy.uiLogin('student');
-    cy.visit(`/hoc-tap/tong-quan?subjectId=${encodeURIComponent('javascript:window.__edutwinXss=1')}&classId=${IDS.zero}`);
-    cy.get('body').should('be.visible');
+    studentScreen.openOverview({ subjectId: 'javascript:window.__edutwinXss=1', classId: IDS.zero });
+    studentScreen.workspace().should('be.visible');
     noExecutableMarkup();
-    cy.location('origin').should('eq', 'http://127.0.0.1:3002');
+    cy.location('origin').should('eq', new URL(Cypress.config('baseUrl')).origin);
   });
 });

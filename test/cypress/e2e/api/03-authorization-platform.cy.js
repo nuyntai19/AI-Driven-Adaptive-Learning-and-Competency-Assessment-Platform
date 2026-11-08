@@ -1,4 +1,5 @@
-const { IDS, unique, expectProblem } = require('../support/validation');
+const { IDS, unique } = require('../../fixtures/builders');
+const { expectProblem } = require('../../support/validation');
 
 describe('Account type, tenant and privilege boundaries', () => {
   for (const route of ['/teachers', '/students', '/classes', '/subjects', '/assignments', '/authorization/roles', '/notifications', '/platform/centers']) {
@@ -52,11 +53,4 @@ describe('Account type, tenant and privilege boundaries', () => {
       });
     });
   }));
-  it('direct student navigation to platform/teacher administration is denied in the browser', () => {
-    cy.uiLogin('student');
-    cy.visit('/quan-tri-nen-tang/trung-tam');
-    cy.location('pathname').should('eq', '/khong-co-quyen');
-    cy.visit('/giao-vien/cham-bai');
-    cy.location('pathname').should('eq', '/khong-co-quyen');
-  });
 });

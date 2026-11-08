@@ -1,5 +1,5 @@
-const { upload, importFields, csv } = require('../support/uploads');
-const { expectProblem } = require('../support/validation');
+const { upload, importFields, csv } = require('../../support/uploads');
+const { expectProblem } = require('../../support/validation');
 
 describe('Import and attachment validation/sanitization', () => {
   it('accepts a valid real PNG and returns a scoped expiring upload grant', () => cy.apiLogin('student').then(token =>

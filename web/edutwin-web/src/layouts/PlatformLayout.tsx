@@ -128,7 +128,7 @@ export const PlatformLayout: React.FC = () => {
       )}
 
       {canManageSecurity && (
-        <button
+        <button data-cy="account-security-open"
           type="button"
           onClick={() => {
             setIsMobileMenuOpen(false);

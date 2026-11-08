@@ -1,4 +1,5 @@
-const { IDS, question, unique, expectProblem } = require('../support/validation');
+const { IDS, question, unique } = require('../../fixtures/builders');
+const { expectProblem } = require('../../support/validation');
 
 describe('Question, curriculum, subject and graph validation', () => {
   it('accepts a valid teacher-authored question and persists the native answer', () => cy.apiLogin('teacher').then(token => {

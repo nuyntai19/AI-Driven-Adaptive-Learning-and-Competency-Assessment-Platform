@@ -1,4 +1,5 @@
-const { IDS, assignment, answer, expectProblem } = require('../support/validation');
+const { IDS, assignment, answer } = require('../../fixtures/builders');
+const { expectProblem } = require('../../support/validation');
 
 describe('Assignment and student submission validation', () => {
   it('accepts a teacher draft with valid class/question scope', () => cy.apiLogin('teacher').then(token =>

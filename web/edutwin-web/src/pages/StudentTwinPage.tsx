@@ -220,7 +220,7 @@ export const StudentTwinPage: React.FC = () => {
           >
             <span>Luyện tập ngay →</span>
           </Link>
-          <button
+          <button data-cy="twin-open-goal"
             type="button"
             onClick={() => setIsGoalEditorOpen((open) => !open)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 font-semibold text-indigo-800 hover:bg-indigo-100 dark:border-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-200"
@@ -235,7 +235,7 @@ export const StudentTwinPage: React.FC = () => {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <label className="flex-1 text-xs font-semibold text-stone-700 dark:text-stone-200">
               Điểm mục tiêu (0–10)
-              <input
+              <input data-cy="twin-goal-score"
                 type="number"
                 min="0"
                 max="10"
@@ -247,7 +247,7 @@ export const StudentTwinPage: React.FC = () => {
             </label>
             <label className="flex-1 text-xs font-semibold text-stone-700 dark:text-stone-200">
               Thời hạn (ngày)
-              <input
+              <input data-cy="twin-goal-days"
                 type="number"
                 min="1"
                 max="3650"
@@ -257,7 +257,7 @@ export const StudentTwinPage: React.FC = () => {
                 className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-900 outline-none focus:border-indigo-500 dark:border-stone-600 dark:bg-slate-900 dark:text-white"
               />
             </label>
-            <button
+            <button data-cy="twin-save-goal"
               type="button"
               onClick={handleSaveGoal}
               disabled={saveGoalMutation.isPending}

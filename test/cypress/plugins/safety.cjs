@@ -18,6 +18,7 @@ function validateOwner(state, labels) {
 const roles = Object.freeze({
   manager: { username: 'manager', centerCode: 'EDUTWIN_A' },
   teacher: { username: 'teacher.math', centerCode: 'EDUTWIN_A' },
+  englishTeacher: { username: 'teacher.english', centerCode: 'EDUTWIN_A' },
   student: { username: 'student01', centerCode: 'EDUTWIN_A' },
   student2: { username: 'student02', centerCode: 'EDUTWIN_A' },
   foreignStudent: { username: 'student01', centerCode: 'EDUTWIN_B' },

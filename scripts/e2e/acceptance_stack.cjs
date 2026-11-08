@@ -35,6 +35,8 @@ async function start() {
       Seed__Enabled: 'true', Seed__CenterManagerPassword: testPassword,
       PlatformBootstrap__AdminUsername: 'platform.admin', PlatformBootstrap__AdminPassword: testPassword,
       Gemini__ApiKey: '', Gemini__Model: cfg.Gemini__Model || 'gemini-2.5-flash',
+      // Keep real delivery processing while reducing fixture backlog in this disposable runtime.
+      Notifications__Worker__PollSeconds: '1',
       AttachmentStorage__RootPath: '/tmp/acceptance-storage', AttachmentStorage__DataProtectionKeysPath: '/tmp/acceptance-keys',
       Logging__LogLevel__Default: 'Warning', Logging__LogLevel__Microsoft: 'Warning',
     };

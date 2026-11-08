@@ -248,7 +248,7 @@ export function TeacherQuestionBankView() {
         actions={
           <div className="flex items-center gap-2">
             {canCreate && (
-              <button
+              <button data-cy="question-open-import"
                 type="button"
                 onClick={() => setIsImportOpen(true)}
                 className="th-button-secondary text-xs py-2 px-3.5 flex items-center gap-1.5 shadow-sm"
@@ -305,7 +305,7 @@ export function TeacherQuestionBankView() {
           {/* Subject Filter */}
           <div className="min-w-0">
             <label htmlFor="filter-teacher-subject" className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Môn học</label>
-            <select
+            <select data-cy="filter-teacher-subject"
               id="filter-teacher-subject"
               value={selectedSubjectId}
               onChange={(e) => {
@@ -329,7 +329,7 @@ export function TeacherQuestionBankView() {
           {/* Grade Level Filter */}
           <div className="min-w-0">
             <label htmlFor="filter-teacher-grade" className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Khối học</label>
-            <select
+            <select data-cy="filter-teacher-grade"
               id="filter-teacher-grade"
               value={selectedGradeLevel}
               onChange={(e) => {
@@ -378,7 +378,7 @@ export function TeacherQuestionBankView() {
           {/* Type Filter */}
           <div className="min-w-0">
             <label htmlFor="filter-teacher-type" className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Dạng câu hỏi</label>
-            <select
+            <select data-cy="filter-teacher-type"
               id="filter-teacher-type"
               value={selectedType}
               onChange={(e) => {
@@ -397,7 +397,7 @@ export function TeacherQuestionBankView() {
           {/* Difficulty Filter */}
           <div className="min-w-0">
             <label htmlFor="filter-teacher-difficulty" className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Độ khó</label>
-            <select
+            <select data-cy="filter-teacher-difficulty"
               id="filter-teacher-difficulty"
               value={selectedDifficulty}
               onChange={(e) => {
@@ -418,7 +418,7 @@ export function TeacherQuestionBankView() {
           {/* Status Filter */}
           <div className="min-w-0">
             <label htmlFor="filter-teacher-status" className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Trạng thái</label>
-            <select
+            <select data-cy="filter-teacher-status"
               id="filter-teacher-status"
               value={selectedStatus}
               onChange={(e) => {
@@ -437,7 +437,7 @@ export function TeacherQuestionBankView() {
           {/* Local search input */}
           <div className="min-w-0">
             <label htmlFor="filter-teacher-search" className="block text-[10px] font-semibold uppercase text-[var(--th-text-muted)] mb-1">Tìm kiếm nội dung</label>
-            <input
+            <input data-cy="filter-teacher-search"
               id="filter-teacher-search"
               type="text"
               placeholder="Nhập từ khóa..."

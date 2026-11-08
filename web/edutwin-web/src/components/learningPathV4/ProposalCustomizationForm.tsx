@@ -43,7 +43,7 @@ export function ProposalCustomizationForm({ proposal, availableMilestones: allMi
   const suggestedDate = suggestedPart ? new Date(`${suggestedPart}T00:00:00`) : null;
   const tight = !infeasible && !!chosen && !!suggestedDate && chosen < suggestedDate;
   const input = "mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 dark:bg-slate-900";
-  return <form className="mt-6 space-y-5" onSubmit={event => {
+  return <form data-cy="proposal-customize-form" className="mt-6 space-y-5" onSubmit={event => {
     event.preventDefault();
     const counts = Object.fromEntries(targets.map(id => [id, Number(questionsBySkill[id])]));
     if (pending || infeasible || !targets.length || Object.values(counts).some(count => !Number.isInteger(count) || count < 3 || count > 20)) return;
@@ -84,7 +84,7 @@ export function ProposalCustomizationForm({ proposal, availableMilestones: allMi
             <label className="flex items-start gap-2 font-medium"><input type="checkbox" checked={checked} onChange={event => setTargets(current => event.target.checked
               ? [...new Set([...current, ...milestone.skillIds])] : current.filter(id => !milestone.skillIds.includes(id)))} /><span>{milestone.title}</span></label>
             {skillId && <label className="mt-3 block text-xs">Số câu mỗi bộ luyện cho phần này{practice?.isProbe ? " (sau thử nhanh)" : ""}
-              <input type="number" min={3} max={20} step={1} required={checked} disabled={!checked} className={input}
+              <input data-cy="proposal-question-count" type="number" min={3} max={20} step={1} required={checked} disabled={!checked} className={input}
                 value={questionsBySkill[skillId] ?? "6"} onChange={event => setQuestionsBySkill(current => ({ ...current,
                   ...Object.fromEntries(milestone.skillIds.map(id => [id, event.target.value])) }))} />
               <span className="mt-1 block text-slate-500">Dự kiến {practice?.estimatedSets || 2} bộ theo kết quả hiện có, khoảng {Number(questionsBySkill[skillId] || 0) * 2} phút/bộ.

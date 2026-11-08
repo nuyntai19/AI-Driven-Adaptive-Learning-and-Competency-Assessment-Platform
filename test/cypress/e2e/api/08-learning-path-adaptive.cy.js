@@ -1,4 +1,5 @@
-const { IDS, unique, expectProblem } = require('../support/validation');
+const { IDS, unique } = require('../../fixtures/builders');
+const { expectProblem } = require('../../support/validation');
 
 describe('Learning goals, calendar and route scope validation', () => {
   function scopedGoal(token, mutate, status) {

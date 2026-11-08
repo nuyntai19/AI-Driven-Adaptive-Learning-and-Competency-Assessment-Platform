@@ -189,7 +189,7 @@ export const CenterProfilePage = () => {
               <form onSubmit={handleSubmit} className="mt-6 space-y-6">
                 <label className="block text-sm font-semibold text-[var(--cm-text)]" htmlFor="center-name">
                   Tên trung tâm
-                  <input id="center-name" className="cm-field mt-2 w-full px-4" value={centerName} onChange={(event) => setCenterName(event.target.value)} maxLength={200} required disabled={!canManage || updateMutation.isPending} />
+                  <input data-cy="center-name" id="center-name" className="cm-field mt-2 w-full px-4" value={centerName} onChange={(event) => setCenterName(event.target.value)} maxLength={200} required disabled={!canManage || updateMutation.isPending} />
                   <span className="mt-1 flex justify-between gap-4 text-xs font-normal text-[var(--cm-text-muted)]">
                     <span>Tên hiển thị trong không gian của trung tâm.</span>
                     <span>{centerName.length}/200</span>
@@ -198,7 +198,7 @@ export const CenterProfilePage = () => {
 
                 <label className="block text-sm font-semibold text-[var(--cm-text)]" htmlFor="center-timezone">
                   Múi giờ vận hành
-                  <select id="center-timezone" className="cm-field mt-2 w-full px-4" value={timezone} onChange={(event) => setTimezone(event.target.value)} required disabled={!canManage || updateMutation.isPending}>
+                  <select data-cy="center-timezone" id="center-timezone" className="cm-field mt-2 w-full px-4" value={timezone} onChange={(event) => setTimezone(event.target.value)} required disabled={!canManage || updateMutation.isPending}>
                     {TIMEZONE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                   <span className="mt-1 block text-xs font-normal text-[var(--cm-text-muted)]">Dùng cho hạn nộp bài, báo cáo và nhật ký.</span>

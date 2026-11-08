@@ -372,6 +372,7 @@ export const StudentAssignmentsPage: React.FC = () => {
                           </div>
 
                           <Link
+                            data-cy="student-assignment-title"
                             to={studentScopeUrl(`/hoc-tap/bai-tap/${item.assignmentId}`, searchParams)}
                             className="text-sm sm:text-base font-bold text-stone-900 dark:text-stone-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-1"
                           >

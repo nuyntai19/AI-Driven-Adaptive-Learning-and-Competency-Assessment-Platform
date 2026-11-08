@@ -1106,7 +1106,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
             {/* Final Approve Action Button (Only Teacher with permissions) */}
             <div className="flex flex-col items-end gap-2 max-w-md">
               {canGrade && (
-                <button
+                <button data-cy="grading-open-final"
                   type="button"
                   onClick={() => { if (!finalBlockReason) setIsFinalApproveModalOpen(true); }}
                   disabled={Boolean(finalBlockReason)}
@@ -1300,7 +1300,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                         ) : <span className="text-xs text-slate-500">Không có ảnh nháp đính kèm.</span>}
 
                         {canGrade && !finalResultLocked && (
-                          <button
+                          <button data-cy="grading-open-void"
                             type="button"
                             disabled={gradingBusy}
                             onClick={() => { if (allowNavigation()) { setVoidImpactAcknowledged(false); setIsVoidModalOpen(true); } }}
@@ -1476,7 +1476,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                           </button>
                           )}
                           {currentQuestion.rubricGrade && !showGradeForm && <RubricGradeView grade={currentQuestion.rubricGrade} />}
-                          {!showGradeForm && questionActions.canEdit && <button type="button" disabled={gradingBusy} onClick={() => { loadGradeForm(); setIsEditingGrade(true); }} className="text-xs font-bold text-indigo-600 dark:text-indigo-300 underline disabled:opacity-50">{questionActions.reviewed ? "Chỉnh sửa đánh giá đã lưu" : "Điều chỉnh điểm / chấm trực tiếp"}</button>}
+                          {!showGradeForm && questionActions.canEdit && <button data-cy="grading-open-form" type="button" disabled={gradingBusy} onClick={() => { loadGradeForm(); setIsEditingGrade(true); }} className="text-xs font-bold text-indigo-600 dark:text-indigo-300 underline disabled:opacity-50">{questionActions.reviewed ? "Chỉnh sửa đánh giá đã lưu" : "Điều chỉnh điểm / chấm trực tiếp"}</button>}
                           {showGradeForm && <fieldset disabled={gradingBusy} className="space-y-4 disabled:opacity-60">
                           {gradeChangedOnServer && <p role="alert" className="text-xs text-amber-700 dark:text-amber-300">Kết quả trên server đã thay đổi. Nội dung đang sửa được giữ lại, nhưng không thể lưu đè. Hãy hủy thay đổi để xem phiên bản mới.</p>}
                           <p className="text-xs text-slate-500">{questionActions.needsManualGrade ? "Câu này chưa có điểm xác định. Giáo viên chấm trực tiếp dựa trên bài làm." : "Lưu ở đây thay cho thao tác xác nhận. Kết quả toàn bài sẽ cần được chốt lại sau khi chỉnh sửa."}</p>
@@ -1507,6 +1507,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                               </label>
                               <div className="flex items-center">
                                 <input
+                                  data-cy="grading-score"
                                   type="number"
                                   min={0}
                                   max={10}
@@ -1525,7 +1526,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                                 Đánh giá kết quả
                               </label>
                               <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-                                <button
+                                <button data-cy="grading-correct"
                                   type="button"
                                   onClick={() => {
                                     setIsCorrectVal(true);
@@ -1607,7 +1608,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                             <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
                               Lời nhận xét của giáo viên gửi học sinh <span className="text-rose-500">*</span>
                             </label>
-                            <textarea
+                            <textarea data-cy="grading-feedback"
                               rows={2}
                               value={feedbackVal}
                               onChange={(e) => setFeedbackVal(e.target.value)}
@@ -1621,7 +1622,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                             <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
                               Căn cứ chấm / lý do điều chỉnh {!questionActions.needsManualGrade && <span className="text-rose-500">*</span>}
                             </label>
-                            <input
+                            <input data-cy="grading-reason"
                               type="text"
                               value={overrideReasonVal}
                               onChange={(e) => setOverrideReasonVal(e.target.value)}
@@ -1649,7 +1650,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                           </div>
 
                           {/* Save Button */}
-                          <button
+                          <button data-cy="grading-save"
                             type="button"
                             onClick={handleSaveQuestionGrade}
                             disabled={gradingBusy || gradeChangedOnServer || !questionActions.canEdit}
@@ -1717,7 +1718,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
             </p>
             <div>
               <label className="block text-xs font-bold mb-1">Lý do hủy câu hỏi:</label>
-              <textarea
+              <textarea data-cy="grading-void-reason"
                 rows={2}
                 value={voidReason}
                 onChange={(e) => setVoidReason(e.target.value)}
@@ -1764,7 +1765,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
             <h3 className="text-lg font-bold text-amber-700 dark:text-amber-300">Mở lại để điều chỉnh</h3>
             <p className="text-sm">Mở lại kết quả của <strong>{selectedStudent.fullName}</strong> trong <strong>{selectedAssignment.title}</strong>. Bài làm đã nộp được giữ nguyên; đây không phải yêu cầu học sinh làm lại. Sau khi sửa đánh giá, cần chốt lại toàn bài.</p>
             <label className="block text-sm font-bold">Lý do mở lại (bắt buộc)
-              <textarea rows={3} maxLength={1000} value={reopenReason} onChange={e => setReopenReason(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 p-3 text-sm text-slate-900 dark:text-slate-100" />
+              <textarea data-cy="grading-reopen-reason" rows={3} maxLength={1000} value={reopenReason} onChange={e => setReopenReason(e.target.value)} className="mt-2 w-full rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 p-3 text-sm text-slate-900 dark:text-slate-100" />
             </label>
             <div className="flex justify-end gap-2">
               <button type="button" disabled={gradingBusy} onClick={() => setIsReopenModalOpen(false)} className="rounded-lg border border-slate-300 dark:border-slate-500 bg-slate-100 dark:bg-slate-700 px-4 py-2 text-sm">Hủy</button>
@@ -1788,7 +1789,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
             <p role="status" className="text-xs text-slate-500">{finalBlockReason ?? "Không còn câu chưa nộp, đang phân tích hoặc cần giáo viên xử lý. Server sẽ kiểm tra lại trước khi chốt."}</p>
             <div>
               <label className="block text-xs font-bold mb-1">Ghi chú tổng kết của giáo viên:</label>
-              <textarea
+              <textarea data-cy="grading-final-note"
                 rows={3}
                 value={finalApproveNote}
                 onChange={(e) => setFinalApproveNote(e.target.value)}

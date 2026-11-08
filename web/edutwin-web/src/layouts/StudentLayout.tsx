@@ -243,7 +243,7 @@ export const StudentLayout: React.FC = () => {
 
               {/* Student User Profile Dropdown */}
               <div className="relative shrink-0">
-                <button
+                <button data-cy="student-account-menu"
                   type="button"
                   onClick={() => setIsProfileDropdownOpen((prev) => !prev)}
                   className="flex items-center gap-2 p-1 pl-1.5 rounded-xl hover:bg-[var(--student-surface-subtle,#F4F3EE)] dark:hover:bg-[var(--student-surface-subtle,#1C2738)] transition-colors focus-visible:outline-indigo-600 border border-[var(--student-border,#E8E6DF)] cursor-pointer shadow-2xs"
@@ -277,7 +277,7 @@ export const StudentLayout: React.FC = () => {
                       ) : null}
                     </div>
 
-                    <button
+                    <button data-cy="account-security-open"
                       type="button"
                       onClick={() => {
                         setIsProfileDropdownOpen(false);
@@ -489,7 +489,7 @@ export const StudentLayout: React.FC = () => {
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 w-full min-w-0 pb-12">
+      <main data-cy="student-workspace" className="flex-1 w-full min-w-0 pb-12">
         <Outlet />
       </main>
 

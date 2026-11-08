@@ -772,7 +772,7 @@ export function TeacherAssignmentEditorView() {
       {canRescheduleExam && <section className="th-surface space-y-3 p-4" aria-label="Điều chỉnh lịch thi đã công bố">
         <h2 className="font-semibold">Điều chỉnh lịch thi đã công bố</h2>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="text-sm">Ngày giờ thi<input type="datetime-local" className="th-input mt-1 block" min={minDateTime} value={examAt} onChange={e => setExamAt(e.target.value)} /></label>
+          <label className="text-sm">Ngày giờ thi<input data-cy="assignment-exam-at" type="datetime-local" className="th-input mt-1 block" min={minDateTime} value={examAt} onChange={e => setExamAt(e.target.value)} /></label>
           <label className="text-sm">Thời lượng (phút)<input type="number" min={1} className="th-input mt-1 block" value={effectiveTimeLimitMinutes ?? ""} onChange={e => handleTimeLimitChange(e.target.value, "minutes")} /></label>
           <button type="button" disabled={updateMutation.isPending} className="th-primary-button" onClick={saveExamSchedule}>{updateMutation.isPending ? "Đang cập nhật…" : "Lưu lịch thi"}</button>
         </div>
@@ -864,7 +864,7 @@ export function TeacherAssignmentEditorView() {
                 </label>
                 <span className="text-[10px] text-[var(--th-text-muted)]">{title.length}/200 ký tự</span>
               </div>
-              <input
+              <input data-cy="assignment-title"
                 id="title"
                 name="title"
                 type="text"
@@ -889,7 +889,7 @@ export function TeacherAssignmentEditorView() {
                   className="th-input w-full text-sm opacity-70 cursor-not-allowed bg-[var(--th-surface-subtle)]"
                 />
               ) : (
-                <select
+                <select data-cy="assignment-class-select"
                   id="assignment-class-select"
                   disabled={isReadOnly || isLoadingClasses}
                   value={classId}
@@ -912,12 +912,12 @@ export function TeacherAssignmentEditorView() {
             </div>
 
             <div>
-              <label className="mb-4 block text-xs font-semibold text-[var(--th-text-muted)]">Phân loại bài<select className="th-input mt-1 w-full text-sm" value={kind} disabled={isReadOnly} onChange={e => setKind(e.target.value)}><option value="Regular">Bài tập thường</option><option value="Midterm">Thi giữa kỳ</option><option value="Final">Thi cuối kỳ</option><option value="MockExam">Thi thử</option></select></label>
-              {kind !== "Regular" && <label className="mb-4 block text-xs font-semibold text-[var(--th-text-muted)]">Ngày giờ thi<input type="datetime-local" className="th-input mt-1 w-full text-sm" min={minDateTime} disabled={isReadOnly} value={examAt} onChange={e => setExamAt(e.target.value)} /><span className="mt-1 block font-normal">Bài thi đã công bố sẽ xuất hiện trong lộ trình học sinh thuộc phạm vi giao bài.</span></label>}
+              <label className="mb-4 block text-xs font-semibold text-[var(--th-text-muted)]">Phân loại bài<select data-cy="assignment-kind" className="th-input mt-1 w-full text-sm" value={kind} disabled={isReadOnly} onChange={e => setKind(e.target.value)}><option value="Regular">Bài tập thường</option><option value="Midterm">Thi giữa kỳ</option><option value="Final">Thi cuối kỳ</option><option value="MockExam">Thi thử</option></select></label>
+              {kind !== "Regular" && <label className="mb-4 block text-xs font-semibold text-[var(--th-text-muted)]">Ngày giờ thi<input data-cy="assignment-exam-at" type="datetime-local" className="th-input mt-1 w-full text-sm" min={minDateTime} disabled={isReadOnly} value={examAt} onChange={e => setExamAt(e.target.value)} /><span className="mt-1 block font-normal">Bài thi đã công bố sẽ xuất hiện trong lộ trình học sinh thuộc phạm vi giao bài.</span></label>}
               <label htmlFor="teacher-assignment-dueat-input" className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1">
                 Hạn chót nộp bài (tùy chọn)
               </label>
-              <input
+              <input data-cy="teacher-assignment-dueat-input"
                 id="teacher-assignment-dueat-input"
                 type="datetime-local"
                 min={minDateTime}
@@ -949,7 +949,7 @@ export function TeacherAssignmentEditorView() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <input
+                <input data-cy="teacher-assignment-timelimit-input"
                   id="teacher-assignment-timelimit-input"
                   type="number"
                   min="1"
@@ -1000,7 +1000,7 @@ export function TeacherAssignmentEditorView() {
                 </label>
                 <span className="text-[10px] text-[var(--th-text-muted)]">{instructions.length}/2000 ký tự</span>
               </div>
-              <textarea
+              <textarea data-cy="assignment-instructions"
                 rows={4}
                 disabled={isReadOnly}
                 maxLength={2000}
@@ -1012,7 +1012,7 @@ export function TeacherAssignmentEditorView() {
             </div>
 
             <div className="pt-4 flex justify-end">
-              <button
+              <button data-cy="assignment-next-questions"
                 type="button"
                 onClick={() => handleStepChange(1)}
                 className="th-primary-button text-xs py-2 px-5"
@@ -1043,7 +1043,7 @@ export function TeacherAssignmentEditorView() {
                   <label htmlFor="teacher-q-topic-filter" className="text-xs text-[var(--th-text-secondary)] whitespace-nowrap">
                     Đồ thị tri thức:
                   </label>
-                  <select
+                  <select data-cy="teacher-q-topic-filter"
                     id="teacher-q-topic-filter"
                     value={questionTopicId}
                     onChange={(e) => {
@@ -1079,7 +1079,7 @@ export function TeacherAssignmentEditorView() {
                   <label htmlFor="teacher-q-grade-filter" className="text-xs text-[var(--th-text-secondary)] whitespace-nowrap">
                     Khối:
                   </label>
-                  <select
+                  <select data-cy="teacher-q-grade-filter"
                     id="teacher-q-grade-filter"
                     value={questionGradeFilter}
                     onChange={(e) => {
@@ -1102,7 +1102,7 @@ export function TeacherAssignmentEditorView() {
                   <label htmlFor="teacher-q-diff-filter" className="text-xs text-[var(--th-text-secondary)] whitespace-nowrap">
                     Lọc độ khó:
                   </label>
-                  <select
+                  <select data-cy="teacher-q-diff-filter"
                     id="teacher-q-diff-filter"
                     value={questionDifficulty}
                     onChange={(e) => {
@@ -1138,7 +1138,7 @@ export function TeacherAssignmentEditorView() {
                 </div>
 
                 <div className="flex items-center gap-2 pt-1 border-t border-amber-500/20">
-                  <input
+                  <input data-cy="chk-allow-grade-mismatch"
                     type="checkbox"
                     id="chk-allow-grade-mismatch"
                     checked={allowGradeMismatch}
@@ -1161,7 +1161,7 @@ export function TeacherAssignmentEditorView() {
                         {gradeMismatchReason.length}/500 ký tự
                       </span>
                     </div>
-                    <textarea
+                    <textarea data-cy="txt-grade-mismatch-reason"
                       id="txt-grade-mismatch-reason"
                       name="gradeMismatchReason"
                       value={gradeMismatchReason}
@@ -1291,7 +1291,7 @@ export function TeacherAssignmentEditorView() {
               >
                 ← Quay lại
               </button>
-              <button
+              <button data-cy="assignment-next-audience"
                 type="button"
                 onClick={() => handleStepChange(2)}
                 className="th-primary-button text-xs py-2 px-5"
@@ -1424,7 +1424,7 @@ export function TeacherAssignmentEditorView() {
               >
                 ← Quay lại: Chọn câu hỏi
               </button>
-              <button
+              <button data-cy="assignment-next-review"
                 type="button"
                 onClick={() => handleStepChange(3)}
                 className="th-primary-button text-xs py-2 px-5"

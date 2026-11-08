@@ -12,7 +12,7 @@ export function QuestionImageEditor({ value, existingQuestionId, hasExistingImag
     <p className="text-sm opacity-80">Có thể dùng ảnh chứa toàn bộ đề, không cần gõ lại nội dung. Vẫn nhập đáp án, lời giải và tiêu chí chấm bên dưới. Hãy cắt ảnh rõ chữ và ký hiệu, không đưa thông tin cá nhân vào ảnh.</p>
     <label className="inline-flex cursor-pointer items-center rounded-lg border border-indigo-400 px-4 py-2 text-sm font-semibold">
       {busy ? "Đang xử lý ảnh..." : "Chọn ảnh PNG / JPG / WebP"}
-      <input aria-label="Chọn ảnh đề bài" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} className="sr-only" onChange={async e => {
+      <input data-cy="question-image-file" aria-label="Chọn ảnh đề bài" type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} className="sr-only" onChange={async e => {
         const file = e.target.files?.[0]; e.target.value = ""; if (!file) return;
         setError(""); setBusy(true); onBusyChange(true);
         try { onChange(await normalizeQuestionImage(file), false); }

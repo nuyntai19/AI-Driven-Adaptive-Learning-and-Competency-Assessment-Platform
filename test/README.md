@@ -7,6 +7,10 @@ Thư mục `test/` chứa hai bộ chạy độc lập:
 
 Không thay đổi mã nghiệp vụ của ứng dụng. Các kiểm thử có thể phát hiện lỗi hiện hữu; một response `500`, test bị bỏ qua hoặc thiếu fixture đều không được tính là đạt.
 
+Khi thay đổi giao diện, đọc [lưu ý cho developer UI](UI_CHANGE_GUIDE.md) về `data-cy`, screen helper và cách giữ các kiểm tra nghiệp vụ/security.
+
+Spec được chia thành `cypress/e2e/api/` và `cypress/e2e/ui/`. Payload tổng hợp nằm trong `cypress/fixtures/`, selector/thao tác UI trong `cypress/screens/`, assertion dùng chung trong `cypress/support/`. Hiện có 23 spec với 353 case: 187 API và 166 UI. Trong đó, 159 case mới ở `ui/validation/` mở trang/modal và nhập, chọn, bấm trên giao diện thật. Xem [ma trận validation UI](UI_VALIDATION_COVERAGE.md) để biết từng nhóm chức năng, field và giới hạn coverage.
+
 ## 1. Cài đặt Cypress
 
 Cần Node.js 22/24/26 phù hợp yêu cầu Cypress 16, Docker Desktop đang chạy, và cấu hình `.env` local của repository.
@@ -40,6 +44,7 @@ Runner sử dụng `scripts/e2e/acceptance_stack.cjs`:
 - Xác minh manifest, tên schema, origin và nhãn owner Docker trước khi chạy.
 - Dọn hai container và schema do lần chạy này tạo, kể cả khi Cypress lỗi.
 - Không cấp Gemini key cho acceptance stack; các test xử lý bất đồng bộ kiểm tra luồng fallback. Chấm AI thật thuộc bộ chạy ở mục 4.
+- Worker thông báo vẫn chạy thật; chỉ đặt chu kỳ poll 1 giây trong runtime test để xử lý các sự kiện fixture trước khi mở inbox.
 
 Harness hiện tại dùng network `edutwin_default` và image `edutwin-api:latest` / `edutwin-web:latest`. Không chạy trên image cũ để kết luận về source mới.
 Nếu đã tồn tại manifest acceptance, runner dừng để tránh ghi đè tài nguyên của lần chạy khác. Kiểm tra và phục hồi bằng harness hiện có trước khi chạy lại.
@@ -47,7 +52,10 @@ Nếu đã tồn tại manifest acceptance, runner dừng để tránh ghi đè 
 Chọn một spec hoặc trình duyệt:
 
 ```powershell
-npm run e2e -- --spec cypress/e2e/01-authentication.cy.js
+npm run e2e:api
+npm run e2e:ui
+npm run e2e:ui:validation -- --browser chrome --headed
+npm run e2e -- --spec cypress/e2e/ui/01-authentication.cy.js
 npm run e2e -- --browser chrome --headed
 ```
 
@@ -79,6 +87,7 @@ Không đổi `baseUrl` sang runtime chính: config sẽ từ chối.
 | Thông báo | Chính sách nội dung, preview token, sửa nội dung sau preview, audience và quyền gửi. |
 | Học thích ứng | Các tham số phiên luyện tập và mục tiêu/lộ trình; thiếu schema là lỗi điều kiện chạy. |
 | Trình duyệt | Đường dẫn không đủ quyền và hiển thị HTML/KaTeX độc hại trong dữ liệu đã lưu. |
+| Validation trên UI thật | Form tổ chức, tài khoản, phân quyền, platform, soạn nội dung, giao/chấm/làm bài, mục tiêu/lộ trình, luyện tập và thông báo: required, giới hạn chuỗi/số, mật khẩu, file picker, lỗi trả về và trạng thái nút. [Ma trận chi tiết](UI_VALIDATION_COVERAGE.md). |
 
 Các case cụ thể nằm trong `cypress/e2e/`. Kiểm tra auth toàn bộ route không thay thế validation từng field; đây là ma trận các biên nghiệp vụ trọng tâm, không phải chứng minh mọi tổ hợp input đều an toàn.
 Một số trường được phép lưu HTML dưới dạng **văn bản**. Test kiểm tra không thực thi script khi hiển thị, không mặc định đòi server phải xóa mọi dấu `<`/`>`.
