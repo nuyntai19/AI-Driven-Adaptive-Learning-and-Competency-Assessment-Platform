@@ -52,6 +52,14 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
     const timer = setInterval(() => setActiveSeconds(v => v + 1), 1000);
     return () => clearInterval(timer);
   }, [paused, runActive, current]);
+  // Lock the page behind the fullscreen player: without this the underlying
+  // page keeps its own scrollbar next to the player's (two scrollbars at once).
+  useEffect(() => {
+    if (!isOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previous; };
+  }, [isOpen]);
   const abandon = useMutation({ mutationFn: () => abandonMissionRun(mission!.missionId, run.data!.sessionRunId), onSuccess: () => close() });
   const submittedCount = run.data?.activities.filter(done).length ?? 0;
   const independentRun = !!run.data?.activities.some(a => a.activityType === "IndependentCheck" || a.activityType === "TransferChallenge");
@@ -69,7 +77,8 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
           <button className="rounded-lg border px-3 py-1" aria-label="Đóng và giữ tiến độ" title="Đóng · tiến độ và bản nháp được giữ" onClick={close}>×</button>
         </div>
       </header>
-      <div className="min-h-0 w-full max-w-5xl flex-1 space-y-5 self-center overflow-y-auto p-5 sm:p-7">
+      <div className="min-h-0 w-full flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-5xl space-y-5 p-5 sm:p-7">
         {remainingSeconds != null && !reviewing && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Bài bấm giờ: đồng hồ tiếp tục chạy khi đóng cửa sổ. Hết giờ sẽ giữ các câu đã nộp và kết thúc lượt.</p>}
         {reviewing && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">Đang xem lại lượt học đã lưu. Không tạo lượt làm mới.</p>}
         {run.isPending && <p role="status">Đang mở nhiệm vụ và khôi phục tiến độ…</p>}
@@ -159,6 +168,7 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
         })}
         {!current && !feedbackActivity && run.data?.activities.filter(a => a.question && done(a)).map(a => <details key={a.activityRunId} className="rounded-xl border border-slate-200 p-4"><summary className="cursor-pointer font-semibold">Xem lại câu {a.activityOrder}</summary><RichMathText className="mt-3" text={a.question!.question.questionText} />
           {a.learningFeedback ? <><Feedback feedback={a.learningFeedback} /><TutorFeedback activity={a} /></> : <button className="mt-3 underline" onClick={() => void run.refetch()}>Tải lời giải sau khi nộp cả bộ</button>}</details>)}
+      </div>
       </div>
     </section>
   </div>;
@@ -342,7 +352,7 @@ function Activity({ activity: a, onSubmitted, paused }: { activity: ActivityRunD
     </article>}
     {q && <article><RichMathText text={q.questionText} className="whitespace-pre-wrap text-base leading-relaxed" /><QuestionImage questionId={q.questionId} hasImage={q.hasImage ?? false} />
       {q.options?.length > 0 && <fieldset className="mt-4 space-y-2"><legend className="sr-only">Chọn đáp án</legend>{q.options.map(o => <label className="flex gap-3 rounded-xl border border-slate-200 p-3" key={o.optionId}>
-        <input required type="radio" name={`answer-${a.activityRunId}`} value={o.optionId} checked={answer === o.optionId} onChange={e => setAnswer(e.target.value)} /><span>{o.label}. {o.text}</span></label>)}</fieldset>}
+        <input required type="radio" name={`answer-${a.activityRunId}`} value={o.optionId} checked={answer === o.optionId} onChange={e => setAnswer(e.target.value)} /><span>{o.label}. <RichMathText text={o.text} /></span></label>)}</fieldset>}
     </article>}
     {a.activityType === "FindError" && <label className="block text-sm font-medium">Bước nào sai?<input required className={field} value={errorStep} onChange={e => setErrorStep(e.target.value)} placeholder="Số bước" /></label>}
     {!q?.options?.length && <div className="space-y-3">
@@ -386,7 +396,7 @@ function Activity({ activity: a, onSubmitted, paused }: { activity: ActivityRunD
       {lastHint?.policyNotice && <p className="text-xs text-amber-800">{lastHint.policyNotice}</p>}
     </section>}
     {notice && <p role="status" className="text-sm text-slate-500">{notice}</p>}
-    {(submit.error || assist.error) && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{(submit.error ?? assist.error)?.message}</p>}
+    {(submit.error || assist.error) && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{extractProblemDetails(submit.error ?? assist.error).message}</p>}
     <div className="flex flex-wrap gap-3"><button disabled={submit.isPending || save.isPending || conflict} type="submit" className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white disabled:opacity-40">{submit.isPending ? "Đang lưu bài…" : q ? "Nộp câu trả lời" : "Hoàn thành hoạt động"}</button>
       <button type="button" disabled={save.isPending || conflict} className="rounded-xl border px-4 py-3" onClick={() => save.mutate(currentDraft)}>Lưu bản nháp</button>
       {q && <button type="button" disabled={submit.isPending || save.isPending || conflict} className="rounded-xl border px-4 py-3" onClick={() => submit.mutate(true)}>Bỏ qua câu này</button>}
