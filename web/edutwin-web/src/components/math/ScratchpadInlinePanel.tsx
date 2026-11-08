@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode } from "react";
 import type {
   ScratchpadDraft,
   ScratchpadGrid,
@@ -47,6 +47,10 @@ export interface ScratchpadInlinePanelProps {
   /** Image shown under the ink layer (previous snapshot / notebook photo) so
    *  the student can keep working on top of the old page and rescan it. */
   backgroundImageUrl?: string | null;
+  /** The question being worked on. Shown as a collapsible strip above the
+   *  canvas while the board is expanded fullscreen, so the student can
+   *  still read the problem while writing. */
+  questionNode?: ReactNode;
   onExportPng?: (blob: Blob) => void;
   onAttachSnapshot?: (blob: Blob, dataUrl: string) => void;
 }
@@ -66,6 +70,7 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
   isAttached = false,
   isReadOnly = false,
   backgroundImageUrl = null,
+  questionNode,
   onExportPng,
   onAttachSnapshot,
 }, ref) => {
@@ -97,6 +102,7 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
   // screen so the writing area is as large as possible; strokes, zoom and
   // pan are untouched because only the container changes size.
   const [expanded, setExpanded] = useState<boolean>(false);
+  const [questionCollapsed, setQuestionCollapsed] = useState<boolean>(false);
   useEffect(() => {
     if (!expanded) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setExpanded(false); };
@@ -596,6 +602,28 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Question strip: only in fullscreen mode, where the page behind
+          (which normally shows the problem) is covered by the board. */}
+      {expanded && questionNode && (
+        <div className="shrink-0 border-b border-amber-200 dark:border-slate-800 bg-amber-50/80 dark:bg-slate-950 px-4 py-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[11px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">📋 Đề bài</span>
+            <button
+              type="button"
+              onClick={() => setQuestionCollapsed(v => !v)}
+              className="px-2 py-0.5 text-[11px] font-bold rounded-lg border border-amber-300 dark:border-slate-700 bg-white/70 dark:bg-slate-900 text-slate-600 dark:text-slate-300 cursor-pointer"
+            >
+              {questionCollapsed ? "Hiện đề" : "Thu gọn đề"}
+            </button>
+          </div>
+          {!questionCollapsed && (
+            <div className="mt-1.5 max-h-44 overflow-y-auto text-sm leading-relaxed text-slate-800 dark:text-slate-100">
+              {questionNode}
+            </div>
+          )}
         </div>
       )}
 

@@ -424,6 +424,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
                             clientSubmissionId={`adaptive:${sessionId}:${question.sessionItemId}`}
                             backgroundImageUrl={photoDataUrl}
                             onAttachSnapshot={(_blob, url) => setPhotoDataUrl(url)}
+                            questionNode={<RichMathText text={question.questionText} />}
                           />
                         </div>
                       </div>
