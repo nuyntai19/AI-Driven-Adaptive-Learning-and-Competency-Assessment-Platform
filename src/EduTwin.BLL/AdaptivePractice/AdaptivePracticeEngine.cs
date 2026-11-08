@@ -869,11 +869,18 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             .Take(limit)
             .ToListAsync(ct);
 
-        var sessionIds = list.Select(s => s.SessionId).ToList();
-        var summaries = await _dbContext.AdaptivePracticeSessionSummaries
-            .AsNoTracking()
-            .Where(sum => sum.CenterId == centerId && sessionIds.Contains(sum.SessionId))
-            .ToDictionaryAsync(sum => sum.SessionId, ct);
+        // Do NOT filter summaries with sessionIds.Contains(...) in the query:
+        // the MySQL provider cannot assign a type mapping to the Guid IN
+        // parameter ("@sessionIds has no type mapping") and the whole history
+        // endpoint 500s — for empty AND non-empty id lists alike. Fetch the
+        // student's own summaries (a small set) and match ids in memory.
+        var sessionIdSet = list.Select(s => s.SessionId).ToHashSet();
+        var summaries = (await _dbContext.AdaptivePracticeSessionSummaries
+                .AsNoTracking()
+                .Where(sum => sum.CenterId == centerId && sum.StudentId == studentId)
+                .ToListAsync(ct))
+            .Where(sum => sessionIdSet.Contains(sum.SessionId))
+            .ToDictionary(sum => sum.SessionId);
 
         return list.Select(s =>
         {
