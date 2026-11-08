@@ -93,6 +93,17 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
   const startPointRef = useRef<ScratchpadPoint | null>(null);
   const previewPointRef = useRef<ScratchpadPoint | null>(null);
 
+  // Expanded (fullscreen) writing mode: the board takes over the whole
+  // screen so the writing area is as large as possible; strokes, zoom and
+  // pan are untouched because only the container changes size.
+  const [expanded, setExpanded] = useState<boolean>(false);
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setExpanded(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded]);
+
   // Zoom & Pan state
   const [zoom, setZoom] = useState<number>(1.0);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -438,7 +449,9 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
   };
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-700/80 shadow-2xl">
+    <div className={expanded
+      ? "fixed inset-0 z-[80] flex flex-col bg-white dark:bg-slate-900 overflow-hidden"
+      : "flex flex-col h-full bg-white dark:bg-slate-900 rounded-2xl overflow-hidden border border-slate-700/80 shadow-2xl"}>
       {/* Top Controls Bar */}
       {isReadOnly ? (
         <div className="p-3 bg-slate-100 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs shrink-0">
@@ -504,6 +517,14 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
                 title="Xóa hết nét vẽ"
               >
                 Xóa hết
+              </button>
+              <button
+                type="button"
+                onClick={() => setExpanded(v => !v)}
+                className="px-2.5 py-1 text-xs font-bold rounded-lg border border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 cursor-pointer"
+                title={expanded ? "Thu nhỏ bảng vẽ (Esc)" : "Phóng bảng vẽ ra toàn màn hình để có chỗ viết thật rộng"}
+              >
+                {expanded ? "✕ Thu nhỏ" : "⛶ Phóng to"}
               </button>
             </div>
           </div>
