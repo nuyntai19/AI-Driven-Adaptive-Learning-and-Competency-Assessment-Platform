@@ -1,7 +1,8 @@
 import React, { useEffect } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { organizationApi } from "../../api/organizationApi";
+import { useAuthStore } from "../../stores/authStore";
+import { readLastStudentSubject, rememberStudentSubject } from "../../utils/studentSubjectScope";
+import { useStudentSubjects } from "../../utils/useStudentSubjects";
 import { getSubjectTheme } from "./subjectTheme";
 
 interface StudentSubjectRequiredStateProps {
@@ -9,37 +10,24 @@ interface StudentSubjectRequiredStateProps {
 }
 
 export const StudentSubjectRequiredState: React.FC<StudentSubjectRequiredStateProps> = ({ onSelect }) => {
-  const subjectsQuery = useQuery({
-    queryKey: ["subjects", "student-workspace", "active"],
-    queryFn: () => organizationApi.listSubjects(true),
-  });
-
-  const subjects = subjectsQuery.data?.data || [];
+  const userId = useAuthStore((state) => state.user?.userId);
+  const subjectsQuery = useStudentSubjects();
+  const { subjects } = subjectsQuery;
+  const subjectIds = subjects.map((s) => s.subjectId).join();
 
   useEffect(() => {
-    if (subjects.length === 0) return;
-
-    try {
-      const savedSubjectId = localStorage.getItem("edutwin_last_subject_id");
-      if (savedSubjectId && subjects.some((s) => s.subjectId === savedSubjectId)) {
-        onSelect(savedSubjectId);
-        return;
-      }
-    } catch {
-      // Ignore storage errors
+    if (!subjectIds) return;
+    const ids = subjectIds.split(",");
+    const savedSubjectId = readLastStudentSubject(userId);
+    if (savedSubjectId && ids.includes(savedSubjectId)) {
+      onSelect(savedSubjectId);
+    } else if (ids.length === 1) {
+      onSelect(ids[0]);
     }
-
-    if (subjects.length === 1) {
-      onSelect(subjects[0].subjectId);
-    }
-  }, [subjects, onSelect]);
+  }, [subjectIds, userId, onSelect]);
 
   const handleChooseSubject = (subjectId: string) => {
-    try {
-      localStorage.setItem("edutwin_last_subject_id", subjectId);
-    } catch {
-      // Ignore storage errors
-    }
+    rememberStudentSubject(userId, subjectId);
     onSelect(subjectId);
   };
 

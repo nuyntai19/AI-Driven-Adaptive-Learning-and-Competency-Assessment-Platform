@@ -8,7 +8,6 @@ import { useStudentAssignment } from "../features/assignments/useStudentAssignme
 import { RichMathText } from "../components/math/RichMathText";
 import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentBadge } from "../components/student/StudentBadge";
-import { StudentSubjectPattern } from "../components/student/StudentSubjectPattern";
 import type { ProgressStatus, StudentAssignmentQuestionDto } from "../types/assignments";
 import { studentScopeUrl } from "../utils/studentAcademicNavigation";
 
@@ -174,7 +173,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5 min-w-0 student-shell">
+    <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-3 min-w-0 student-shell">
       {/* Navigation Breadcrumb */}
       <div>
         <Link
@@ -190,18 +189,10 @@ export const StudentAssignmentDetailPage: React.FC = () => {
         <p>{assignment.readOnlyReason || "Bạn đang xem lịch sử lớp học. Không thể bắt đầu hoặc nộp thêm câu mới; bài làm và kết quả đã lưu vẫn được giữ nguyên."}</p>
       </div>}
 
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-5 items-start">
       {/* Assignment Overview Workspace Card */}
-      <div className="relative rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/90 dark:border-stone-800/90 p-5 sm:p-6 shadow-xs overflow-hidden">
-        {/* Subtle Subject Graphic Pattern */}
-        <StudentSubjectPattern subjectName={subjectName} opacity={0.05} />
-
-        {/* Left accent rail */}
-        <div
-          className="absolute left-0 top-0 bottom-0 w-1"
-          style={{ backgroundColor: subjectTheme.color }}
-        />
-
-        <div className="pl-2 space-y-4 relative z-10">
+      <div className="xl:sticky xl:top-72 rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/90 dark:border-stone-800/90 p-5 shadow-xs">
+        <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <span
@@ -256,7 +247,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
               </span>
               <div className="flex items-center gap-3 text-stone-500 dark:text-stone-400">
                 <span>
-                  Thời gian: {formatTimeLimit(assignment.timeLimitMinutes)}
+                  Thời gian làm bài: {formatTimeLimit(assignment.timeLimitMinutes)}
                 </span>
                 {assignment.dueAt && (
                   <span>
@@ -288,20 +279,14 @@ export const StudentAssignmentDetailPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Questions list header */}
-      <div className="flex items-center justify-between pt-2">
-        <h2 className="text-sm sm:text-base font-bold text-stone-900 dark:text-stone-100">
-          Danh sách câu hỏi ({questions.length})
-        </h2>
-        <span className="text-xs text-stone-500 dark:text-stone-400 font-medium">
-          Thời gian làm bài: {formatTimeLimit(assignment.timeLimitMinutes)}
-        </span>
-      </div>
+      <div className="min-w-0 space-y-3">
+      <h2 className="text-sm sm:text-base font-bold text-stone-900 dark:text-stone-100">
+        Danh sách câu hỏi ({questions.length})
+      </h2>
 
       {/* Question Items List */}
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {questions.map((question, index) => {
-          const formattedId = `Q-${String(index + 1).padStart(2, "0")}`;
           const timeSec = question.estimatedTimeSeconds || 120;
           const isDone =
             Boolean(question.latestAttempt) ||
@@ -311,16 +296,13 @@ export const StudentAssignmentDetailPage: React.FC = () => {
           return (
             <div
               key={question.questionId}
-              className="rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/90 dark:border-stone-800/90 p-5 shadow-xs hover:border-stone-300 dark:hover:border-stone-700 transition-all space-y-3"
+              className="rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/90 dark:border-stone-800/90 p-4 shadow-xs space-y-2.5"
             >
               {/* Question header */}
-              <div className="flex items-center justify-between gap-3 pb-3 border-b border-stone-100 dark:border-stone-800/80">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-mono font-bold text-stone-700 dark:text-stone-300">
+                  <span className="text-sm font-bold text-stone-800 dark:text-stone-200">
                     Câu {index + 1}
-                  </span>
-                  <span className="text-[11px] font-mono text-stone-400">
-                    {formattedId}
                   </span>
                   <span className="text-[11px] px-2 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 font-medium">
                     {getQuestionTypeLabel(question.questionType)}
@@ -328,10 +310,22 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                   <span className="text-[11px] px-2 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 font-medium">
                     {getDifficultyLabel(question.difficulty)}
                   </span>
+                  <span className="text-[11px] text-stone-400 dark:text-stone-500">~{Math.round(timeSec / 60)} phút</span>
                 </div>
 
-                <div>
+                <div className="flex items-center gap-2.5">
                   {renderAttemptStatusBadge(question)}
+                  {!examUpcoming && <Link
+                    to={studentScopeUrl(`/hoc-tap/luyen-tap/${question.questionId}`, searchParams, { assignmentId:assignment.assignmentId })}
+                    className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] motion-reduce:transform-none ${
+                      isDone || isReadOnly
+                        ? "text-stone-700 dark:text-stone-200 border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800"
+                        : "text-stone-100 bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200"
+                    }`}
+                  >
+                    <span>{isDone || isReadOnly ? "Xem lại" : "Làm câu này"}</span>
+                    <span className="text-[11px]">→</span>
+                  </Link>}
                 </div>
               </div>
 
@@ -368,28 +362,11 @@ export const StudentAssignmentDetailPage: React.FC = () => {
                   ))}
                 </div>
               )}
-
-              {/* Footer row */}
-              <div className="pt-2 border-t border-stone-100 dark:border-stone-800/80 flex items-center justify-between">
-                <span className="text-xs text-stone-400 dark:text-stone-500">
-                  Thời lượng ước tính: ~{Math.round(timeSec / 60)} phút
-                </span>
-
-                {!examUpcoming && <Link
-                  to={studentScopeUrl(`/hoc-tap/luyen-tap/${question.questionId}`, searchParams, { assignmentId:assignment.assignmentId })}
-                  className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                    isDone || isReadOnly
-                      ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/80 hover:bg-emerald-100"
-                      : "text-stone-100 bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200"
-                  }`}
-                >
-                  <span>{isDone || isReadOnly ? "Xem lại" : "Làm câu này"}</span>
-                  <span className="text-[11px]">→</span>
-                </Link>}
-              </div>
             </div>
           );
         })}
+      </div>
+      </div>
       </div>
     </div>
   );

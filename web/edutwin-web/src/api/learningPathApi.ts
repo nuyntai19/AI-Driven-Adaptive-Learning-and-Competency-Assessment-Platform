@@ -165,7 +165,7 @@ export const getCapabilityMap = async (
 
 export const getLearningAgenda = async (
   subjectId: string,
-  availableMinutes: number = 15,
+  availableMinutes?: number,
   classId?: string
 ): Promise<import("../types/learningPath").LearningAgendaDto> => {
   const response = await httpClient.get<import("../types/learningPath").LearningAgendaDto>(

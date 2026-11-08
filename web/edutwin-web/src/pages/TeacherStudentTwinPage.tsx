@@ -261,7 +261,7 @@ const CenterManagerStudentTwinView: React.FC = () => {
                 Chỉ số hành vi nhận thức được đo lường tự động từ tương tác luyện tập.
               </p>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="rounded-lg bg-slate-50 p-3 text-center ring-1 ring-slate-200">
                   <span className="text-[11px] font-bold text-slate-500 uppercase block">
                     Thời gian TB / câu
@@ -284,26 +284,6 @@ const CenterManagerStudentTwinView: React.FC = () => {
                     {behaviorTwin.skipRate.toFixed(0)}%
                   </span>
                   <span className="text-[10px] text-slate-400">Bỏ câu hỏi</span>
-                </div>
-
-                <div className="rounded-lg bg-slate-50 p-3 text-center ring-1 ring-slate-200">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase block">
-                    Độ tự tin TB
-                  </span>
-                  <span className="mt-1 text-lg font-bold text-indigo-600 block">
-                    {behaviorTwin.avgConfidence.toFixed(0)}%
-                  </span>
-                  <span className="text-[10px] text-slate-400">Tự đánh giá</span>
-                </div>
-
-                <div className="rounded-lg bg-slate-50 p-3 text-center ring-1 ring-slate-200">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase block">
-                    Chuẩn hóa tự tin
-                  </span>
-                  <span className="mt-1 text-lg font-bold text-slate-900 block">
-                    {behaviorTwin.confidenceCalibration.toFixed(2)}
-                  </span>
-                  <span className="text-[10px] text-slate-400">Độ khớp tự tin/thực tế</span>
                 </div>
 
                 <div className="rounded-lg bg-slate-50 p-3 text-center ring-1 ring-slate-200">
@@ -581,7 +561,7 @@ const TeacherStudentTwinLegacyView: React.FC = () => {
               Chỉ số hành vi nhận thức được đo lường tự động từ tương tác luyện tập.
             </p>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="rounded-lg bg-slate-50 p-3 text-center ring-1 ring-slate-200">
                 <span className="text-[11px] font-bold text-slate-500 uppercase block">
                   Thời gian TB / câu
@@ -604,26 +584,6 @@ const TeacherStudentTwinLegacyView: React.FC = () => {
                   {behaviorTwin.skipRate.toFixed(0)}%
                 </span>
                 <span className="text-[10px] text-slate-400">Bỏ câu hỏi</span>
-              </div>
-
-              <div className="rounded-lg bg-slate-50 p-3 text-center ring-1 ring-slate-200">
-                <span className="text-[11px] font-bold text-slate-500 uppercase block">
-                  Độ tự tin TB
-                </span>
-                <span className="mt-1 text-lg font-bold text-indigo-600 block">
-                  {behaviorTwin.avgConfidence.toFixed(0)}%
-                </span>
-                <span className="text-[10px] text-slate-400">Tự đánh giá</span>
-              </div>
-
-              <div className="rounded-lg bg-slate-50 p-3 text-center ring-1 ring-slate-200">
-                <span className="text-[11px] font-bold text-slate-500 uppercase block">
-                  Chuẩn hóa tự tin
-                </span>
-                <span className="mt-1 text-lg font-bold text-slate-900 block">
-                  {behaviorTwin.confidenceCalibration.toFixed(2)}
-                </span>
-                <span className="text-[10px] text-slate-400">Độ khớp tự tin/thực tế</span>
               </div>
 
               <div className="rounded-lg bg-slate-50 p-3 text-center ring-1 ring-slate-200">

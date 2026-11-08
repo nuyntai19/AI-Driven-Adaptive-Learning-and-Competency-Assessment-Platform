@@ -12,6 +12,19 @@ public class ShortAnswerGraderTests
     private readonly GradingCriteria _criteria = new();
 
     [Theory]
+    [InlineData("She has left", "She has left.", true)]
+    [InlineData("She has left.", "She has left", true)]
+    [InlineData("went!", "went", true)]
+    [InlineData("Is he a doctor", "Is he a doctor?", true)]
+    [InlineData("She has lef", "She has left.", false)]
+    [InlineData("She. has left", "She has left", false)]
+    [InlineData("...", "...", true)]
+    public void Grade_TextExact_IgnoresSentencePunctuationAtTheEndOnly(string answer, string reference, bool expected)
+    {
+        _sut.Grade(answer, reference, 1m, _criteria).IsCorrect.Should().Be(expected);
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]

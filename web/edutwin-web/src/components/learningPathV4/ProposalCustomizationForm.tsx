@@ -1,8 +1,14 @@
 import { useState } from "react";
 import type { CustomizePathProposalRequest, PathProposalDto, ProposedMilestoneDto } from "../../types/learningPath";
 import { TimeBudgetSlider } from "./TimeBudgetSlider";
+import { MIN_GOAL_STUDY_MINUTES } from "../../utils/studyTime";
 
 function todayIso() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+/** Minutes for one set, at the pace the teacher-set question times give this practice. */
+function minutesPerSet(questions: number, practice?: { questionCount: number; estimatedMinutes: number }) {
+  const pace = practice && practice.questionCount > 0 && practice.estimatedMinutes > 0 ? practice.estimatedMinutes / practice.questionCount : 2;
+  return Math.max(1, Math.ceil(questions * pace));
+}
 function datePart(iso?: string | null) { return iso ? iso.split("T")[0] : ""; }
 function formatIsoDate(iso?: string | null) { const bits = datePart(iso).split("-"); return bits.length === 3 ? `${bits[2]}/${bits[1]}/${bits[0]}` : ""; }
 function formatDate(d: Date) { return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; }
@@ -16,7 +22,7 @@ export function ProposalCustomizationForm({ proposal, availableMilestones: allMi
 }) {
   // Confirmation reviews of self-assessed parts stay at the end of the route and are not edited here.
   const availableMilestones = allMilestones.filter(m => !m.isSelfAssessedCheck);
-  const [minutes, setMinutes] = useState(proposal.availableMinutesPerDay ?? 15);
+  const [minutes, setMinutes] = useState(Math.max(MIN_GOAL_STUDY_MINUTES, proposal.availableMinutesPerDay ?? 15));
   const [days, setDays] = useState(proposal.availableDaysPerWeek ?? 5);
   const [questionsBySkill, setQuestionsBySkill] = useState<Record<string, string>>(() => Object.fromEntries(
     availableMilestones.flatMap(milestone => milestone.skillIds.map(id => {
@@ -65,7 +71,7 @@ export function ProposalCustomizationForm({ proposal, availableMilestones: allMi
       </dl>
     </div>}
     <fieldset disabled={pending} className="space-y-5 disabled:opacity-60">
-      <TimeBudgetSlider label="Tổng thời gian học mỗi ngày" value={minutes} onChange={setMinutes} summary="Đây là tổng quỹ thời gian cho cả tuyến; hệ thống xếp các phần học vào quỹ này theo tiến độ và mức độ cần củng cố." />
+      <TimeBudgetSlider label="Tổng thời gian học mỗi ngày" min={MIN_GOAL_STUDY_MINUTES} value={minutes} onChange={setMinutes} summary="Tối thiểu 10 phút/ngày để đủ làm một bộ luyện. Đây là tổng quỹ thời gian cho cả tuyến; hệ thống xếp các phần học vào quỹ này theo tiến độ và mức độ cần củng cố." />
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-sm">Ngày mỗi tuần<select className={input} value={days} onChange={event => setDays(Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7].map(day => <option key={day}>{day}</option>)}</select></label>
         <label className="text-sm">Mốc thời gian (nếu có)<input type="date" min={todayIso()} className={input} value={deadline} onChange={event => setDeadline(event.target.value)} />
@@ -87,8 +93,8 @@ export function ProposalCustomizationForm({ proposal, availableMilestones: allMi
               <input type="number" min={3} max={20} step={1} required={checked} disabled={!checked} className={input}
                 value={questionsBySkill[skillId] ?? "6"} onChange={event => setQuestionsBySkill(current => ({ ...current,
                   ...Object.fromEntries(milestone.skillIds.map(id => [id, event.target.value])) }))} />
-              <span className="mt-1 block text-slate-500">Dự kiến {practice?.estimatedSets || 2} bộ theo kết quả hiện có, khoảng {Number(questionsBySkill[skillId] || 0) * 2} phút/bộ.
-                {Number(questionsBySkill[skillId] || 0) * 2 > minutes && " Bộ này dài hơn quỹ thời gian mỗi ngày; bạn có thể tạm dừng và làm tiếp."}</span>
+              <span className="mt-1 block text-slate-500">Dự kiến {practice?.estimatedSets || 2} bộ theo kết quả hiện có, khoảng {minutesPerSet(Number(questionsBySkill[skillId] || 0), practice)} phút/bộ.
+                {minutesPerSet(Number(questionsBySkill[skillId] || 0), practice) > minutes && " Bộ này dài hơn quỹ thời gian mỗi ngày; bạn có thể tạm dừng và làm tiếp."}</span>
             </label>}
           </div>;
         })}</div>

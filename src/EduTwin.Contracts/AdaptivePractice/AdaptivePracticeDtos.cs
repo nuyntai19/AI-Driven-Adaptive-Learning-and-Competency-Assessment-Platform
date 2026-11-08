@@ -32,11 +32,20 @@ public sealed class AdaptivePracticeProposalDto
     public bool IsDiagnosticRecommended { get; set; }
     public AdaptivePracticeMode DefaultMode { get; set; } = AdaptivePracticeMode.Weakness;
     public IReadOnlyList<AdaptivePracticeTopicOptionDto> AvailableTopics { get; set; } = [];
+
+    /// <summary>Questions this student can currently be asked on the proposed topic.</summary>
+    public int AvailableQuestionCount { get; set; }
+
+    /// <summary>Set when the class in view has nothing to practice; the topic fields are then empty.</summary>
+    public string? UnavailableReason { get; set; }
 }
 
 public sealed class CreateAdaptivePracticeSessionRequest : IValidatableObject
 {
     public Guid SubjectId { get; set; }
+
+    /// <summary>The class in view; without it the topic may come from any current class of the subject.</summary>
+    public Guid? ClassId { get; set; }
 
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString)]
     public ulong TopicNodeId { get; set; }
@@ -115,6 +124,7 @@ public sealed class AdaptivePracticeQuestionDto
     public byte Difficulty { get; set; }
     public string QuestionText { get; set; } = null!;
     public QuestionType QuestionType { get; set; }
+    public QuestionAnswerEvaluationMode AnswerEvaluationMode { get; set; }
     public IReadOnlyList<StudentQuestionOptionDto> Options { get; set; } = [];
     public bool HasImage { get; set; }
     public decimal MaxScore { get; set; }

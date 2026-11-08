@@ -19,70 +19,63 @@ public static class AdaptivePracticeHintGenerator
             {
                 HintLevel = 1,
                 HintTitle = "Gợi ý mức 1 – Định hướng tư duy",
-                HintContent = BuildLevel1Hint(question, topicName),
-                SupportLevelDescription = "Định hướng khái niệm chính. Điểm năng lực được bảo toàn 80%."
+                HintContent = BuildLevel1Hint(topicName),
+                SupportLevelDescription = "Nếu làm đúng sau gợi ý này, năng lực của chủ đề tăng 2,5%."
             },
             2 => new AdaptivePracticeHintDto
             {
                 HintLevel = 2,
                 HintTitle = "Gợi ý mức 2 – Nhắc lại quy tắc & công thức",
                 HintContent = BuildLevel2Hint(question, topicName),
-                SupportLevelDescription = "Gợi ý quy tắc và công thức cốt lõi. Điểm năng lực được tính với trọng số hỗ trợ 60%."
+                SupportLevelDescription = "Nếu làm đúng sau gợi ý này, năng lực của chủ đề tăng 1%."
             },
             _ => new AdaptivePracticeHintDto
             {
                 HintLevel = 3,
                 HintTitle = "Gợi ý mức 3 – Hướng dẫn phương pháp giải",
                 HintContent = BuildLevel3Hint(question),
-                SupportLevelDescription = "Các bước giải chi tiết. Sau câu này hệ thống sẽ đưa ra câu tương đương để kiểm tra độ độc lập."
+                SupportLevelDescription = "Nếu làm đúng sau gợi ý này, năng lực của chủ đề tăng 1%."
             }
         };
     }
 
-    private static string BuildLevel1Hint(Question question, string topicName)
-    {
-        if (!string.IsNullOrWhiteSpace(question.ExpectedReasoning))
-        {
-            // First sentence or clause of reasoning
-            var firstSentence = question.ExpectedReasoning.Split(['.', ';', '\n'], StringSplitOptions.RemoveEmptyEntries);
-            if (firstSentence.Length > 0 && !string.IsNullOrWhiteSpace(firstSentence[0]))
-            {
-                return $"Hãy chú ý đến bản chất của dạng bài: {firstSentence[0].Trim()}.";
-            }
-        }
-
-        return $"Hãy xác định đại lượng cần tìm và các dữ kiện đã cho trong bài toán thuộc phần '{topicName}'. Cân nhắc thứ tự ưu tiên các phép biến đổi.";
-    }
+    // Level 1 only orients the student: the expected reasoning can already
+    // contain the computation, so it must never be quoted here.
+    private static string BuildLevel1Hint(string topicName) =>
+        $"Đọc kỹ đề và xác định dạng bài thuộc phần '{topicName}': đề đã cho những gì và cần tìm điều gì?";
 
     private static string BuildLevel2Hint(Question question, string topicName)
     {
         if (!string.IsNullOrWhiteSpace(question.Solution))
         {
-            // Extract intermediate formulas or rule mentions
             var lines = question.Solution.Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries);
-            if (lines.Length > 1)
+            if (lines.Length > 1 && !ContainsAnswer(lines[0], question.CorrectAnswer))
             {
-                return $"Quy tắc trọng tâm: {lines[0].Trim()}\nÁp dụng biến đổi vế theo vế một cách cẩn thận.";
+                return $"Quy tắc trọng tâm: {lines[0].Trim()}";
             }
         }
 
-        return $"Nhắc lại kiến thức: Đối với {topicName}, lưu ý quy tắc dấu khi chuyển vế, quy tắc nhân/chia hai vế cho một số khác 0, và điều kiện xác định của biểu thức (nếu có).";
+        return $"Nhắc lại kiến thức chính của phần '{topicName}' rồi áp dụng vào dữ kiện của đề.";
     }
 
     private static string BuildLevel3Hint(Question question)
     {
         if (!string.IsNullOrWhiteSpace(question.Solution))
         {
-            // Mask the final answer in the solution so student still has to compute final result
-            var sanitizedSolution = question.Solution;
-            if (!string.IsNullOrWhiteSpace(question.CorrectAnswer))
-            {
-                sanitizedSolution = sanitizedSolution.Replace(question.CorrectAnswer, "[kết quả cần tìm]", StringComparison.OrdinalIgnoreCase);
-            }
-
-            return $"Hướng dẫn từng bước:\n{sanitizedSolution}\n\n-> Hãy tự tính toán và nhập đáp án chính xác cuối cùng.";
+            return $"Hướng dẫn từng bước:\n{MaskAnswer(question.Solution, question.CorrectAnswer)}\n\nHãy tự hoàn thành bước cuối và nhập đáp án.";
         }
 
-        return "Bước 1: Đưa các số hạng chứa ẩn về một vế, các hằng số về vế còn lại.\nBước 2: Rút gọn hai vế.\nBước 3: Chia cả hai vế cho hệ số của ẩn để tìm nghiệm.";
+        return "Bước 1: Viết ra dữ kiện và điều cần tìm.\nBước 2: Chọn kiến thức phù hợp để liên hệ chúng.\nBước 3: Thực hiện từng bước và kiểm tra lại kết quả.";
     }
+
+    // A short answer such as "0" must only match as a whole token, or every
+    // zero in the solution would be blanked out.
+    private static Regex AnswerToken(string answer) =>
+        new($@"(?<![\p{{L}}\p{{N}}.,]){Regex.Escape(answer.Trim())}(?![\p{{L}}\p{{N}}])", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(200));
+
+    private static bool ContainsAnswer(string text, string? answer) =>
+        !string.IsNullOrWhiteSpace(answer) && AnswerToken(answer).IsMatch(text);
+
+    private static string MaskAnswer(string text, string? answer) =>
+        string.IsNullOrWhiteSpace(answer) ? text : AnswerToken(answer).Replace(text, "[kết quả cần tìm]");
 }

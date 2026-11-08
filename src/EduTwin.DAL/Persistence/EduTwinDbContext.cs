@@ -111,6 +111,7 @@ public class EduTwinDbContext : DbContext
 
     // Assessment and Reasoning
     public DbSet<Attempt> Attempts => Set<Attempt>();
+    public DbSet<StudentQuestionBookmark> StudentQuestionBookmarks => Set<StudentQuestionBookmark>();
     public DbSet<AttemptAttachment> AttemptAttachments => Set<AttemptAttachment>();
     public DbSet<ReasoningAnalysis> ReasoningAnalyses => Set<ReasoningAnalysis>();
     public DbSet<EvidenceAssessment> EvidenceAssessments => Set<EvidenceAssessment>();

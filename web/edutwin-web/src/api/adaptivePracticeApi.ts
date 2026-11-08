@@ -12,14 +12,14 @@ import type {
   AdaptivePracticeHistoryItem,
   TeacherAdaptivePracticeSession,
   TeacherAdaptivePracticeAlert,
-  AdaptivePracticeCloseReason,
 } from "../types/adaptivePractice";
 
 export const adaptivePracticeApi = {
   getProposal: async (
     subjectId: string,
     customTopicId?: string,
-    mode?: AdaptivePracticeMode
+    mode?: AdaptivePracticeMode,
+    classId?: string
   ): Promise<AdaptivePracticeProposal> => {
     const response = await httpClient.get<AdaptivePracticeProposal>(
       "/adaptive-practice/proposal",
@@ -28,6 +28,7 @@ export const adaptivePracticeApi = {
           subjectId,
           customTopicId: customTopicId || undefined,
           mode: mode || undefined,
+          classId: classId || undefined,
         },
       }
     );
@@ -83,14 +84,10 @@ export const adaptivePracticeApi = {
     return response.data;
   },
 
-  closeSession: async (
-    sessionId: string,
-    closeReason: AdaptivePracticeCloseReason = "StudentStopped"
-  ): Promise<AdaptivePracticeSummary> => {
+  closeSession: async (sessionId: string): Promise<AdaptivePracticeSummary> => {
     const response = await httpClient.post<AdaptivePracticeSummary>(
       `/adaptive-practice/sessions/${sessionId}/close`,
-      null,
-      { params: { closeReason } }
+      null
     );
     return response.data;
   },

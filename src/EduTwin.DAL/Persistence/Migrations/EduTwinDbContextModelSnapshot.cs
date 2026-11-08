@@ -1251,6 +1251,36 @@ namespace EduTwin.DAL.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.StudentQuestionBookmark", b =>
+                {
+                    b.Property<string>("CenterId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("center_id");
+
+                    b.Property<string>("StudentId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("student_id");
+
+                    b.Property<ulong>("QuestionId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("question_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("created_by");
+
+                    b.HasKey("CenterId", "StudentId", "QuestionId");
+
+                    b.HasIndex("CenterId", "QuestionId")
+                        .HasDatabaseName("ix_student_question_bookmarks_question");
+
+                    b.ToTable("student_question_bookmarks", (string)null);
+                });
+
             modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.StudentReviewRequest", b =>
                 {
                     b.Property<ulong>("RequestId")
@@ -8967,6 +8997,16 @@ namespace EduTwin.DAL.Persistence.Migrations
                     b.Navigation("OverriddenByUser");
 
                     b.Navigation("ReviewedByUser");
+                });
+
+            modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.StudentQuestionBookmark", b =>
+                {
+                    b.HasOne("EduTwin.DAL.CurriculumAndQuestions.Question", null)
+                        .WithMany()
+                        .HasForeignKey("CenterId", "QuestionId")
+                        .HasPrincipalKey("CenterId", "QuestionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("EduTwin.DAL.AssessmentAndReasoning.StudentReviewRequest", b =>

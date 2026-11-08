@@ -76,19 +76,6 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  // Background page (previous snapshot or notebook photo) drawn under the ink.
-  const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
-  const [bgDismissedFor, setBgDismissedFor] = useState<string | null>(null);
-  useEffect(() => {
-    if (!backgroundImageUrl) { setBgImage(null); return; }
-    let active = true;
-    const img = new Image();
-    img.onload = () => { if (active) setBgImage(img); };
-    img.onerror = () => { if (active) setBgImage(null); };
-    img.src = backgroundImageUrl;
-    return () => { active = false; };
-  }, [backgroundImageUrl]);
-  const activeBgImage = backgroundImageUrl && bgDismissedFor !== backgroundImageUrl ? bgImage : null;
   const [isImporting, setIsImporting] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const inkCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -122,6 +109,7 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
   const [lineWidth, setLineWidth] = useState<number>(2);
   const [grid, setGrid] = useState<ScratchpadGrid>("math_grid");
   const [strokes, setStrokes] = useState<ScratchpadStroke[]>([]);
+  const [draftLoadedFor, setDraftLoadedFor] = useState<string | null>(null);
   const [undoHistory, setUndoHistory] = useState<ScratchpadStroke[][]>([]);
   const [redoHistory, setRedoHistory] = useState<ScratchpadStroke[][]>([]);
   const [saveStatus, setSaveStatus] = useState("Sẵn sàng");
@@ -191,10 +179,12 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
         setUndoHistory([]);
         setRedoHistory([]);
         setSaveStatus(draft ? "Đã khôi phục nháp" : "Nháp mới");
+        setDraftLoadedFor(clientSubmissionId);
       })
       .catch(() => {
         if (active) {
           setSaveStatus("Không thể tải nháp cũ");
+          setDraftLoadedFor(clientSubmissionId);
         }
       });
 
@@ -202,6 +192,40 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
       active = false;
     };
   }, [centerId, clientSubmissionId, userId]);
+
+  // Background page (previous snapshot or notebook photo) drawn under the ink.
+  // A snapshot exported from this board already contains its ink; drawing it
+  // underneath would keep erased strokes visible, so it maps back to the page
+  // that was under the ink when it was exported.
+  const exportedSnapshotsRef = useRef(new Map<string, string | null>());
+  const importedPagesRef = useRef(new Set<string>());
+  const [pageUrl, setPageUrl] = useState<string | null>(null);
+  const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
+  const [bgDismissedFor, setBgDismissedFor] = useState<string | null>(null);
+  const hasInk = strokes.length > 0;
+  useEffect(() => {
+    if (!backgroundImageUrl) { setPageUrl(null); return; }
+    const exported = exportedSnapshotsRef.current;
+    if (exported.has(backgroundImageUrl)) { setPageUrl(exported.get(backgroundImageUrl) ?? null); return; }
+    if (!importedPagesRef.current.has(backgroundImageUrl)) {
+      // Restored from a draft: with this device's ink present it is an old
+      // export of that ink; without it, it is the page to keep working on.
+      if (draftLoadedFor !== clientSubmissionId) return;
+      if (hasInk) { exported.set(backgroundImageUrl, null); setPageUrl(null); return; }
+      importedPagesRef.current.add(backgroundImageUrl);
+    }
+    setPageUrl(backgroundImageUrl);
+  }, [backgroundImageUrl, clientSubmissionId, draftLoadedFor, hasInk]);
+  useEffect(() => {
+    if (!pageUrl) { setBgImage(null); return; }
+    let active = true;
+    const img = new Image();
+    img.onload = () => { if (active) setBgImage(img); };
+    img.onerror = () => { if (active) setBgImage(null); };
+    img.src = pageUrl;
+    return () => { active = false; };
+  }, [pageUrl]);
+  const activeBgImage = pageUrl && bgDismissedFor !== pageUrl ? bgImage : null;
 
   // Redraw canvas with current pan and zoom
   useEffect(() => {
@@ -420,8 +444,9 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
       reader.onerror = () => reject(new Error("read failed"));
       reader.readAsDataURL(blob);
     });
+    exportedSnapshotsRef.current.set(dataUrl, activeBgImage ? pageUrl : null);
     return { blob, dataUrl };
-  }, [strokes, grid, activeBgImage]);
+  }, [strokes, grid, activeBgImage, pageUrl]);
 
   useImperativeHandle(ref, () => ({
     exportSnapshot: buildSnapshot,
@@ -637,7 +662,7 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
         {activeBgImage && !isReadOnly && (
           <button
             type="button"
-            onClick={() => setBgDismissedFor(backgroundImageUrl ?? null)}
+            onClick={() => setBgDismissedFor(pageUrl)}
             className="absolute top-2 right-2 z-20 px-2.5 py-1 rounded-full bg-slate-900/85 backdrop-blur-md text-white text-[11px] font-bold shadow-lg border border-slate-700/70 cursor-pointer"
             title="Ẩn ảnh nền (ảnh bài làm cũ hoặc ảnh vở) khỏi bảng vẽ"
           >
@@ -720,6 +745,7 @@ export const ScratchpadInlinePanel = forwardRef<ScratchpadInlinePanelHandle, Scr
                   const image = file.type === 'image/png' && file.size <= 5_242_880
                     ? await readScratchpadPng(file)
                     : await readScratchpadPhoto(file);
+                  importedPagesRef.current.add(image.dataUrl);
                   onAttachSnapshot?.(image.blob, image.dataUrl); onExportPng?.(image.blob);
                   setExportStatus('Đã đính kèm ảnh vào bài làm và đặt lên bảng; bấm “Nhận dạng chữ viết” để chép thành bước giải.');
                 } catch (error) { setExportStatus(error instanceof Error ? error.message : 'Không thể đọc ảnh.'); }

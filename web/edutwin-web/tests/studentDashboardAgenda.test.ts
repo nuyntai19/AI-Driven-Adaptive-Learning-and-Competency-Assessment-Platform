@@ -24,6 +24,7 @@ function render({ assignment = false, pending = false, history = false, all = fa
     "react/jsx-runtime": require("react/jsx-runtime"),
     "react-router-dom": { useSearchParams: () => [params], Link: ({ to, children, ...rest }: any) => React.createElement("a", { href: to, ...rest }, children) },
     "@tanstack/react-query": { useQuery: (query: any) => {
+      if (query.queryKey[0] === "studentTwinHistory") return { data: [] };
       queries.push(query);
       if (queries.length === 1) return { data: dashboard };
       if (queries.length === 2) return { data: { data: assignment ? [{ assignmentId: "homework", title: "Bài giáo viên giao", progress: { status: "NotStarted" } }] : [] } };
@@ -34,9 +35,11 @@ function render({ assignment = false, pending = false, history = false, all = fa
     "../api/dashboardsApi": { getStudentDashboard() {} },
     "../api/assignmentsApi": { getStudentAssignments() {} },
     "../api/learningPathApi": { getLearningAgenda: (...args: any[]) => calls.push(args) },
+    "../api/digitalTwinApi": { getStudentTwinHistory() {} },
     "../components/student/subjectTheme": { getSubjectTheme: () => ({}) },
     "../utils/studentAcademicNavigation": { studentScopeUrl },
     "../utils/academicDisplay": { goalGapLabel: () => "" },
+    "../utils/studentDashboardNudge": { dashboardGreeting: () => "", dashboardNudge: () => "" },
   };
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS,
     jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true, target: ts.ScriptTarget.ES2022 } }).outputText,
@@ -52,7 +55,7 @@ function render({ assignment = false, pending = false, history = false, all = fa
 test("dashboard uses the current agenda and keeps subject/class context when continuing a mission", async () => {
   const h = render();
   await h.queries[2].queryFn();
-  assert.deepEqual(h.calls[0], ["math", 15, "class-10"]);
+  assert.deepEqual(h.calls[0], ["math", undefined, "class-10"]);
   assert.match(h.html, /Tìm hiểu: Hàm số/);
   assert.match(h.html, /Tiếp tục học ngay/);
   assert.match(h.html, /href="\/hoc-tap\/lo-trinh-hoc-tap\?subjectId=math&amp;classId=class-10"/);

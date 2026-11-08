@@ -1,0 +1,38 @@
+{
+  "teacher": {
+    "questionText": "Cho hàm số y = 2x + 1. Tính y khi x = 3.",
+    "questionType": "MultipleChoice",
+    "answerEvaluationMode": "TextExact",
+    "correctAnswer": "A",
+    "solution": "Thay x = 3: y = 2.3 + 1 = 7.",
+    "options": [
+      {
+        "label": "A",
+        "text": "7",
+        "isCorrect": true
+      },
+      {
+        "label": "B",
+        "text": "5",
+        "isCorrect": false
+      },
+      {
+        "label": "C",
+        "text": "6",
+        "isCorrect": false
+      },
+      {
+        "label": "D",
+        "text": "8",
+        "isCorrect": false
+      }
+    ],
+    "knowledgeTopics": [
+      "Hàm số bậc nhất"
+    ]
+  },
+  "student": {
+    "finalAnswer": "A",
+    "reasoningText": "Reading package lists... Done\nSetting up ibus-bamboo (0.8.5) ...\ntai@tai-linux:~$ ibus restart"
+  }
+}

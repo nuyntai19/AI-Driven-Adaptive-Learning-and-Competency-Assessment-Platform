@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using EduTwin.BLL.Dashboards;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.DigitalTwin;
 using EduTwin.Contracts.KnowledgeGraph;
@@ -25,7 +26,7 @@ public sealed class GetStudentTwinUseCase : IGetStudentTwinUseCase
         _tenantContext = tenantContext ?? throw new ArgumentNullException(nameof(tenantContext));
     }
 
-    public async Task<StudentTwinResult> ExecuteAsync(Guid subjectId, CancellationToken cancellationToken)
+    public async Task<StudentTwinResult> ExecuteAsync(Guid subjectId, Guid? classId, bool history, CancellationToken cancellationToken)
     {
         if (!_tenantContext.IsResolved ||
             !_tenantContext.CenterId.HasValue ||
@@ -58,12 +59,22 @@ public sealed class GetStudentTwinUseCase : IGetStudentTwinUseCase
             return StudentTwinResult.NotFound();
         }
 
+        // The twin accumulates per subject, but the profile shows only what the
+        // class in view teaches: other grades' topics are not this class's work.
+        var scope = await new StudentAcademicScopeReader(_dbContext)
+            .ReadAsync(centerId, studentId, subjectId, classId, history, cancellationToken);
+        if (scope is null)
+        {
+            return StudentTwinResult.NotFound();
+        }
+
         // 1. Active topics for subject + student KnowledgeTwins
         var activeTopics = await _dbContext.KnowledgeNodes.AsNoTracking()
             .Where(n => n.CenterId == centerId && n.SubjectId == subjectId && n.NodeType == NodeType.Topic && n.IsActive && !n.IsDeleted)
             .OrderBy(n => n.OrderIndex)
             .Select(n => new { n.NodeId, n.NodeName })
             .ToListAsync(cancellationToken);
+        activeTopics = activeTopics.Where(t => scope.TopicIds.Contains(t.NodeId)).ToList();
 
         var activeTopicIds = activeTopics.Select(t => t.NodeId).ToList();
 

@@ -5,6 +5,13 @@ import { useAuthStore } from "../../stores/authStore";
 import { ScratchpadInlinePanel, type ScratchpadInlinePanelHandle } from "../math/ScratchpadInlinePanel";
 import { transcribeHandwriting } from "../../api/handwritingApi";
 import { readScratchpadPhoto } from "../../utils/scratchpadPngImport";
+import { deriveFinalAnswer } from "../../utils/finalAnswer";
+import { answerReasoningPlaceholder, answerWorkPlaceholder, usesMathInput } from "../../utils/answerPlaceholders";
+import { useStudentSubjects } from "../../utils/useStudentSubjects";
+import { WorkToolbar } from "../learning/WorkToolbar";
+import { BookmarkButton } from "../learning/BookmarkButton";
+import { GradedAnswerPreview } from "../learning/GradedAnswerPreview";
+import { SideAssistantWorkspace, type AssistantToolTab } from "../math/SideAssistantWorkspace";
 import { QuestionImage } from "../QuestionImage";
 import { RichMathText } from "../math/RichMathText";
 import { RichMathEditor } from "../math/RichMathEditor";
@@ -44,6 +51,8 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
   const close = () => { cache.removeQueries({ queryKey: ["mission-run"] }); void cache.invalidateQueries({ queryKey: ["learning-agenda"] }); void cache.invalidateQueries({ queryKey: ["learning-paths"] }); onClose(); };
   const [paused, setPaused] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  // Stays open from one question to the next, like the assignment player.
+  const [activeTool, setActiveTool] = useState<AssistantToolTab | null>(null);
   const [activeSeconds, setActiveSeconds] = useState(0);
   const runActive = !reviewing && run.data?.status === "InProgress";
   // The clock only counts active study time; it stops while paused or between sets.
@@ -78,14 +87,18 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
         </div>
       </header>
       <div className="min-h-0 w-full flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl space-y-5 p-5 sm:p-7">
+      <div className={`mx-auto w-full space-y-5 p-5 sm:p-7 ${current?.question && !feedbackActivity && !paused ? "max-w-[1700px]" : "max-w-5xl"}`}>
         {remainingSeconds != null && !reviewing && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">Bài bấm giờ: đồng hồ tiếp tục chạy khi đóng cửa sổ. Hết giờ sẽ giữ các câu đã nộp và kết thúc lượt.</p>}
         {reviewing && <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">Đang xem lại lượt học đã lưu. Không tạo lượt làm mới.</p>}
         {run.isPending && <p role="status">Đang mở nhiệm vụ và khôi phục tiến độ…</p>}
         {run.error && <div role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-800">
           <p>{ongoing ? `Bạn đang học dở “${ongoing.title}” trong môn này. Tiếp tục buổi đó trước khi mở buổi mới; tiến độ của bạn vẫn được giữ.` : extractProblemDetails(run.error).message}</p>
           {ongoing ? <button className="mt-3 rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white" onClick={() => onResumeMission(ongoing)}>Tiếp tục: {ongoing.title}</button>
-            : <button className="mt-3 underline" onClick={() => void run.refetch()}>Thử lại</button>}</div>}
+            : <div className="mt-3 flex flex-wrap gap-4">
+              {/* A 409 is a state the student cannot change by asking again. */}
+              {(run.error as { response?: { status?: number } }).response?.status !== 409 && <button className="underline" onClick={() => void run.refetch()}>Thử lại</button>}
+              <button className="underline" onClick={close}>Về lộ trình</button>
+            </div>}</div>}
         {run.data && <div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${100 * run.data.activities.filter(done).length / Math.max(1, run.data.activities.length)}%` }} /></div>
           {!reviewing && !!mission.questionCount && (mission.purpose === "Practice" || mission.purpose === "Review") && run.data.activities.length !== mission.questionCount &&
             <p className="mt-2 text-xs text-slate-500">Bộ này đã mở trước đó với {run.data.activities.length} câu nên giữ nguyên để kết quả so sánh được. Thời gian mới áp dụng từ bộ tiếp theo.</p>}
@@ -111,7 +124,7 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
           {feedbackActivity.content && <div className="rounded-xl border p-4"><h3 className="font-semibold">Cách hiểu em đã nộp</h3><p className="mt-2 whitespace-pre-wrap text-sm">{feedbackActivity.submittedResponse ?? "Chưa có nội dung để hiển thị."}</p></div>}
           {(feedbackActivity.learningFeedback || feedbackActivity.content) && <TutorFeedback activity={feedbackActivity} automatic />}
           <button className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white" onClick={() => setFeedbackActivity(null)}>{current ? "Câu tiếp theo" : "Xem tổng kết buổi học"}</button></div>}
-        {current && !feedbackActivity && <div hidden={paused}><Activity key={current.activityRunId} activity={current} paused={paused} onSubmitted={(res, submittedResponse) => {
+        {current && !feedbackActivity && <div hidden={paused}><Activity subjectId={subjectId} key={current.activityRunId} activity={current} paused={paused} activeTool={activeTool} onActiveToolChange={setActiveTool} onSubmitted={(res, submittedResponse) => {
           const updated = { ...current, status: res.activityStatus, learningFeedback: res.learningFeedback, submittedResponse };
           cache.setQueryData<MissionRunDto>(key, old => old ? { ...old, activities: old.activities.map(a => a.activityRunId === current.activityRunId ? updated : a) } : old);
           void run.refetch();
@@ -225,7 +238,7 @@ function TutorFeedback({ activity, automatic = false }: { activity: ActivityRunD
       <p className="text-xs text-slate-500">Nhận xét AI để hỗ trợ học; không thay điểm chấm hoặc xác nhận thành thạo. {value.generatedAt && new Date(value.generatedAt).toLocaleString("vi-VN")}</p></>}
   </section>;
 }
-function Activity({ activity: a, onSubmitted, paused }: { activity: ActivityRunDto; paused: boolean; onSubmitted: (res: ActivitySubmissionResponseDto, response: string) => void }) {
+function Activity({ activity: a, subjectId, onSubmitted, paused, activeTool, onActiveToolChange }: { activity: ActivityRunDto; subjectId: string; paused: boolean; activeTool: AssistantToolTab | null; onActiveToolChange: (tool: AssistantToolTab | null) => void; onSubmitted: (res: ActivitySubmissionResponseDto, response: string) => void }) {
   const restored = (() => { try { return JSON.parse(a.draftPayload ?? "{}") as Record<string, unknown>; } catch { return {}; } })();
   const [answer, setAnswer] = useState(text(restored.finalAnswer));
   const [reasoning, setReasoning] = useState(text(restored.reasoningText));
@@ -244,6 +257,8 @@ function Activity({ activity: a, onSubmitted, paused }: { activity: ActivityRunD
   }, [paused]);
   const elapsedSeconds = () => Math.floor((activeMs.current + (since.current != null ? Date.now() - since.current : 0)) / 1000);
   const q = a.question?.question;
+  const { subjects } = useStudentSubjects();
+  const mathInput = usesMathInput(subjects.find((s) => s.subjectId === subjectId)?.subjectName);
   const payload = (a.content?.payload ?? {}) as Record<string, unknown>;
   const steps = Array.isArray(payload.steps) ? payload.steps as Record<string, unknown>[] : [];
   const workedExamples = Array.isArray(payload.examples) ? (payload.examples as Record<string, unknown>[])
@@ -275,18 +290,16 @@ function Activity({ activity: a, onSubmitted, paused }: { activity: ActivityRunD
   const boardRef = useRef<ScratchpadInlinePanelHandle>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   // One single work box for question activities: the student writes the
-  // whole solution once; the submitted final answer is the last non-empty
-  // line of the work (the same rule scanning below already used).
+  // whole solution once; the submitted final answer is derived from it.
   const workText = reasoning || answer;
   const handleWorkChange = (v: string) => {
     setReasoning(v);
-    const lines = v.split("\n").map(s => s.trim()).filter(Boolean);
-    setAnswer(lines.length ? lines[lines.length - 1] : "");
+    setAnswer(deriveFinalAnswer(v, q?.questionType, q?.answerEvaluationMode, !mathInput));
   };
   const applyScan = (scanned: string) => {
     const lines = scanned.split("\n").map(s => s.trim()).filter(Boolean);
     if (!lines.length) { setScanMsg("Không đọc được chữ viết trong ảnh. Hãy viết rõ hơn hoặc gõ bằng bàn phím."); return; }
-    if (q) { setReasoning(scanned.trim()); setAnswer(lines[lines.length - 1]); }
+    if (q) handleWorkChange(scanned.trim());
     else setAnswer(scanned.trim());
     setScanMsg("Đã quét nội dung vào bài làm. Hãy kiểm tra lại trước khi nộp.");
   };
@@ -333,75 +346,81 @@ function Activity({ activity: a, onSubmitted, paused }: { activity: ActivityRunD
   const lastHint = hints[hints.length - 1];
   const moreHints = !lastHint || !!lastHint.hasMoreHints;
   const field = "mt-2 w-full rounded-lg border border-slate-300 bg-white p-3 dark:bg-slate-900";
-  return <form className="space-y-5" onSubmit={e => { e.preventDefault();
+  const toolOpen = mathInput && !!q && !!activeTool;
+  const insertToolResult = (value: string) => {
+    if (q?.options?.length) setReasoning(current => current ? `${current} ${value}` : value);
+    else handleWorkChange(workText ? `${workText} ${value}` : value);
+  };
+  const smallAction = "rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer disabled:opacity-60 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] motion-reduce:transform-none";
+  const layout = !q ? "space-y-5" : `grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]${toolOpen ? " xl:grid-cols-[minmax(0,4fr)_minmax(0,5fr)_minmax(0,4fr)]" : ""}`;
+  return <form className={layout} onSubmit={e => { e.preventDefault();
     // RichMathEditor không có thuộc tính required như textarea: chặn nộp
     // trống ở đây thay cho kiểm tra của trình duyệt trước đây.
     if (q && !q.options?.length && !workText.trim()) { setNotice("Hãy viết bài làm trước khi nộp câu này."); return; }
     if (q?.options?.length && q.reasoningRequired && !reasoning.trim()) { setNotice("Hãy giải thích vì sao em chọn đáp án này trước khi nộp."); return; }
     submit.mutate(false); }}>
-    <div><p className="text-sm font-semibold text-indigo-600">{a.stage || activityNames[a.activityType] || a.activityType} · Câu / hoạt động {a.activityOrder}</p>
-      {independent && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Tự làm, không có gợi ý hoặc lời giải trước khi nộp. Kết quả còn qua chấm và kiểm duyệt bằng chứng.</p>}</div>
-    {a.content && <article className="space-y-3 rounded-xl bg-slate-50 p-4 dark:bg-slate-800"><h3 className="text-lg font-semibold">{a.content.title}</h3>
-      {a.content.description && <p className="whitespace-pre-wrap text-sm leading-relaxed">{a.content.description}</p>}
-      {steps.map((step, i) => <div className="rounded-lg border border-slate-200 p-3" key={i}><p className="font-medium">{text(step.title) || `Bước ${i + 1}`}</p><p className="mt-1 whitespace-pre-wrap text-sm">{text(step.content) || text(step.explanation)}</p></div>)}
-      {workedExamples.length > 0 ? workedExamples.map((ex, i) => <WorkedExample key={i} index={i + 1} example={ex} />) : <>
-        {text(payload.example) && <p className="whitespace-pre-wrap text-sm"><strong>Ví dụ: </strong>{text(payload.example)}</p>}
-        {text(payload.solution) && <p className="whitespace-pre-wrap text-sm"><strong>Cách giải đã xuất bản: </strong>{text(payload.solution)}</p>}</>}
-      {text(payload.notice) && <p className="text-sm text-amber-700">{text(payload.notice)}</p>}
-      {text(payload.prompt) && <p className="text-sm font-medium">{text(payload.prompt)}</p>}
-    </article>}
-    {q && <article><RichMathText text={q.questionText} className="whitespace-pre-wrap text-base leading-relaxed" /><QuestionImage questionId={q.questionId} hasImage={q.hasImage ?? false} />
-      {q.options?.length > 0 && <fieldset className="mt-4 space-y-2"><legend className="sr-only">Chọn đáp án</legend>{q.options.map(o => <label className="flex gap-3 rounded-xl border border-slate-200 p-3" key={o.optionId}>
-        <input required type="radio" name={`answer-${a.activityRunId}`} value={o.optionId} checked={answer === o.optionId} onChange={e => setAnswer(e.target.value)} /><span>{o.label}. <RichMathText text={o.text} /></span></label>)}</fieldset>}
-    </article>}
-    {a.activityType === "FindError" && <label className="block text-sm font-medium">Bước nào sai?<input required className={field} value={errorStep} onChange={e => setErrorStep(e.target.value)} placeholder="Số bước" /></label>}
-    {!q?.options?.length && <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cách làm bài</span>
-        <div className="inline-flex rounded-2xl bg-slate-100 dark:bg-slate-800/80 p-1 gap-1" role="tablist" aria-label="Phương thức nhập bài làm">
-          {([["keyboard", "⌨️", "Bàn phím"], ["draw", "✏️", "Vẽ trên A4"], ["photo", "📷", "Ảnh chụp"]] as const).map(([value, icon, label]) => (
-            <button key={value} type="button" role="tab" aria-selected={inputMode === value} onClick={() => setInputMode(value)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${inputMode === value ? "bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 shadow-sm ring-1 ring-indigo-500/50" : "text-slate-500 dark:text-slate-400 hover:text-slate-800"}`}>{icon} {label}</button>
-          ))}
+    <div className={q ? "min-w-0 space-y-4 lg:sticky lg:top-4" : "space-y-5"}>
+      <div><div className="flex items-start justify-between gap-3"><p className="text-sm font-semibold text-indigo-600 dark:text-indigo-300">{a.stage || activityNames[a.activityType] || a.activityType} · Câu / hoạt động {a.activityOrder}</p>
+        {q && <BookmarkButton questionId={q.questionId} />}</div>
+        {independent && <p className="mt-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Tự làm, không có gợi ý hoặc lời giải trước khi nộp. Kết quả còn qua chấm và kiểm duyệt bằng chứng.</p>}</div>
+      {a.content && <article className="space-y-3 rounded-xl bg-slate-50 p-4 dark:bg-slate-800"><h3 className="text-lg font-semibold">{a.content.title}</h3>
+        {a.content.description && <p className="whitespace-pre-wrap text-sm leading-relaxed">{a.content.description}</p>}
+        {steps.map((step, i) => <div className="rounded-lg border border-slate-200 p-3" key={i}><p className="font-medium">{text(step.title) || `Bước ${i + 1}`}</p><p className="mt-1 whitespace-pre-wrap text-sm">{text(step.content) || text(step.explanation)}</p></div>)}
+        {workedExamples.length > 0 ? workedExamples.map((ex, i) => <WorkedExample key={i} index={i + 1} example={ex} />) : <>
+          {text(payload.example) && <p className="whitespace-pre-wrap text-sm"><strong>Ví dụ: </strong>{text(payload.example)}</p>}
+          {text(payload.solution) && <p className="whitespace-pre-wrap text-sm"><strong>Cách giải đã xuất bản: </strong>{text(payload.solution)}</p>}</>}
+        {text(payload.notice) && <p className="text-sm text-amber-700">{text(payload.notice)}</p>}
+        {text(payload.prompt) && <p className="text-sm font-medium">{text(payload.prompt)}</p>}
+      </article>}
+      {q && <article className="rounded-xl border border-slate-200 p-4 sm:p-5 dark:border-slate-700"><RichMathText text={q.questionText} className="whitespace-pre-wrap text-base leading-relaxed" /><QuestionImage questionId={q.questionId} hasImage={q.hasImage ?? false} />
+        {q.options?.length > 0 && <fieldset className="mt-4 space-y-2"><legend className="sr-only">Chọn đáp án</legend>{q.options.map(o => <label className="flex cursor-pointer gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700" key={o.optionId}>
+          <input required type="radio" name={`answer-${a.activityRunId}`} value={o.optionId} checked={answer === o.optionId} onChange={e => setAnswer(e.target.value)} /><span>{o.label}. <RichMathText text={o.text} /></span></label>)}</fieldset>}
+      </article>}
+      {hints.length > 0 && <section aria-label="Gợi ý" className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-slate-900">
+        {hints.map(h => <div key={h.hintLevel}><p className="text-xs font-semibold text-amber-700">Gợi ý {h.hintLevel}/{h.totalHints} · {h.hintTitle}</p>
+          <RichMathText className="mt-1 whitespace-pre-wrap text-sm leading-relaxed" text={h.explanation} /></div>)}
+        {lastHint?.policyNotice && <p className="text-xs text-amber-800">{lastHint.policyNotice}</p>}
+      </section>}
+    </div>
+    <div className="min-w-0 space-y-4">
+      {a.activityType === "FindError" && <label className="block text-sm font-medium">Bước nào sai?<input required className={field} value={errorStep} onChange={e => setErrorStep(e.target.value)} placeholder="Số bước" /></label>}
+      <WorkToolbar showModes={!q?.options?.length} mode={inputMode} onModeChange={setInputMode} showTools={mathInput && !!q} activeTool={toolOpen ? activeTool : null}
+        onToggleTool={tool => onActiveToolChange(activeTool === tool ? null : tool)} />
+      {!q?.options?.length && inputMode === "draw" && <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-slate-500 dark:text-slate-400">Giấy A4 có thước, compa, tam giác và trục Oxy</span>
+          <button type="button" onClick={() => void handleScanBoard()} disabled={scanning} className={`${smallAction} bg-indigo-600 text-white hover:bg-indigo-700`}>{scanning ? "Đang quét…" : "Quét bài làm trên A4"}</button>
         </div>
-      </div>
-      {inputMode === "draw" && <div className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 dark:border-indigo-800 dark:bg-indigo-950/40">
-          <span className="text-xs font-black text-indigo-900 dark:text-indigo-100">📄 Giấy A4 — viết bài làm (có thước, compa, tam giác, trục Oxy)</span>
-          <button type="button" onClick={() => void handleScanBoard()} disabled={scanning} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60 cursor-pointer">{scanning ? "Đang quét…" : "📝 Quét bài làm trên A4"}</button>
-        </div>
-        <div className="h-[720px]"><ScratchpadInlinePanel ref={boardRef} centerId={actorUser?.centerId ?? ""} userId={actorUser?.userId ?? ""} clientSubmissionId={`mission:${a.activityRunId}`} backgroundImageUrl={photoUrl} onAttachSnapshot={(_b, url) => setPhotoUrl(url)} questionNode={q ? <RichMathText text={q.questionText} /> : a.content ? <span className="font-semibold">{a.content.title}</span> : undefined} /></div>
+        <div className="h-[calc(100vh-17rem)] min-h-[520px]"><ScratchpadInlinePanel ref={boardRef} centerId={actorUser?.centerId ?? ""} userId={actorUser?.userId ?? ""} clientSubmissionId={`mission:${a.activityRunId}`} backgroundImageUrl={photoUrl} onAttachSnapshot={(_b, url) => setPhotoUrl(url)} questionNode={q ? <RichMathText text={q.questionText} /> : a.content ? <span className="font-semibold">{a.content.title}</span> : undefined} /></div>
       </div>}
-      {inputMode === "photo" && <div className="space-y-2">
+      {!q?.options?.length && inputMode === "photo" && <div className="space-y-2">
         <input ref={photoInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" aria-label="Chọn ảnh bài giải" onChange={e => { const f = e.target.files?.[0] ?? null; e.target.value = ""; void handlePhotoFile(f); }} />
         {photoUrl ? <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
           <img src={photoUrl} alt="Ảnh bài giải đã tải lên" className="h-14 w-20 rounded-lg border border-slate-300 bg-white object-cover" />
-          <p className="min-w-[150px] flex-1 text-[11px] text-slate-500">Ảnh chỉ dùng để quét chữ vào bài làm, không lưu kèm buổi học.</p>
-          <button type="button" onClick={() => void runScan(photoUrl)} disabled={scanning} className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60 cursor-pointer">{scanning ? "Đang quét…" : "🔄 Quét lại"}</button>
-          <button type="button" onClick={() => photoInputRef.current?.click()} disabled={scanning} className="rounded-lg border px-3 py-1.5 text-xs font-bold cursor-pointer disabled:opacity-60">Đổi ảnh</button>
-        </div> : <button type="button" onClick={() => photoInputRef.current?.click()} disabled={scanning} className="w-full rounded-xl border-2 border-dashed border-slate-300 px-4 py-5 text-center cursor-pointer disabled:opacity-60 dark:border-slate-600">
-          <span className="text-xl">📷</span>
-          <span className="block text-sm font-bold">{scanning ? "Đang quét ảnh…" : "Chụp hoặc tải ảnh bài giải lên"}</span>
-          <span className="block text-xs text-slate-500">Hệ thống sẽ quét nội dung vào ô trả lời bên dưới</span>
+          <p className="min-w-[150px] flex-1 text-xs text-slate-500 dark:text-slate-400">Ảnh chỉ dùng để quét chữ vào bài làm, không lưu kèm buổi học.</p>
+          <button type="button" onClick={() => void runScan(photoUrl)} disabled={scanning} className={`${smallAction} bg-indigo-600 text-white hover:bg-indigo-700`}>{scanning ? "Đang quét…" : "Quét lại"}</button>
+          <button type="button" onClick={() => photoInputRef.current?.click()} disabled={scanning} className={`${smallAction} border border-slate-300 dark:border-slate-600`}>Đổi ảnh</button>
+        </div> : <button type="button" onClick={() => photoInputRef.current?.click()} disabled={scanning} className="w-full cursor-pointer rounded-xl border-2 border-dashed border-slate-300 px-4 py-6 text-center disabled:opacity-60 dark:border-slate-600">
+          <span className="block text-sm font-semibold">{scanning ? "Đang quét ảnh…" : "Chụp hoặc tải ảnh bài giải lên"}</span>
+          <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">Hệ thống sẽ quét nội dung vào ô bài làm bên dưới</span>
         </button>}
       </div>}
       {scanMsg && <p role="status" className="text-xs font-medium text-indigo-700 dark:text-indigo-300">{scanMsg}</p>}
-    </div>}
-    {!q?.options?.length && (q ? <div><span className="text-sm font-medium">Bài làm của em</span><div className="mt-2"><RichMathEditor variant="student" value={workText} onChange={handleWorkChange} minHeight="120px" placeholder="Trình bày bài làm của em... (Gõ $ hoặc Ctrl+M để chèn công thức toán)" /></div></div>
-      : <label className="block text-sm font-medium">{a.activityType === "FindError" ? "Sửa lại bước sai" : "Em hiểu hoặc rút ra điều gì?"}<textarea required rows={3} className={field} value={answer} onChange={e => setAnswer(e.target.value)} /></label>)}
-    {q?.options?.length ? <div><span className="text-sm font-medium">Giải thích vì sao em chọn đáp án này{q.reasoningRequired ? " (bắt buộc)" : " (nếu có)"}</span><div className="mt-2"><RichMathEditor variant="student" value={reasoning} onChange={setReasoning} minHeight="96px" placeholder="Giải thích vì sao em chọn đáp án này..." /></div></div> : null}
-    {hints.length > 0 && <section aria-label="Gợi ý" className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-slate-900">
-      {hints.map(h => <div key={h.hintLevel}><p className="text-xs font-semibold uppercase tracking-wider text-amber-700">Gợi ý {h.hintLevel}/{h.totalHints} · {h.hintTitle}</p>
-        <RichMathText className="mt-1 whitespace-pre-wrap text-sm leading-relaxed" text={h.explanation} /></div>)}
-      {lastHint?.policyNotice && <p className="text-xs text-amber-800">{lastHint.policyNotice}</p>}
-    </section>}
-    {notice && <p role="status" className="text-sm text-slate-500">{notice}</p>}
-    {(submit.error || assist.error) && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{extractProblemDetails(submit.error ?? assist.error).message}</p>}
-    <div className="flex flex-wrap gap-3"><button disabled={submit.isPending || save.isPending || conflict} type="submit" className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white disabled:opacity-40">{submit.isPending ? "Đang lưu bài…" : q ? "Nộp câu trả lời" : "Hoàn thành hoạt động"}</button>
-      <button type="button" disabled={save.isPending || conflict} className="rounded-xl border px-4 py-3" onClick={() => save.mutate(currentDraft)}>Lưu bản nháp</button>
-      {q && <button type="button" disabled={submit.isPending || save.isPending || conflict} className="rounded-xl border px-4 py-3" onClick={() => submit.mutate(true)}>Bỏ qua câu này</button>}
-      {!independent && <button type="button" disabled={assist.isPending || !moreHints} className="rounded-xl border border-amber-300 px-4 py-3 text-amber-900 disabled:opacity-50"
-        onClick={() => assist.mutate(hints.length)}>{assist.isPending ? "Đang mở gợi ý…" : hints.length === 0 ? "Gợi ý" : moreHints ? `Gợi ý tiếp (${hints.length + 1}/${lastHint?.totalHints ?? "?"})` : "Đã mở hết gợi ý"}</button>}
+      {!q?.options?.length && (q ? <div><span className="text-sm font-medium">Bài làm của em</span><div className="mt-2"><RichMathEditor variant="student" value={workText} onChange={handleWorkChange} minHeight="120px" placeholder={answerWorkPlaceholder(mathInput)} /></div><div className="mt-2"><GradedAnswerPreview answer={answer} questionType={q.questionType} evaluationMode={q.answerEvaluationMode} wholeWork={!mathInput} /></div></div>
+        : <label className="block text-sm font-medium">{a.activityType === "FindError" ? "Sửa lại bước sai" : "Em hiểu hoặc rút ra điều gì?"}<textarea required rows={3} className={field} value={answer} onChange={e => setAnswer(e.target.value)} /></label>)}
+      {q?.options?.length ? <div><span className="text-sm font-medium">Giải thích vì sao em chọn đáp án này{q.reasoningRequired ? " (bắt buộc)" : " (nếu có)"}</span><div className="mt-2"><RichMathEditor variant="student" value={reasoning} onChange={setReasoning} minHeight="96px" placeholder={answerReasoningPlaceholder(mathInput)} /></div></div> : null}
+      {notice && <p role="status" className="text-sm text-slate-500">{notice}</p>}
+      {(submit.error || assist.error) && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{extractProblemDetails(submit.error ?? assist.error).message}</p>}
+      <div className="flex flex-wrap gap-3"><button disabled={submit.isPending || save.isPending || conflict} type="submit" className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white disabled:opacity-40">{submit.isPending ? "Đang lưu bài…" : q ? "Nộp câu trả lời" : "Hoàn thành hoạt động"}</button>
+        <button type="button" disabled={save.isPending || conflict} className="rounded-xl border px-4 py-3" onClick={() => save.mutate(currentDraft)}>Lưu bản nháp</button>
+        {q && <button type="button" disabled={submit.isPending || save.isPending || conflict} className="rounded-xl border px-4 py-3" onClick={() => submit.mutate(true)}>Bỏ qua câu này</button>}
+        {!independent && <button type="button" disabled={assist.isPending || !moreHints} className="rounded-xl border border-amber-300 px-4 py-3 text-amber-900 disabled:opacity-50 dark:text-amber-200"
+          onClick={() => assist.mutate(hints.length)}>{assist.isPending ? "Đang mở gợi ý…" : hints.length === 0 ? "Gợi ý" : moreHints ? `Gợi ý tiếp (${hints.length + 1}/${lastHint?.totalHints ?? "?"})` : "Đã mở hết gợi ý"}</button>}
+      </div>
     </div>
+    {toolOpen && <div className="min-w-0 lg:col-span-2 xl:col-span-1 xl:sticky xl:top-4">
+      <SideAssistantWorkspace hideScratchpadTab activeTab={activeTool!} onChangeTab={onActiveToolChange} onClose={() => onActiveToolChange(null)} onInsertResult={insertToolResult}
+        centerId={actorUser?.centerId ?? ""} userId={actorUser?.userId ?? ""} clientSubmissionId={`mission:${a.activityRunId}`} />
+    </div>}
   </form>;
 }

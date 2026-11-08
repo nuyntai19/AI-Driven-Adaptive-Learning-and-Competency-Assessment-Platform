@@ -217,6 +217,25 @@ export function hideVirtualKeyboard(): void {
     }
   ).mathVirtualKeyboard;
   keyboard?.hide?.();
+  // Runs after the keyboard's hide animation.
+  setTimeout(() => releaseMathLivePageStyles(), 400);
+}
+
+/**
+ * MathLive saves and restores inline styles on <body> (padding for the virtual
+ * keyboard; overflow + margin-right while its panels are open). Overlapping
+ * open/close calls can restore an already modified value and leave the page
+ * with a blank band or no scrolling. The app never sets these itself, except
+ * overflow in modals, which never comes with a margin-right.
+ */
+export function releaseMathLivePageStyles(body?: Pick<HTMLElement, "style">): void {
+  const target = body ?? (typeof document === "undefined" ? null : document.body);
+  if (!target || isVirtualKeyboardVisible()) return;
+  target.style.paddingBottom = "";
+  if (target.style.marginRight) {
+    target.style.marginRight = "";
+    target.style.overflow = "";
+  }
 }
 
 /**

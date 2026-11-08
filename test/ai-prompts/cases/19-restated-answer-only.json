@@ -1,0 +1,16 @@
+{
+  "teacher": {
+    "questionText": "Tìm tập xác định của hàm số y = 1/(x - 2).",
+    "questionType": "ShortAnswer",
+    "answerEvaluationMode": "MathEquivalent",
+    "correctAnswer": "\\mathbb{R} \\setminus \\{2\\}",
+    "solution": "Điều kiện x - 2 khác 0 nên x khác 2.",
+    "knowledgeTopics": [
+      "Hàm số"
+    ]
+  },
+  "student": {
+    "finalAnswer": "\\mathbb{R} \\setminus \\{2\\}",
+    "reasoningText": "$D = \\mathbb{R} \\setminus \\{2\\}$"
+  }
+}

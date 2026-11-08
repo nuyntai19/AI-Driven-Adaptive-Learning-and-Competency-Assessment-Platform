@@ -5,15 +5,33 @@ import { getStudentTwin, getStudentTwinHistory } from "../api/digitalTwinApi";
 import { getStudentDashboard } from "../api/dashboardsApi";
 import type { StudentTwinDataDto, TwinUpdateHistoryItemDto } from "../types/digitalTwin";
 import { StudentSubjectRequiredState } from "../components/student/StudentSubjectRequiredState";
-import { getSubjectTheme } from "../components/student/subjectTheme";
-import { StudentSubjectPattern } from "../components/student/StudentSubjectPattern";
 import { organizationApi } from "../api/organizationApi";
 import { mapSafeOperationalError } from "../utils/problemDetails";
 import { studentScopeUrl } from "../utils/studentAcademicNavigation";
+import { TOPIC_STATUS_LABELS, topicMasteryStatus, type TopicMasteryStatus } from "../utils/topicMastery";
+
+const PANEL = "rounded-2xl border border-stone-200/90 bg-white p-4 sm:p-5 dark:border-stone-800/90 dark:bg-[#151d2f]";
+const PRESS = "transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] motion-reduce:transform-none";
+const TOPIC_FILTERS: TopicMasteryStatus[] = ["needsWork", "developing", "mastered", "noData"];
+const STATUS_TEXT: Record<TopicMasteryStatus, string> = {
+  noData: "text-stone-400 dark:text-stone-500",
+  needsWork: "text-amber-700 dark:text-amber-400",
+  developing: "text-indigo-700 dark:text-indigo-300",
+  mastered: "text-emerald-700 dark:text-emerald-400",
+};
+const STATUS_BAR: Record<TopicMasteryStatus, string> = {
+  noData: "bg-stone-300 dark:bg-stone-600",
+  needsWork: "bg-amber-500",
+  developing: "bg-indigo-500",
+  mastered: "bg-emerald-500",
+};
 
 export const StudentTwinPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedSubjectId = searchParams.get("subjectId") || "";
+  const selectedClassId = searchParams.get("classId") || "";
+  const isHistoryView = searchParams.get("history") === "true";
+  const [topicFilter, setTopicFilter] = useState<TopicMasteryStatus | "all">("all");
   const [historyPage, setHistoryPage] = useState<number>(1);
   const [isGoalEditorOpen, setIsGoalEditorOpen] = useState(false);
   const [targetScoreInput, setTargetScoreInput] = useState("8.0");
@@ -28,8 +46,8 @@ export const StudentTwinPage: React.FC = () => {
     error: twinErrorObj,
     refetch: refetchTwin,
   } = useQuery<StudentTwinDataDto>({
-    queryKey: ["studentTwin", selectedSubjectId],
-    queryFn: () => getStudentTwin(selectedSubjectId),
+    queryKey: ["studentTwin", selectedSubjectId, selectedClassId, isHistoryView],
+    queryFn: () => getStudentTwin(selectedSubjectId, selectedClassId || undefined, isHistoryView),
     enabled: !!selectedSubjectId,
   });
 
@@ -85,8 +103,8 @@ export const StudentTwinPage: React.FC = () => {
     data: historyData,
     isLoading: historyLoading,
   } = useQuery<TwinUpdateHistoryItemDto[]>({
-    queryKey: ["studentTwinHistory", selectedSubjectId],
-    queryFn: () => getStudentTwinHistory(selectedSubjectId),
+    queryKey: ["studentTwinHistory", selectedSubjectId, selectedClassId, isHistoryView],
+    queryFn: () => getStudentTwinHistory(selectedSubjectId, undefined, selectedClassId || undefined, isHistoryView),
     enabled: !!selectedSubjectId,
   });
 
@@ -94,7 +112,7 @@ export const StudentTwinPage: React.FC = () => {
   const behavioralInsight = useMemo(() => {
     if (!twinData?.behavior) return "";
     const b = twinData.behavior;
-    if (b.attemptCount === 0) return "Chưa có lượt làm bài để nhận định tốc độ, thói quen hoặc mức độ tự tin.";
+    if (b.attemptCount === 0) return "Chưa có lượt làm bài để nhận định tốc độ và thói quen làm bài.";
     const parts: string[] = [];
 
     if (b.avgTimeSpentSeconds < 30) {
@@ -109,10 +127,8 @@ export const StudentTwinPage: React.FC = () => {
       parts.push(`tuy nhiên tỷ lệ bỏ qua câu còn cao (${b.skipRate.toFixed(0)}%) — hãy kiên nhẫn khai thác các bước trung gian`);
     } else if (b.changeAnswerRate >= 35) {
       parts.push(`tỷ lệ đổi đáp án ở mức ${b.changeAnswerRate.toFixed(0)}% — hãy rèn luyện thêm tính chắc chắn trong lập luận`);
-    } else if (b.avgConfidence >= 75) {
-      parts.push(`mức độ tự tin trung bình đạt ${b.avgConfidence.toFixed(0)}%`);
     } else {
-      parts.push("hãy tiếp tục rèn luyện thêm bài tập để nâng cao độ tự tin");
+      parts.push("hãy tiếp tục rèn luyện thêm bài tập để củng cố kiến thức");
     }
 
     return parts.join(", ") + ".";
@@ -162,76 +178,64 @@ export const StudentTwinPage: React.FC = () => {
     );
   }
 
-  const { student, subject, goal, progressLine } = dashboardQuery.data;
-  const knowledgeTwin = twinData.topics.map((topic) => ({
-    ...topic,
-    mastery: topic.masteryPercentage,
-  }));
+  const { subject, goal, progressLine, academicContext } = dashboardQuery.data;
   const behaviorTwin = twinData.behavior;
-  const subjectTheme = getSubjectTheme(subject.subjectName);
+  const topics = twinData.topics.map((topic) => ({
+    ...topic,
+    status: topicMasteryStatus(topic.masteryPercentage, topic.evidenceCount),
+  }));
+  const countByStatus = (status: TopicMasteryStatus) => topics.filter((topic) => topic.status === status).length;
+  const visibleTopics = topicFilter === "all" ? topics : topics.filter((topic) => topic.status === topicFilter);
+  const classInView = academicContext?.classes.find((item) => item.classId === academicContext.selectedClassId);
 
-  const growthVelocity =
-    progressLine.length > 1
-      ? progressLine[progressLine.length - 1].overallSubjectMastery -
-        progressLine[progressLine.length - 2].overallSubjectMastery
-      : 0;
+  const latestChange = progressLine.length > 1
+    ? progressLine[progressLine.length - 1].overallSubjectMastery - progressLine[progressLine.length - 2].overallSubjectMastery
+    : null;
 
   const historyPageSize = 8;
   const historyTotalPages = Math.max(1, Math.ceil((historyData?.length ?? 0) / historyPageSize));
+  const currentHistoryPage = Math.min(historyPage, historyTotalPages);
   const visibleHistory =
-    historyData?.slice((historyPage - 1) * historyPageSize, historyPage * historyPageSize) ?? [];
+    historyData?.slice((currentHistoryPage - 1) * historyPageSize, currentHistoryPage * historyPageSize) ?? [];
+
+  const currentPercent = Math.min(100, Math.max(0, (goal.currentPredictedScore / 10) * 100));
+  const targetPercent = Math.min(100, Math.max(0, (goal.targetScore / 10) * 100));
+  const filterChoices: Array<{ value: TopicMasteryStatus | "all"; label: string; count: number }> = [
+    { value: "all", label: "Tất cả", count: topics.length },
+    ...TOPIC_FILTERS.map((value) => ({ value, label: TOPIC_STATUS_LABELS[value], count: countByStatus(value) })),
+  ];
 
   return (
-    <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8 min-w-0 student-shell">
-      {/* 1. Header: HỒ SƠ NĂNG LỰC */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-stone-200/80 dark:border-stone-800/80">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
-              Hồ sơ năng lực
-            </h1>
-            <span
-              className="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded"
-              style={{
-                backgroundColor: subjectTheme.bg,
-                color: subjectTheme.color,
-                border: `1px solid ${subjectTheme.border}`,
-              }}
-            >
-              {subject.subjectName}
-            </span>
-          </div>
-          <p className="text-xs sm:text-sm text-stone-500 dark:text-stone-400">
-            Học sinh: <strong className="text-stone-800 dark:text-stone-200">{student.fullName}</strong> · Cập nhật gần nhất theo dữ liệu luyện tập thực tế
+    <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4 min-w-0 student-shell">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
+            Hồ sơ năng lực
+          </h1>
+          <p className="mt-0.5 text-sm text-stone-500 dark:text-stone-400">
+            {subject.subjectName}{classInView ? ` · ${classInView.className}` : ""} · chỉ tính các chuyên đề trong giáo trình của lớp đang xem
           </p>
-          <p className="text-xs text-stone-500 dark:text-stone-400">Hồ sơ Twin tích lũy năng lực theo môn học qua các lớp; đổi phạm vi xem không tạo lại hay xóa năng lực cũ.</p>
         </div>
-
-        <div className="flex items-center gap-2.5 self-start md:self-auto text-xs">
-          <Link
-            to={studentScopeUrl("/hoc-tap/tong-quan", searchParams)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-200 transition-colors"
-          >
-            <span>← Tổng quan</span>
-          </Link>
-          <Link
-            to={`/hoc-tap/luyen-tap?subjectId=${subject.subjectId}`}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 text-white dark:text-stone-900 font-semibold transition-colors"
-          >
-            <span>Luyện tập ngay →</span>
-          </Link>
+        <div className="flex items-center gap-2 text-sm">
           <button
             type="button"
             onClick={() => setIsGoalEditorOpen((open) => !open)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 font-semibold text-indigo-800 hover:bg-indigo-100 dark:border-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-200"
+            aria-expanded={isGoalEditorOpen}
+            className={`rounded-lg border border-stone-300 px-3.5 py-2 font-semibold text-stone-800 hover:bg-stone-100 cursor-pointer dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800 ${PRESS}`}
           >
             {currentGoal ? "Sửa mục tiêu" : "Đặt mục tiêu"}
           </button>
+          <Link
+            to={studentScopeUrl("/hoc-tap/luyen-tap", searchParams)}
+            className={`rounded-lg bg-stone-900 px-3.5 py-2 font-semibold text-white hover:bg-stone-800 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-200 ${PRESS}`}
+          >
+            Luyện tập ngay
+          </Link>
         </div>
-      </div>
+      </header>
 
       {isGoalEditorOpen && (
-        <div className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 dark:border-indigo-800 dark:bg-indigo-950/30">
+        <div className={PANEL}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <label className="flex-1 text-xs font-semibold text-stone-700 dark:text-stone-200">
               Điểm mục tiêu (0–10)
@@ -270,365 +274,215 @@ export const StudentTwinPage: React.FC = () => {
         </div>
       )}
 
-      {/* 2. Visual Signature: CURRENT vs TARGET (Bản đồ tiến trình lớn) */}
-      <div className="relative rounded-2xl border border-stone-200/90 dark:border-stone-800/90 p-6 sm:p-8 bg-white dark:bg-[#151d2f] shadow-xs overflow-hidden">
-        <StudentSubjectPattern subjectName={subject.subjectName} opacity={0.06} />
-
-        <div className="relative z-10 space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-stone-400">
-                Khoảng cách năng lực
-              </span>
-              <h2 className="text-base sm:text-lg font-bold text-stone-900 dark:text-stone-100">
-                Hành trình từ vị trí hiện tại tới đích đến
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-4 items-start">
+        <div className="min-w-0 space-y-4">
+          <section aria-labelledby="twin-goal-heading" className={PANEL}>
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 id="twin-goal-heading" className="text-base font-bold text-stone-900 dark:text-stone-100">
+                Tiến tới mục tiêu
               </h2>
-            </div>
-            <div className="text-right">
-              <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                +{Math.abs(growthVelocity).toFixed(1)}% / mốc
-              </span>
-              <p className="text-[11px] text-stone-400">Gia tốc tăng trưởng</p>
-            </div>
-          </div>
-
-          {/* Large Visual: 0.8 ●━━━━━━━━━━━━━━━━━━━━○ 8.0 */}
-          <div className="py-4 space-y-3">
-            <div className="flex items-baseline justify-between">
-              <div>
-                <span className="text-[11px] font-mono uppercase tracking-wider text-stone-400 block">
-                  Vị trí hiện tại (Current)
-                </span>
-                <span className="text-3xl sm:text-4xl font-extrabold font-mono text-stone-900 dark:text-stone-100">
-                  {goal.hasPrediction === false ? "—" : goal.currentPredictedScore.toFixed(1)}
-                  {goal.hasPrediction !== false && <span className="text-sm text-stone-400 font-normal"> / 10</span>}
-                </span>
-              </div>
-
-              <div className="text-right">
-                <span className="text-[11px] font-mono uppercase tracking-wider text-stone-400 block">
-                  Mục tiêu kỳ vọng (Target)
-                </span>
+              {latestChange !== null && Math.abs(latestChange) >= 0.05 && (
                 <span
-                  className="text-3xl sm:text-4xl font-extrabold font-mono"
-                  style={{ color: subjectTheme.color }}
+                  title="Thay đổi mức thành thạo của môn so với mốc đo trước"
+                  className={`text-xs font-semibold tabular-nums ${latestChange >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}
                 >
-                  {goal.hasGoal ? goal.targetScore.toFixed(1) : "—"}
-                  {goal.hasGoal && <span className="text-sm text-stone-400 font-normal"> / 10</span>}
+                  {latestChange >= 0 ? "+" : ""}{latestChange.toFixed(1)}% so với mốc trước
                 </span>
+              )}
+            </div>
+
+            <div className="mt-4 flex items-end justify-between gap-4">
+              <div>
+                <p className="text-xs text-stone-500 dark:text-stone-400">Hiện tại</p>
+                <p className="text-3xl font-bold tabular-nums text-stone-900 dark:text-stone-100">
+                  {goal.hasPrediction === false ? "—" : goal.currentPredictedScore.toFixed(1)}
+                  {goal.hasPrediction !== false && <span className="text-sm font-medium text-stone-400"> / 10</span>}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-stone-500 dark:text-stone-400">Mục tiêu</p>
+                <p className="text-3xl font-bold tabular-nums text-indigo-700 dark:text-indigo-300">
+                  {goal.hasGoal ? goal.targetScore.toFixed(1) : "—"}
+                  {goal.hasGoal && <span className="text-sm font-medium text-stone-400"> / 10</span>}
+                </p>
               </div>
             </div>
 
-            {/* Custom Large Dual-Node Route Track */}
-            <div className="relative h-3 w-full bg-stone-100 dark:bg-stone-800 rounded-full overflow-visible">
-              {goal.hasPrediction !== false && <div
-                className="absolute top-0 bottom-0 rounded-full transition-all duration-700"
-                style={{
-                  width: `${Math.min(100, Math.max(0, (goal.currentPredictedScore / 10) * 100))}%`,
-                  backgroundColor: subjectTheme.color,
-                }}
-              />}
-              {/* Current Node */}
-              {goal.hasPrediction !== false && <div
-                className="absolute top-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 border-white dark:border-slate-900 shadow-sm transition-all duration-700"
-                style={{
-                  left: `calc(${Math.min(100, (goal.currentPredictedScore / 10) * 100)}% - 10px)`,
-                  backgroundColor: subjectTheme.color,
-                }}
-              />}
-              {/* Target Node */}
+            <div className="relative mt-3 h-2 rounded-full bg-stone-100 dark:bg-stone-800">
+              {goal.hasPrediction !== false && (
+                <div className="h-full rounded-full bg-indigo-500 transition-[width] duration-300 ease-out" style={{ width: `${currentPercent}%` }} />
+              )}
               {goal.hasGoal && (
-                <div
-                  className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-stone-400 dark:border-stone-500 bg-white dark:bg-stone-900 shadow-2xs"
-                  style={{ left: `calc(${Math.min(100, (goal.targetScore / 10) * 100)}% - 8px)` }}
+                <span
+                  aria-hidden="true"
+                  className="absolute top-1/2 h-4 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-stone-500 dark:bg-stone-300"
+                  style={{ left: `${targetPercent}%` }}
                 />
               )}
             </div>
 
-            <div className="flex items-center justify-between text-xs text-stone-500 dark:text-stone-400 pt-1">
-              <span>{goal.hasDeadline === false ? "Chưa đặt ngày đích" : goal.hasGoal ? `Còn lại: ${goal.remainingDays} ngày` : "Bạn chưa đặt mục tiêu cho môn này"}</span>
-              <span>{goal.hasPrediction === false ? "Chưa đủ dữ liệu dự báo" : goal.hasGoal ? `Cần thêm: ${Math.max(0, goal.targetScore - goal.currentPredictedScore).toFixed(1)} điểm` : "Hãy chọn Đặt mục tiêu"}</span>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-stone-500 dark:text-stone-400">
+              <span>{goal.hasDeadline === false ? "Chưa đặt ngày đích" : goal.hasGoal ? `Còn ${goal.remainingDays} ngày` : "Bạn chưa đặt mục tiêu cho môn này"}</span>
+              <span className="tabular-nums">{goal.hasPrediction === false ? "Chưa đủ dữ liệu dự báo" : goal.hasGoal ? `Cần thêm ${Math.max(0, goal.targetScore - goal.currentPredictedScore).toFixed(1)} điểm` : "Hãy chọn Đặt mục tiêu"}</span>
             </div>
-            {goal.forecastMessage && <p className="text-xs text-stone-500 dark:text-stone-400">{goal.forecastMessage}</p>}
-          </div>
+            {goal.forecastMessage && <p className="mt-2 text-xs leading-relaxed text-stone-500 dark:text-stone-400">{goal.forecastMessage}</p>}
+          </section>
+
+          <section aria-labelledby="twin-behavior-heading" className={PANEL}>
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 id="twin-behavior-heading" className="text-base font-bold text-stone-900 dark:text-stone-100">
+                Thói quen làm bài
+              </h2>
+              <span className="text-xs tabular-nums text-stone-500 dark:text-stone-400">{behaviorTwin.attemptCount} lượt làm · cả môn</span>
+            </div>
+            {behaviorTwin.attemptCount > 0 && (
+              <dl className="mt-3 divide-y divide-stone-100 text-sm dark:divide-stone-800/80">
+                <div className="flex items-center justify-between py-2">
+                  <dt className="text-stone-600 dark:text-stone-400">Thời gian trung bình</dt>
+                  <dd className="font-semibold tabular-nums text-stone-900 dark:text-stone-100">{Math.round(behaviorTwin.avgTimeSpentSeconds)} giây / câu</dd>
+                </div>
+                <div className="flex items-center justify-between py-2">
+                  <dt className="text-stone-600 dark:text-stone-400">Tỷ lệ bỏ qua câu</dt>
+                  <dd className="font-semibold tabular-nums text-stone-900 dark:text-stone-100">{behaviorTwin.skipRate.toFixed(0)}%</dd>
+                </div>
+                <div className="flex items-center justify-between py-2">
+                  <dt className="text-stone-600 dark:text-stone-400">Tỷ lệ đổi đáp án</dt>
+                  <dd className="font-semibold tabular-nums text-stone-900 dark:text-stone-100">{behaviorTwin.changeAnswerRate.toFixed(0)}%</dd>
+                </div>
+              </dl>
+            )}
+            {behavioralInsight && <p className="mt-2 text-sm leading-relaxed text-stone-600 dark:text-stone-300">{behavioralInsight}</p>}
+          </section>
         </div>
-      </div>
 
-      {/* 3. Section: NĂNG LỰC CỦA BẠN (Mỗi topic là một path: ●━━━━━○ 42%) */}
-      <div className="space-y-4">
-        <div className="flex items-baseline justify-between border-b border-stone-200/80 dark:border-stone-800/80 pb-2">
-          <div>
-            <h2 className="text-base sm:text-lg font-bold text-stone-900 dark:text-stone-100">
-              Năng lực của bạn theo chuyên đề
-            </h2>
-            <span className="text-[11px] font-mono text-stone-400">
-              Tiến bộ nhận thức (Cognitive Growth)
-            </span>
-          </div>
-          <span className="text-xs font-mono text-stone-500 dark:text-stone-400">
-            {knowledgeTwin.length} chuyên đề
-          </span>
-        </div>
-
-        {/* List of Topic Routes (Each topic has its own route path) */}
-        <div className="space-y-3">
-          {knowledgeTwin.map((topic) => {
-            const mastery = topic.mastery;
-            const isMastered = mastery >= 75;
-            const isDeveloping = mastery >= 50 && mastery < 75;
-
-            return (
-              <div
-                key={topic.topicNodeId}
-                className="group p-3 sm:p-4 rounded-xl hover:bg-stone-50/70 dark:hover:bg-stone-900/40 transition-colors border border-stone-100 dark:border-stone-800/60"
-              >
-                <div className="flex items-center justify-between gap-3 mb-2 text-xs sm:text-sm">
-                  <span className="font-semibold text-stone-900 dark:text-stone-100">
-                    {topic.topicName}
-                  </span>
-
-                  <div className="flex items-center gap-3 font-mono text-xs">
-                    <span className="text-stone-400 hidden sm:inline">
-                      {topic.evidenceCount} bài tập
-                    </span>
-                    <span
-                      className={`font-bold ${
-                        isMastered
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : isDeveloping
-                          ? "text-indigo-600 dark:text-indigo-400"
-                          : "text-amber-600 dark:text-amber-400"
+        <section aria-labelledby="twin-topics-heading" className={`${PANEL} min-w-0`}>
+          <h2 id="twin-topics-heading" className="text-base font-bold text-stone-900 dark:text-stone-100">
+            Năng lực theo chuyên đề
+          </h2>
+          {topics.length > 0 ? (
+            <>
+              <div role="group" aria-label="Lọc chuyên đề theo mức năng lực" className="mt-3 flex flex-wrap gap-1">
+                {filterChoices.map((choice) => {
+                  const active = topicFilter === choice.value;
+                  return (
+                    <button
+                      key={choice.value}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setTopicFilter(choice.value)}
+                      className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold cursor-pointer ${PRESS} ${
+                        active
+                          ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300"
+                          : "text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
                       }`}
                     >
-                      {mastery.toFixed(0)}%
-                    </span>
-                  </div>
-                </div>
-
-                {/* Path representation: ●━━━━━━━━━━━━○ */}
-                <div className="relative h-2 w-full bg-stone-100 dark:bg-stone-800 rounded-full overflow-visible">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                      isMastered
-                        ? "bg-emerald-500"
-                        : isDeveloping
-                        ? "bg-indigo-600"
-                        : "bg-amber-500"
-                    }`}
-                    style={{ width: `${Math.min(100, Math.max(0, mastery))}%` }}
-                  />
-                  {/* Current Position Node */}
-                  <span
-                    className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full border border-white dark:border-slate-900 ${
-                      isMastered ? "bg-emerald-600" : isDeveloping ? "bg-indigo-700" : "bg-amber-600"
-                    }`}
-                    style={{ left: `calc(${Math.min(100, Math.max(0, mastery))}% - 5px)` }}
-                  />
-                </div>
+                      {choice.label} <span className="tabular-nums opacity-70">{choice.count}</span>
+                    </button>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
+
+              {visibleTopics.length > 0 ? (
+                <ul className="mt-2 divide-y divide-stone-100 dark:divide-stone-800/80">
+                  {visibleTopics.map((topic) => (
+                    <li key={topic.topicNodeId} className="py-2.5">
+                      <div className="flex items-baseline justify-between gap-3 text-sm">
+                        <span className="min-w-0 font-semibold text-stone-900 dark:text-stone-100">{topic.topicName}</span>
+                        <span className="shrink-0 text-xs tabular-nums">
+                          {topic.status !== "noData" && <span className="text-stone-500 dark:text-stone-400">{topic.evidenceCount} bài · </span>}
+                          <span className={`font-bold ${STATUS_TEXT[topic.status]}`}>
+                            {topic.status === "noData" ? "Chưa làm" : `${topic.masteryPercentage.toFixed(0)}%`}
+                          </span>
+                        </span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 rounded-full bg-stone-100 dark:bg-stone-800">
+                        <div
+                          className={`h-full rounded-full transition-[width] duration-300 ease-out ${STATUS_BAR[topic.status]}`}
+                          style={{ width: `${Math.min(100, Math.max(0, topic.masteryPercentage))}%` }}
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-4 text-sm text-stone-500 dark:text-stone-400">Không có chuyên đề nào ở mức này.</p>
+              )}
+            </>
+          ) : (
+            <p className="mt-3 text-sm leading-relaxed text-stone-500 dark:text-stone-400">
+              {academicContext?.message || "Lớp đang xem chưa có chuyên đề nào. Giáo trình sẽ hiện ở đây khi giáo viên áp dụng cho lớp."}
+            </p>
+          )}
+        </section>
       </div>
 
-      {/* 4. Section: CÁCH BẠN HỌC (Behavioral Twin with structured rows & micro bars) */}
-      <div className="space-y-4">
-        <div className="flex items-baseline justify-between border-b border-stone-200/80 dark:border-stone-800/80 pb-2">
-          <div>
-            <h2 className="text-base sm:text-lg font-bold text-stone-900 dark:text-stone-100">
-              Cách bạn học & Thói quen giải quyết vấn đề
-            </h2>
-            <span className="text-[11px] font-mono text-stone-400">
-              Hành vi học tập (Behavioral Twin)
-            </span>
-          </div>
-          <span className="text-xs font-mono text-stone-500 dark:text-stone-400">
-            {behaviorTwin.attemptCount} lượt làm bài
-          </span>
-        </div>
-
-        {/* Structured Rows / Micro Bars */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-4 rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/80 dark:border-stone-800/80 space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-stone-600 dark:text-stone-400">Thời gian làm bài trung bình</span>
-              <span className="font-mono font-bold text-stone-900 dark:text-stone-100">
-                {behaviorTwin.avgTimeSpentSeconds} giây / câu
-              </span>
-            </div>
-            <div className="w-full bg-stone-100 dark:bg-stone-800 rounded-full h-1.5">
-              <div
-                className="bg-indigo-600 h-full rounded-full"
-                style={{ width: `${Math.min(100, (behaviorTwin.avgTimeSpentSeconds / 180) * 100)}%` }}
-              />
-            </div>
-          </div>
-
-          <div className="p-4 rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/80 dark:border-stone-800/80 space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-stone-600 dark:text-stone-400">Tỷ lệ bỏ qua câu hỏi</span>
-              <span className="font-mono font-bold text-stone-900 dark:text-stone-100">
-                {behaviorTwin.skipRate.toFixed(1)}%
-              </span>
-            </div>
-            <div className="w-full bg-stone-100 dark:bg-stone-800 rounded-full h-1.5">
-              <div
-                className="bg-amber-500 h-full rounded-full"
-                style={{ width: `${Math.min(100, behaviorTwin.skipRate)}%` }}
-              />
-            </div>
-          </div>
-
-          <div className="p-4 rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/80 dark:border-stone-800/80 space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-stone-600 dark:text-stone-400">Tỷ lệ thay đổi đáp án</span>
-              <span className="font-mono font-bold text-stone-900 dark:text-stone-100">
-                {behaviorTwin.changeAnswerRate.toFixed(1)}%
-              </span>
-            </div>
-            <div className="w-full bg-stone-100 dark:bg-stone-800 rounded-full h-1.5">
-              <div
-                className="bg-sky-500 h-full rounded-full"
-                style={{ width: `${Math.min(100, behaviorTwin.changeAnswerRate)}%` }}
-              />
-            </div>
-          </div>
-
-          <div className="p-4 rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/80 dark:border-stone-800/80 space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-stone-600 dark:text-stone-400">Mức độ tự tin trung bình</span>
-              <span className="font-mono font-bold text-stone-900 dark:text-stone-100">
-                {behaviorTwin.avgConfidence.toFixed(1)}%
-              </span>
-            </div>
-            <div className="w-full bg-stone-100 dark:bg-stone-800 rounded-full h-1.5">
-              <div
-                className="bg-emerald-500 h-full rounded-full"
-                style={{ width: `${Math.min(100, behaviorTwin.avgConfidence)}%` }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Human-readable Data-backed Insight Banner */}
-        {behavioralInsight && (
-          <div className="p-4 rounded-xl bg-stone-50 dark:bg-[#141d30] border border-stone-200/80 dark:border-stone-800/80 text-xs sm:text-sm text-stone-700 dark:text-stone-300 leading-relaxed flex items-start gap-2.5">
-            <span className="font-bold text-indigo-600 dark:text-indigo-400 shrink-0">●</span>
-            <div>
-              <span className="font-bold text-stone-900 dark:text-stone-100">Nhận định học tập: </span>
-              <span>{behavioralInsight}</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 5. Section: Nhật ký cập nhật năng lực (Twin History) */}
-      <div className="space-y-3 pt-2">
-        <div className="flex items-center justify-between border-b border-stone-200/80 dark:border-stone-800/80 pb-2">
-          <h2 className="text-base font-bold text-stone-900 dark:text-stone-100">
+      <section aria-labelledby="twin-history-heading" className={PANEL}>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 id="twin-history-heading" className="text-base font-bold text-stone-900 dark:text-stone-100">
             Nhật ký cập nhật năng lực
           </h2>
-          <span className="text-xs font-mono text-stone-400">
-            {historyData?.length ?? 0} sự kiện
-          </span>
+          <span className="text-xs tabular-nums text-stone-500 dark:text-stone-400">{historyData?.length ?? 0} lần cập nhật</span>
         </div>
 
-        <div className="divide-y divide-stone-100 dark:divide-stone-800/80">
+        <div className="mt-2 divide-y divide-stone-100 dark:divide-stone-800/80">
           {historyLoading ? (
-            <div className="p-4 text-center text-xs text-stone-400">Đang tải lịch sử...</div>
+            <p role="status" className="py-4 text-sm text-stone-500 dark:text-stone-400">Đang tải nhật ký...</p>
           ) : visibleHistory.length > 0 ? (
             visibleHistory.map((item) => (
-              <div
-                key={item.historyId}
-                className="flex flex-col sm:flex-row sm:items-center justify-between py-3 gap-2 text-xs"
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-stone-900 dark:text-stone-100">
-                      {item.topicName}
-                    </span>
-                    <span
-                      className={`px-1.5 py-0.2 rounded text-[10px] font-medium ${
-                        item.eventSource === "TeacherOverride"
-                          ? "bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300"
-                          : "bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400"
-                      }`}
-                    >
-                      {item.eventSource === "TeacherOverride" ? "Giáo viên xác nhận" : "Đánh giá bài tập"}
+              <div key={item.historyId} className="flex flex-col lg:flex-row lg:items-center justify-between gap-2 py-3 text-sm">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-stone-900 dark:text-stone-100">{item.topicName}</span>
+                    <span className="text-xs text-stone-500 dark:text-stone-400">
+                      {item.eventSource === "TeacherOverride" ? "Giáo viên xác nhận" : item.learningContext === "Assignment" ? `Bài tập: ${item.contextLabel}` : item.contextLabel}
                     </span>
                   </div>
-                  <p className="mt-0.5 text-stone-500 dark:text-stone-400">{item.explanation}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-                    <span className="rounded-md border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 font-semibold text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-200">
-                      {item.learningContext === "Assignment" ? `Bài tập: ${item.contextLabel}` : item.contextLabel}
-                    </span>
-                    {item.questionText && (
-                      <span className="max-w-2xl truncate text-stone-600 dark:text-stone-300" title={item.questionText}>
-                        Câu hỏi: {item.questionText}
-                      </span>
-                    )}
-                  </div>
+                  <p className="mt-0.5 text-xs leading-relaxed text-stone-500 dark:text-stone-400">{item.explanation}</p>
                 </div>
 
-                <div className="flex items-center gap-3 text-right shrink-0">
-                  <div className="font-mono">
-                    <span className="text-stone-400">{item.previousMastery.toFixed(1)}% → </span>
-                    <span className="font-semibold text-stone-900 dark:text-stone-100">
-                      {item.newMastery.toFixed(1)}%
+                <div className="flex shrink-0 items-center gap-4 text-xs tabular-nums">
+                  <span>
+                    <span className="text-stone-500 dark:text-stone-400">{item.previousMastery.toFixed(1)}% → </span>
+                    <span className="font-semibold text-stone-900 dark:text-stone-100">{item.newMastery.toFixed(1)}%</span>
+                    <span className={`ml-1.5 font-semibold ${item.delta >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}>
+                      {item.delta >= 0 ? `+${item.delta.toFixed(1)}` : item.delta.toFixed(1)}%
                     </span>
-                    <span
-                      className={`ml-1 font-semibold ${
-                        item.delta >= 0
-                          ? "text-emerald-700 dark:text-emerald-400"
-                          : "text-red-600 dark:text-red-400"
-                      }`}
-                    >
-                      ({item.delta >= 0 ? `+${item.delta.toFixed(1)}` : item.delta.toFixed(1)}%)
-                    </span>
-                  </div>
-                  <span className="text-stone-400 font-mono text-[11px]">
-                    {new Date(item.recordedAt).toLocaleDateString("vi-VN", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                  </span>
+                  <span className="text-stone-500 dark:text-stone-400">
+                    {new Date(item.recordedAt).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                   </span>
                 </div>
               </div>
             ))
           ) : (
-            <div className="p-4 text-center text-xs text-stone-400">
-              Chưa có sự kiện cập nhật hồ sơ nào
-            </div>
+            <p className="py-4 text-sm text-stone-500 dark:text-stone-400">
+              Chưa có cập nhật nào. Năng lực sẽ được ghi lại sau mỗi bài tập được chấm.
+            </p>
           )}
         </div>
 
-        {/* Pagination */}
         {historyTotalPages > 1 && (
-          <div className="pt-2 flex items-center justify-between text-xs">
+          <div className="mt-2 flex items-center justify-between text-xs">
             <button
               type="button"
-              onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
-              disabled={historyPage <= 1}
-              className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 font-semibold text-stone-800 shadow-xs hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 dark:hover:bg-stone-700 cursor-pointer"
+              onClick={() => setHistoryPage(Math.max(1, currentHistoryPage - 1))}
+              disabled={currentHistoryPage <= 1}
+              className={`rounded-lg border border-stone-300 px-3 py-1.5 font-semibold text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800 ${PRESS}`}
             >
-              ← Trang trước
+              Trang trước
             </button>
-            <span className="rounded-md bg-stone-100 px-2.5 py-1 font-semibold text-stone-700 dark:bg-stone-800 dark:text-stone-200">
-              Trang {historyPage} / {historyTotalPages}
-            </span>
+            <span className="tabular-nums text-stone-600 dark:text-stone-300">Trang {currentHistoryPage} / {historyTotalPages}</span>
             <button
               type="button"
-              onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}
-              disabled={historyPage >= historyTotalPages}
-              className="rounded-lg border border-stone-300 bg-white px-3 py-1.5 font-semibold text-stone-800 shadow-xs hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-100 dark:hover:bg-stone-700 cursor-pointer"
+              onClick={() => setHistoryPage(Math.min(historyTotalPages, currentHistoryPage + 1))}
+              disabled={currentHistoryPage >= historyTotalPages}
+              className={`rounded-lg border border-stone-300 px-3 py-1.5 font-semibold text-stone-800 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer dark:border-stone-700 dark:text-stone-200 dark:hover:bg-stone-800 ${PRESS}`}
             >
-              Trang sau →
+              Trang sau
             </button>
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 };

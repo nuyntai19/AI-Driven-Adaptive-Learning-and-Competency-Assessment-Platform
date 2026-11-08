@@ -9,6 +9,19 @@ namespace EduTwin.BLL.Tests.AssessmentAndReasoning.AI;
 public sealed class ReasoningEvidencePolicyTests
 {
     [Theory]
+    [InlineData("7", "7")]
+    [InlineData("x = 7", "7")]
+    [InlineData("$D = \\mathbb{R} \\setminus \\{2\\}$", "\\mathbb{R} \\setminus \\{2\\}")]
+    public void RestatingTheAnswer_IsNotReasoningEvidence(string reasoning, string finalAnswer) =>
+        Assert.False(ReasoningEvidencePolicy.HasEvidence(reasoning, false, QuestionType.ShortAnswer, finalAnswer));
+
+    [Theory]
+    [InlineData("2x + 1 = 7", "7")]
+    [InlineData("2x = 14 nen x = 7", "7")]
+    public void WorkEndingInTheAnswer_IsReasoningEvidence(string reasoning, string finalAnswer) =>
+        Assert.True(ReasoningEvidencePolicy.HasEvidence(reasoning, false, QuestionType.ShortAnswer, finalAnswer));
+
+    [Theory]
     [InlineData(null)] [InlineData("")] [InlineData("...")] [InlineData("khum")]
     [InlineData(" KHUM!! ")] [InlineData("Em không biết.")] [InlineData("I don't know")]
     public void MissingOrExplicitNonAnswerCannotSupportPerfectReasoning(string? text)

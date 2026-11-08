@@ -89,7 +89,15 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
                 latest.TryGetValue(i.Attempt.AttemptId, out var _))
                 .GroupBy(i => i.QuestionId).Select(g => g.First()).ToList();
             var shortProbe = run.PolicySnapshot?.RootElement.TryGetProperty("minimumIndependentQuestions", out var minimum) == true && minimum.GetInt32() == 3;
-            if (valid.Count < (shortProbe ? 3 : 5) || valid.Count != independent.Count)
+            var floor = shortProbe ? 3 : 5;
+            if (valid.Count < floor && valid.Count == independent.Count)
+            {
+                // The bank could not issue enough questions. Nothing is left to do in this run,
+                // so close it: an open run would block every other session and any new path in the subject.
+                result.Outcome = "Inconclusive";
+                reason = $"Ngân hàng câu hiện chỉ đủ {valid.Count} câu cho phần này nên chưa kết luận mức nắm vững. Các câu đã làm vẫn được ghi nhận.";
+            }
+            else if (valid.Count < floor || valid.Count != independent.Count)
             {
                 result.Outcome = "InsufficientEvidence";
                 reason = $"Có {valid.Count}/5 câu độc lập đủ bằng chứng. Không kết luận đạt khi chưa có đánh giá hợp lệ.";

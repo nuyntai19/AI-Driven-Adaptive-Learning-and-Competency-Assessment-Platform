@@ -20,9 +20,20 @@ const MAX_LINES = 8;
 
 const shorten = (name: string) => (name.length > 24 ? `${name.slice(0, 23)}…` : name);
 const fmtDay = (t: number) => new Date(t).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
+const fmtHour = (t: number) => new Date(t).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 const fmtFull = (t: number) => new Date(t).toLocaleString("vi-VN", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 interface TopicSeries { id: string; name: string; events: { t: number; v: number }[] }
+
+/** A topic changed only once has no segment to draw, so its one point must be visible. */
+const firstChangeDot = (topic: TopicSeries, color: string) => {
+  if (topic.events.length > 1) return false;
+  return (props: { cx?: number; cy?: number; payload?: { t: number }; index?: number }) => (
+    props.payload?.t === topic.events[0].t && props.cx !== undefined && props.cy !== undefined
+      ? <circle key={props.index} cx={props.cx} cy={props.cy} r={3} fill={color} />
+      : <g key={props.index} />
+  );
+};
 
 /**
  * Stock-style multi-line trend: one line per topic, a point at every recorded mastery
@@ -62,23 +73,27 @@ export const StudentMasteryTrendChart: React.FC<StudentMasteryTrendChartProps> =
     </p>
   );
 
+  // Activity within one or two days would otherwise label every tick the same.
+  const span = rows.length > 1 ? rows[rows.length - 1].t - rows[0].t : 0;
+  const fmtTick = span < 2 * 24 * 60 * 60 * 1000 ? fmtHour : fmtDay;
+
   return (
-    <div className="mt-4" data-testid="student-mastery-trend">
-      <div className="h-80 w-full min-w-0">
+    <div className="mt-3" data-testid="student-mastery-trend">
+      <div className="h-64 w-full min-w-0">
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 0, left: -12 }}>
             <CartesianGrid stroke="#e5e7eb" className="dark:opacity-20" vertical={false} />
-            <XAxis dataKey="t" type="number" domain={["dataMin", "dataMax"]} tickFormatter={fmtDay}
+            <XAxis dataKey="t" type="number" domain={["dataMin", "dataMax"]} tickFormatter={fmtTick}
               tick={{ fill: "#6b7280", fontSize: 11 }} tickCount={6} />
             <YAxis domain={[0, 100]} tickFormatter={(v: number) => `${v}%`}
               tick={{ fill: "#6b7280", fontSize: 11 }} />
             <Tooltip labelFormatter={(t) => fmtFull(Number(t))}
               formatter={(value, name) => [`${Number(value).toFixed(0)}%`, name]}
-              contentStyle={{ borderRadius: "12px", fontSize: "12px", border: "1px solid #e5e7eb", backgroundColor: "rgba(255, 255, 255, 0.95)" }} />
+              contentStyle={{ borderRadius: "12px", fontSize: "12px", border: "1px solid var(--student-border, #e5e7eb)", backgroundColor: "var(--student-surface, #fff)", color: "var(--student-ink, #1f2937)" }} />
             {topics.map((topic, i) => (
               <Line key={topic.id} type="linear" dataKey={topic.id} name={topic.name}
                 stroke={PALETTE[i % PALETTE.length]} strokeWidth={2}
-                dot={rows.length < 3 ? { r: 2.5 } : false} activeDot={{ r: 3.5 }} connectNulls />
+                dot={rows.length < 3 ? { r: 2.5 } : firstChangeDot(topic, PALETTE[i % PALETTE.length])} activeDot={{ r: 3.5 }} connectNulls />
             ))}
             <Legend verticalAlign="bottom" height={40} formatter={(value: string) => shorten(value)}
               wrapperStyle={{ fontSize: "12px" }} />

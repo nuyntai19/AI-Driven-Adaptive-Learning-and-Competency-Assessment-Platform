@@ -34,6 +34,7 @@ function load(file: string, dependencies: Record<string, any> = {}) {
       const key = Object.keys(dependencies).find(key => name.endsWith(key));
       if (key) return dependencies[key];
       if (name.endsWith("TimeBudgetSlider")) return { TimeBudgetSlider: () => null };
+      if (name.endsWith("studyTime")) return { MIN_GOAL_STUDY_MINUTES: 10 };
       throw new Error(`Missing test dependency ${name}`);
     } });
   return { render: (props: any) => { cursor = 0; return (exports as any)[file](props); } };

@@ -744,7 +744,9 @@ public class StudentsController : ControllerBase
     [Authorize(Policy = "twin.student.read_own")]
     public async Task<IActionResult> GetStudentTwin(
         [FromQuery] Guid subjectId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromQuery] Guid? classId = null,
+        [FromQuery] bool history = false)
     {
         var traceId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier;
         if (subjectId == Guid.Empty)
@@ -760,7 +762,7 @@ public class StudentsController : ControllerBase
             });
         }
 
-        var result = await _getStudentTwinUseCase.ExecuteAsync(subjectId, cancellationToken);
+        var result = await _getStudentTwinUseCase.ExecuteAsync(subjectId, classId, history, cancellationToken);
         if (result.IsSuccess)
         {
             return Ok(new StudentTwinResponse
@@ -818,10 +820,12 @@ public class StudentsController : ControllerBase
         [FromQuery] ulong? topicId,
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromQuery] Guid? classId = null,
+        [FromQuery] bool history = false)
     {
         var traceId = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier;
-        var result = await _getStudentTwinHistoryUseCase.ExecuteAsync(subjectId, topicId, from, to, cancellationToken);
+        var result = await _getStudentTwinHistoryUseCase.ExecuteAsync(subjectId, topicId, from, to, classId, history, cancellationToken);
 
         if (result.IsSuccess)
         {

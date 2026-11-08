@@ -118,7 +118,8 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
     queryFn: () => getAssignments({ classId: selectedClassId || undefined, page: 1, pageSize: 100 }),
   });
 
-  const allAssignments: AssignmentDto[] = useMemo(() => assignmentsData?.data ?? [], [assignmentsData]);
+  // A draft has not reached any student, so there is nothing to grade yet.
+  const allAssignments: AssignmentDto[] = useMemo(() => (assignmentsData?.data ?? []).filter((a) => a.status !== "Draft"), [assignmentsData]);
 
   // 3. Load general review queue stats for badge counters
   const { data: globalQueueData } = useQuery({
@@ -1264,7 +1265,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                         {resolvedStudentReasoning || resolvedStudentAnswer ? (
                           <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-sans whitespace-pre-wrap space-y-2">
                             {resolvedStudentReasoning && <RichMathText text={resolvedStudentReasoning} />}
-                            {resolvedStudentAnswer && (
+                            {resolvedStudentAnswer && resolvedStudentAnswer.trim() !== resolvedStudentReasoning?.trim() && (
                               <p className="font-semibold text-slate-900 dark:text-slate-100">
                                 {currentQuestion.questionType === "MultipleChoice" ? "Đáp án đã chọn: " : "Đáp án cuối: "}
                                 <RichMathText text={resolvedStudentAnswer} />

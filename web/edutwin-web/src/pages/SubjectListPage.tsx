@@ -44,7 +44,6 @@ const CenterManagerSubjectListView: React.FC = () => {
 
   // Modals state
   const [isCreating, setIsCreating] = useState(false);
-  const [createCode, setCreateCode] = useState("");
   const [createName, setCreateName] = useState("");
   const [createDescription, setCreateDescription] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
@@ -110,7 +109,6 @@ const CenterManagerSubjectListView: React.FC = () => {
     onSuccess: async () => {
       await invalidateAllSubjectQueries();
       setIsCreating(false);
-      setCreateCode("");
       setCreateName("");
       setCreateDescription("");
       setCreateError(null);
@@ -193,7 +191,6 @@ const CenterManagerSubjectListView: React.FC = () => {
   });
 
   const handleOpenCreate = () => {
-    setCreateCode("");
     setCreateName("");
     setCreateDescription("");
     setCreateError(null);
@@ -216,17 +213,8 @@ const CenterManagerSubjectListView: React.FC = () => {
     e.preventDefault();
     setCreateError(null);
 
-    const trimmedCode = createCode.trim().toUpperCase();
     const trimmedName = createName.trim();
 
-    if (!trimmedCode) {
-      setCreateError("Mã môn học không được để trống.");
-      return;
-    }
-    if (trimmedCode.length > 32) {
-      setCreateError("Mã môn học không được vượt quá 32 ký tự.");
-      return;
-    }
     if (!trimmedName) {
       setCreateError("Tên môn học không được để trống.");
       return;
@@ -241,7 +229,6 @@ const CenterManagerSubjectListView: React.FC = () => {
     }
 
     createMutation.mutate({
-      subjectCode: trimmedCode,
       subjectName: trimmedName,
       description: createDescription.trim() || null,
     });
@@ -526,22 +513,6 @@ const CenterManagerSubjectListView: React.FC = () => {
               )}
 
               <form onSubmit={handleCreateSubmit} className="space-y-4">
-                <div>
-                  <label htmlFor="input-create-subject-code" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
-                    Mã môn học <span className="text-rose-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    id="input-create-subject-code"
-                    value={createCode}
-                    onChange={(e) => setCreateCode(e.target.value.toUpperCase())}
-                    required
-                    maxLength={32}
-                    placeholder="Ví dụ: TOAN12"
-                    disabled={createMutation.isPending}
-                    className="cm-field mt-1 w-full px-3 text-sm uppercase font-mono"
-                  />
-                </div>
 
                 <div>
                   <label htmlFor="input-create-subject-name" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
@@ -621,7 +592,8 @@ const CenterManagerSubjectListView: React.FC = () => {
                     type="text"
                     id="input-edit-subject-code"
                     value={editCode}
-                    onChange={(e) => setEditCode(e.target.value.toUpperCase())}
+                    readOnly
+                    title="Mã môn học do hệ thống tự tạo"
                     required
                     maxLength={32}
                     disabled={updateMutation.isPending}
@@ -839,7 +811,6 @@ const LegacySubjectListPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>("");
 
   const [isCreating, setIsCreating] = useState(false);
-  const [createCode, setCreateCode] = useState("");
   const [createName, setCreateName] = useState("");
   const [createDescription, setCreateDescription] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
@@ -892,7 +863,6 @@ const LegacySubjectListPage: React.FC = () => {
     onSuccess: async () => {
       await invalidateAllSubjectQueries();
       setIsCreating(false);
-      setCreateCode("");
       setCreateName("");
       setCreateDescription("");
       setCreateError(null);
@@ -966,7 +936,6 @@ const LegacySubjectListPage: React.FC = () => {
   });
 
   const handleOpenCreate = () => {
-    setCreateCode("");
     setCreateName("");
     setCreateDescription("");
     setCreateError(null);
@@ -990,17 +959,8 @@ const LegacySubjectListPage: React.FC = () => {
     e.preventDefault();
     setCreateError(null);
 
-    const trimmedCode = createCode.trim().toUpperCase();
     const trimmedName = createName.trim();
 
-    if (!trimmedCode) {
-      setCreateError("Mã môn học không được để trống.");
-      return;
-    }
-    if (trimmedCode.length > 32) {
-      setCreateError("Mã môn học không được vượt quá 32 ký tự.");
-      return;
-    }
     if (!trimmedName) {
       setCreateError("Tên môn học không được để trống.");
       return;
@@ -1015,7 +975,6 @@ const LegacySubjectListPage: React.FC = () => {
     }
 
     createMutation.mutate({
-      subjectCode: trimmedCode,
       subjectName: trimmedName,
       description: createDescription.trim() || null,
     });
@@ -1329,21 +1288,6 @@ const LegacySubjectListPage: React.FC = () => {
               )}
               <form onSubmit={handleCreateSubmit} className="space-y-4">
                 <div>
-                  <label htmlFor="input-create-subject-code" className="block text-xs font-semibold uppercase text-slate-600 mb-1">
-                    Mã môn học <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="input-create-subject-code"
-                    type="text"
-                    required
-                    maxLength={32}
-                    value={createCode}
-                    onChange={(e) => setCreateCode(e.target.value.toUpperCase())}
-                    placeholder="Ví dụ: TOAN12"
-                    className="block w-full rounded-lg border-0 py-2 px-3 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm font-mono uppercase"
-                  />
-                </div>
-                <div>
                   <label htmlFor="input-create-subject-name" className="block text-xs font-semibold uppercase text-slate-600 mb-1">
                     Tên môn học <span className="text-red-500">*</span>
                   </label>
@@ -1414,7 +1358,8 @@ const LegacySubjectListPage: React.FC = () => {
                     required
                     maxLength={32}
                     value={editCode}
-                    onChange={(e) => setEditCode(e.target.value.toUpperCase())}
+                    readOnly
+                    title="Mã môn học do hệ thống tự tạo"
                     className="block w-full rounded-lg border-0 py-2 px-3 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm font-mono uppercase"
                   />
                 </div>

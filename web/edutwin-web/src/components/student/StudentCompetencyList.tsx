@@ -31,7 +31,7 @@ export const StudentCompetencyList: React.FC<StudentCompetencyListProps> = ({ da
   const weakest = assessed.length ? assessed.reduce((min, d) => (d.score < min.score ? d : min)) : null;
 
   return (
-    <div className="mt-4 space-y-6" data-testid="student-competency-list">
+    <div className="mt-3 space-y-4" data-testid="student-competency-list">
       <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-stone-600 dark:text-stone-300">
         <span><strong className="text-stone-900 dark:text-stone-100">{data.length}</strong> chủ đề</span>
         <span><strong className="text-stone-900 dark:text-stone-100">{assessed.length}</strong> đã có bằng chứng</span>
@@ -53,13 +53,13 @@ export const StudentCompetencyList: React.FC<StudentCompetencyListProps> = ({ da
                 <div className="h-full rounded-full" style={{ width: `${summary?.score ?? 0}%`, backgroundColor: themeColor }} />
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="divide-y divide-stone-100 dark:divide-stone-800/80">
               {group.items.map(item => {
                 const status = statusOf(item);
                 const hasEvidence = (item.evidenceCount ?? 0) > 0;
                 const isWeakest = weakest != null && item === weakest;
                 return (
-                  <div key={item.name} className={`rounded-lg border border-stone-100 dark:border-stone-800 px-3 py-2 ${isWeakest ? "ring-1 ring-amber-300 dark:ring-amber-700" : ""}`}>
+                  <div key={item.name} className="py-2.5">
                     <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                       <span className="font-medium text-stone-800 dark:text-stone-200">
                         {item.name}
@@ -71,7 +71,7 @@ export const StudentCompetencyList: React.FC<StudentCompetencyListProps> = ({ da
                       </span>
                     </div>
                     <div className="mt-1.5 h-1.5 rounded-full bg-stone-100 dark:bg-slate-800">
-                      <div className="h-full rounded-full" style={{ width: `${hasEvidence ? item.score : 0}%`, backgroundColor: themeColor }} />
+                      <div className="h-full rounded-full transition-[width] duration-300 ease-out" style={{ width: `${hasEvidence ? item.score : 0}%`, backgroundColor: themeColor }} />
                     </div>
                     {item.evidenceCount != null && item.evidenceCount > 0 && <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">{item.evidenceCount} bằng chứng</p>}
                   </div>

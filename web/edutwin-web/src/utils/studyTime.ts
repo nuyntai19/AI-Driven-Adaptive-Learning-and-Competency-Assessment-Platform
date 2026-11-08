@@ -1,4 +1,6 @@
 export const MIN_STUDY_MINUTES = 5;
+/** A standing plan below this cannot fit one practice set a day; a single busy day may still use 5. */
+export const MIN_GOAL_STUDY_MINUTES = 10;
 export const MAX_STUDY_MINUTES = 300;
 
 /** 90 -> "1 giờ 30 phút". */

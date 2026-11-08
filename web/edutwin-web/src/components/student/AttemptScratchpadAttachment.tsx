@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getAttemptAttachment } from "../../api/learningFeedbackApi";
 import { useAuthStore } from "../../stores/authStore";
@@ -66,13 +67,15 @@ export function AttemptScratchpadAttachment({ attemptId }: { attemptId: string |
           <img src={url} alt="Bản nháp của học sinh" onError={() => setImageFailed(true)} className="max-h-40 max-w-full rounded-lg border border-emerald-200 bg-white object-contain" />
         </button>
       ) : <p role="status" className="mt-3 text-xs text-slate-500">Đang tải ảnh nháp…</p>}
-      {expanded && url && !failed && (
+      {expanded && url && !failed && createPortal(
         <div role="dialog" aria-modal="true" aria-label="Ảnh nháp đã nộp" className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/80 p-4" onClick={() => setExpanded(false)}>
           <div className="relative max-h-[90vh] max-w-[95vw] overflow-auto rounded-xl bg-white p-4" onClick={(event) => event.stopPropagation()}>
             <button autoFocus type="button" onClick={() => setExpanded(false)} className="mb-3 rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-bold text-slate-900">Đóng (Esc)</button>
             <img src={url} alt="Bản vẽ nháp gốc của học sinh" className="max-h-[75vh] max-w-full object-contain" />
           </div>
-        </div>
+        </div>,
+        // The card can sit inside a sticky column, whose stacking context would trap the overlay.
+        document.body
       )}
     </section>
   );

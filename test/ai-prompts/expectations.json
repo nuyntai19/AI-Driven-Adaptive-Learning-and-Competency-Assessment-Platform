@@ -15,5 +15,8 @@
   "13-nonanswer-idk": {"answerAssessment":"Correct","reasoningVerdict":"Uncertain","reasoningQuality":0},
   "14-reference-answer-prompt-injection": {"answerAssessment":"Incorrect","maximumSuggestedScore":10},
   "15-missing-visual-evidence-preserves-calculation": {"answerAssessment":"Correct","reasoningVerdict":"Valid","minimumSuggestedScore":3,"maximumSuggestedScore":3,"rubricScores":{"calculation":3,"diagram":0},"missingVisualRequirementCount":1},
-  "16-image-only-arithmetic-question": {"answerAssessment":"Correct","reasoningVerdict":"Valid","minimumSuggestedScore":10,"maximumSuggestedScore":10}
+  "16-image-only-arithmetic-question": {"answerAssessment":"Correct","reasoningVerdict":"Valid","minimumSuggestedScore":10,"maximumSuggestedScore":10},
+  "17-offtopic-word-correct-answer": {"answerAssessment":"Correct","reasoningVerdict":"Uncertain","reasoningQuality":0},
+  "18-pasted-terminal-correct-answer": {"answerAssessment":"Correct","reasoningVerdict":"Uncertain","reasoningQuality":0},
+  "19-restated-answer-only": {"answerAssessment":"Correct","reasoningVerdict":"Uncertain","reasoningQuality":0}
 }

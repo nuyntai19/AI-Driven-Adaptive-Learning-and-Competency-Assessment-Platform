@@ -224,7 +224,8 @@ public sealed class LearningPathStudyFlowTests
         await ActivateWithBudget(f, 180, "101", "102");
         var shortDay = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 15);
         var longDay = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 180);
-        Assert.Equal(180u, (await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 999)).AvailableMinutes);
+        // The goal's minutes are a default, not a ceiling; only the global maximum caps today's request.
+        Assert.Equal(LearningPathPacing.MaxDailyMinutes, (await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English, 999)).AvailableMinutes);
         Assert.InRange(longDay.PlannedMinutes, 1u, 180u);
         Assert.True(longDay.PlannedQuestionCount > shortDay.PlannedQuestionCount);
         Assert.All(longDay.TodayPlan.Concat(shortDay.TodayPlan).Where(m => m.Purpose == "Practice"), m =>

@@ -79,7 +79,7 @@ public class EduTwinSeedFactoryTests
         var factory = new EduTwinSeedFactory(true);
         var data = factory.CreateData();
 
-        Assert.Equal(41, data.Questions.Count);
+        Assert.Equal(49, data.Questions.Count);
         Assert.Equal(["MATH-FUNC-05"], data.SkippedQuestionTemplates);
         Assert.DoesNotContain(data.Questions, q => q.QuestionId == DeterministicSeedIds.CenterAQuestionIdBase + 4);
         foreach (var q in data.Questions)
@@ -101,7 +101,7 @@ public class EduTwinSeedFactoryTests
         var essayQuestions = data.Questions.Where(q => q.QuestionType == EduTwin.Contracts.CurriculumAndQuestions.QuestionType.Essay).ToList();
 
         Assert.Equal(12, mcQuestions.Count);
-        Assert.Equal(23, saQuestions.Count);
+        Assert.Equal(31, saQuestions.Count);
         Assert.Equal(6, essayQuestions.Count);
 
         foreach (var topic in data.Topics)
@@ -109,7 +109,7 @@ public class EduTwinSeedFactoryTests
             var topicQuestions = data.Questions.Where(q => q.PrimaryTopicNodeId == topic.NodeId).OrderBy(q => q.Difficulty).ToList();
             if (topic.NodeId >= DeterministicSeedIds.CenterANodeIdBase + 5000)
             {
-                Assert.Single(topicQuestions);
+                Assert.Equal(topic.NodeCode == "MATH10-QUADRATIC" ? 9 : 1, topicQuestions.Count);
                 continue;
             }
             Assert.Equal(topic.NodeCode == "MATH-FUNCTIONS" ? 4 : 5, topicQuestions.Count);

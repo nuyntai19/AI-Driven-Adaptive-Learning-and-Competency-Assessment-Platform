@@ -74,9 +74,16 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
   const subjectId = subject.subjectId;
   const access = useStudentLearningAccess(subjectId);
   const [sliderMinutes, setSliderMinutes] = useState(15);
-  const [minutes, setMinutes] = useState(15);
+  // 0 asks the server for the goal's own minutes/day, so the first plan already matches the slider.
+  const [minutes, setMinutes] = useState(0);
+  const sliderTouched = useRef(false);
+  const changeSlider = (value: number) => { sliderTouched.current = true; setSliderMinutes(value); };
   // The slider updates its readout immediately; the plan is recalculated once dragging pauses.
-  useEffect(() => { const timer = setTimeout(() => setMinutes(sliderMinutes), 350); return () => clearTimeout(timer); }, [sliderMinutes]);
+  useEffect(() => {
+    if (!sliderTouched.current) return;
+    const timer = setTimeout(() => setMinutes(sliderMinutes), 350);
+    return () => clearTimeout(timer);
+  }, [sliderMinutes]);
   const [showGoal, setShowGoal] = useState(false);
   const [entryMode, setEntryMode] = useState<"Start" | "Placement" | "Foundation" | "Update" | "Next" | "FromPlacement" | undefined>();
   const [initialScope, setInitialScope] = useState<string[]>([]);
@@ -105,10 +112,11 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
   useEffect(() => {
     const lpId = agenda.data?.learningPathId;
     const perDay = agenda.data?.availableMinutesPerDay;
-    if (!lpId || !perDay || perDay <= 0 || goalSeededFor.current === lpId) return;
-    goalSeededFor.current = lpId;
+    if (!lpId || !perDay || perDay <= 0 || sliderTouched.current) return;
+    const seed = `${lpId}:${perDay}`;
+    if (goalSeededFor.current === seed) return;
+    goalSeededFor.current = seed;
     setSliderMinutes(perDay);
-    setMinutes(perDay);
   }, [agenda.data?.learningPathId, agenda.data?.availableMinutesPerDay]);
   const missions = agenda.data?.missions ?? [];
   // Proposal from a finished placement: tested parts become the scope; untested parts are self-assessed.
@@ -245,9 +253,22 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
         <div><h2 id="today-title" className="text-xl font-semibold">Hôm nay học gì?</h2>
           {agenda.data.goalTitle && <p className="mt-1 text-sm text-slate-500">Mục tiêu: {agenda.data.goalTitle}</p>}
           <p className="mt-3 text-sm text-slate-500">{agenda.data.agendaMessage}</p></div>
-        <TimeBudgetSlider label="Thời gian hôm nay" value={sliderMinutes} onChange={setSliderMinutes} summary={planSummary} capacity={agenda.data.learningPathId && !agenda.data.isPlacement ? agenda.data.availableTodayMinutes : undefined} />
+        <TimeBudgetSlider label="Thời gian hôm nay" value={sliderMinutes} onChange={changeSlider} summary={planSummary} capacity={agenda.data.learningPathId && !agenda.data.isPlacement ? agenda.data.availableTodayMinutes : undefined} />
         {sliderMinutes < 10 && <p className="mt-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300">Học dưới 10 phút/ngày thường tiến bộ rất chậm. Nên đặt tối thiểu 10–15 phút/ngày để thấy cải thiện rõ rệt.</p>}
       </div>
+      {!!agenda.data.extraOptions?.length && <section aria-labelledby="extra-time-title" className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700">
+        <h3 id="extra-time-title" className="text-sm font-semibold">Thời gian còn dư, bạn có thể làm thêm</h3>
+        <ul className="mt-2 space-y-2">{agenda.data.extraOptions.map(option => {
+          const to = option.kind === "Assignment"
+            ? `/hoc-tap/bai-tap/${option.assignmentId}?subjectId=${subjectId}${access.classId ? `&classId=${access.classId}` : ""}`
+            : `/hoc-tap/luyen-tap?subjectId=${subjectId}${access.classId ? `&classId=${access.classId}` : ""}&topicId=${option.skillId}`;
+          return <li key={`${option.kind}:${option.assignmentId ?? option.skillId}`} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span className="min-w-0">{option.kind === "Assignment" ? "Bài tập" : "Ôn thêm"}: <strong className="font-semibold">{option.title}</strong>
+              <span className="tabular-nums text-slate-500 dark:text-slate-400"> · {option.questionCount} câu · khoảng {option.estimatedMinutes} phút</span></span>
+            <Link to={to} className="shrink-0 rounded-lg border border-slate-300 px-3 py-1.5 font-medium transition-[background-color,transform] duration-150 ease-out hover:bg-slate-100 active:scale-[0.97] motion-reduce:transform-none dark:border-slate-600 dark:hover:bg-slate-800">{option.kind === "Assignment" ? "Mở bài" : "Luyện"}</Link>
+          </li>;
+        })}</ul>
+      </section>}
       {primary && <div className="mt-5 rounded-xl bg-indigo-50 p-5 dark:bg-indigo-950/40">
         <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">{primary.activeRunId ? "Tiếp tục nhiệm vụ" : "Bắt đầu từ đây"}</p>
         <h3 className="mt-2 text-xl font-semibold">{primary.title}</h3>{agenda.data.primaryReason && <p className="mt-1 text-xs text-indigo-700 dark:text-indigo-300">Vì sao đứng đầu: {agenda.data.primaryReason}</p>}<Reason className="mt-2 text-sm" text={primary.recommendationReason} />

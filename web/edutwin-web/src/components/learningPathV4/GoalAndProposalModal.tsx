@@ -7,6 +7,7 @@ import { recommendLearningGoal } from "../../utils/learningPathRecommendation";
 import { pathChangeBlockersFromError, type BlockingLearningMission } from "../../utils/learningMission";
 import { ProposalCustomizationForm } from "./ProposalCustomizationForm";
 import { TimeBudgetSlider } from "./TimeBudgetSlider";
+import { MIN_GOAL_STUDY_MINUTES } from "../../utils/studyTime";
 import { formatStudyMinutes } from "../../utils/studyTime";
 import { groupLearningSkills, missingLearningPrerequisites } from "../../utils/learningScope";
 import { SkillScopeSelector } from "./SkillScopeSelector";
@@ -32,7 +33,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
   const [targetScore, setTargetScore] = useState(initialTargetScore == null ? "" : String(initialTargetScore));
   const [pace, setPace] = useState(initialPreferredPace ?? "Moderate");
   const [schedule, setSchedule] = useState<LearningScheduleSettings>(initialSchedule ?? {studyDays: [], excludedDates: [], timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Ho_Chi_Minh", reviewReservePercent: 20, shortCheckDays: 45, mockExamDays: 14});
-  const [minutes, setMinutes] = useState(initialMinutes);
+  const [minutes, setMinutes] = useState(Math.max(MIN_GOAL_STUDY_MINUTES, initialMinutes));
   const [days, setDays] = useState(initialDays);
   const [deadline, setDeadline] = useState(() => {
     if (!initialDeadline) return "";
@@ -86,7 +87,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
   } });
   const customize = useMutation({ mutationFn: (request: CustomizePathProposalRequest) => customizePathProposal(sourceProposal!.proposalId, request),
     onSuccess: value => {
-      setProposal(value); setMinutes(value.availableMinutesPerDay ?? minutes); setDays(value.availableDaysPerWeek ?? days);
+      setProposal(value); setMinutes(Math.max(MIN_GOAL_STUDY_MINUTES, value.availableMinutesPerDay ?? minutes)); setDays(value.availableDaysPerWeek ?? days);
       const date = value.deadlineDate ? new Date(value.deadlineDate) : null;
       setDeadline(date ? `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}` : "");
       setTargets(value.milestones.flatMap(m => m.skillIds)); setCustomizing(false); contentRef.current?.scrollTo({ top: 0 });
@@ -133,7 +134,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
         {targets.length > 0 && (currentMasteryAverage != null
           ? <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">Điểm ước tính hiện tại (từ bản đồ năng lực, {assessedTargets.length}/{targets.length} phần đã chọn có bằng chứng): <strong>{(currentMasteryAverage / 10).toFixed(1)}/10</strong>. Hệ thống sẽ tính thời gian học tối thiểu và ngày đích đề xuất ở bản xem trước; mốc quá ngắn sẽ không chọn được tuyến.</p>
           : <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">Chưa đủ bằng chứng để ước tính điểm hiện tại cho các phần đã chọn — kiểm tra đầu vào sẽ cho con số này, và thời gian tối thiểu sẽ tính theo khối lượng nội dung.</p>)}
-        <TimeBudgetSlider label="Thời gian học mỗi ngày" value={minutes} onChange={setMinutes} summary="Đây là trần thời gian mỗi ngày, dùng để xếp lịch thực tế. Khi không đủ thời gian, hệ thống sẽ chỉ rõ phần cần hoãn hoặc điều chỉnh." />
+        <TimeBudgetSlider label="Thời gian học mỗi ngày" min={MIN_GOAL_STUDY_MINUTES} value={minutes} onChange={setMinutes} summary="Tối thiểu 10 phút/ngày để đủ làm một bộ luyện. Đây là trần thời gian mỗi ngày, dùng để xếp lịch thực tế. Khi không đủ thời gian, hệ thống sẽ chỉ rõ phần cần hoãn hoặc điều chỉnh." />
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="text-sm">Ngày mỗi tuần<select className={input} value={days} onChange={e => { setDays(Number(e.target.value)); setSchedule(s => ({...s, studyDays: []})); }}>{[1, 2, 3, 4, 5, 6, 7].map(n => <option key={n}>{n}</option>)}</select></label>
           <label className="text-sm font-medium">Ngày thi / học tới ngày<input type="date" min={todayIso()} className={input} value={deadline} onChange={e => setDeadline(e.target.value)} /></label></div>

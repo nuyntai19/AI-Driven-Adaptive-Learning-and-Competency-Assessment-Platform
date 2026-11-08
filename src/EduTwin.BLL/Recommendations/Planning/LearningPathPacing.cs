@@ -11,6 +11,8 @@ public static class LearningPathPacing
     /// <summary>Questions in the end-of-route review of a self-assessed part.</summary>
     public const uint ConfirmationSize = 3;
     public const uint MinDailyMinutes = 5;
+    /// <summary>A standing plan below this cannot fit one practice set a day; a single busy day may still use MinDailyMinutes.</summary>
+    public const uint MinGoalDailyMinutes = 10;
     public const uint MaxDailyMinutes = 300;
     public const uint MinutesPerQuestion = 2;
     public const uint MinPracticeQuestions = 3;

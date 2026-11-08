@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { StudentClassAssignment } from "../components/StudentClassAssignment";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate } from "react-router-dom";
 import { organizationApi } from "../api/organizationApi";
@@ -932,6 +933,8 @@ const CenterManagerStudentListView: React.FC = () => {
                     <option value="Disabled">Vô hiệu hóa</option>
                   </select>
                 </div>
+
+                <StudentClassAssignment studentId={editingStudent.studentId} gradeLevel={editingStudent.gradeLevel} />
 
                 <div className="flex justify-end gap-3 pt-4">
                   <button

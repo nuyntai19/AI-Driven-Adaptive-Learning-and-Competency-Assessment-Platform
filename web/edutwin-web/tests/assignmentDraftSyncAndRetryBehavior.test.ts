@@ -267,7 +267,7 @@ function pageHarness() {
   };
   const setters = {
     setFinalAnswer: "finalAnswer", setAnswerDisplayLatex: "answerDisplayLatex", setReasoningText: "reasoningText",
-    setConfidence: "confidence", setTimeSpentSeconds: "timeSpentSeconds", setAnswerChanges: "answerChanges",
+    setTimeSpentSeconds: "timeSpentSeconds", setAnswerChanges: "answerChanges",
     setAttachedSnapshotDataUrl: "attachedSnapshotDataUrl", setAttachedSnapshotBlob: "attachedSnapshotBlob",
     setAttachedSnapshotTime: "attachedSnapshotTime", setDrawingUploadToken: "drawingUploadToken",
     setDraftConflict: "draftConflict", setDraftSaveStatus: "draftSaveStatus", setAssignmentDraftLoadVersion: "assignmentDraftLoadVersion",
@@ -318,7 +318,6 @@ test("actual sync updates active inputs and a subsequent persist keeps server an
   c.callbacks.persistCurrentAnswer();
   assert.equal(c.assignmentAnswers["1"].finalAnswer, "SERVER");
   assert.equal(c.assignmentAnswers["1"].reasoningText, "SERVER REASON");
-  assert.equal(c.confidence, 95);
   assert.equal(c.timeSpentSeconds, 60);
   assert.equal(c.answerChangesRef.current, 4);
   assert.equal(c.drawingUploadToken, "server-token");

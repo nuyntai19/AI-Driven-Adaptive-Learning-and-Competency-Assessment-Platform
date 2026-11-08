@@ -2,29 +2,45 @@ import React, { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adaptivePracticeApi } from "../api/adaptivePracticeApi";
-import { organizationApi } from "../api/organizationApi";
+import { getReconciledStudentAcademicContext } from "../api/dashboardsApi";
+import { useAuthStore } from "../stores/authStore";
+import { practiceEndLabel } from "../utils/adaptivePracticeSummary";
+import { BookmarkedQuestions } from "../components/student/BookmarkedQuestions";
 import type { AdaptivePracticeMode } from "../types/adaptivePractice";
 
 export const AdaptivePracticeOverviewPage: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const selectedSubjectId = searchParams.get("subjectId") || "";
-  const [selectedMode, setSelectedMode] = useState<AdaptivePracticeMode>("Weakness");
-  const [selectedTopicId, setSelectedTopicId] = useState<string>("");
+  // The subject is chosen once, in the student header.
+  const effectiveSubjectId = searchParams.get("subjectId") || "";
+  const urlClassId = searchParams.get("classId") || "";
+  const user = useAuthStore((state) => state.user);
+  // The header fills classId into the URL a moment later; resolve it here so
+  // the first proposal is already limited to the class in view.
+  const academicContextQuery = useQuery({
+    queryKey: ["student-academic-context", user?.centerId, user?.userId, effectiveSubjectId, urlClassId, searchParams.get("history") === "true"],
+    queryFn: () => getReconciledStudentAcademicContext(effectiveSubjectId, urlClassId, searchParams.get("history") === "true"),
+    enabled: !!user && !!effectiveSubjectId,
+    staleTime: 30_000,
+  });
+  const classId = urlClassId || academicContextQuery.data?.selectedClassId || "";
+  const classResolved = !!urlClassId || academicContextQuery.isSuccess || academicContextQuery.isError;
+  // A link from the learning path can preselect the topic to practise.
+  const linkedTopicId = searchParams.get("topicId") || "";
+  const [selectedMode, setSelectedMode] = useState<AdaptivePracticeMode>(linkedTopicId ? "CustomTopic" : "Weakness");
+  const [selectedTopicId, setSelectedTopicId] = useState<string>(linkedTopicId);
   const [timeBudget, setTimeBudget] = useState<number>(15);
 
-  // 1. Fetch Subjects list
-  const subjectsQuery = useQuery({
-    queryKey: ["subjects", "adaptive-practice"],
-    queryFn: () => organizationApi.listSubjects(true),
-    staleTime: 5 * 60 * 1000,
-  });
-  const subjects = subjectsQuery.data?.data || [];
-  const effectiveSubjectId = selectedSubjectId || (subjects.length > 0 ? subjects[0].subjectId : "");
+  // A topic only exists within its subject, so switching subject clears it.
+  const [topicSubjectId, setTopicSubjectId] = useState(effectiveSubjectId);
+  if (topicSubjectId !== effectiveSubjectId) {
+    setTopicSubjectId(effectiveSubjectId);
+    setSelectedTopicId("");
+  }
 
-  // 2. Fetch Active Session if any
+  // 1. Fetch Active Session if any
   const activeSessionQuery = useQuery({
     queryKey: ["adaptive-practice", "active-session", effectiveSubjectId],
     queryFn: () => adaptivePracticeApi.getActiveSession(effectiveSubjectId || undefined),
@@ -35,9 +51,9 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
 
   // 3. Fetch Practice Proposal
   const proposalQuery = useQuery({
-    queryKey: ["adaptive-practice", "proposal", effectiveSubjectId, selectedTopicId, selectedMode],
-    queryFn: () => adaptivePracticeApi.getProposal(effectiveSubjectId, selectedTopicId || undefined, selectedMode),
-    enabled: !!effectiveSubjectId,
+    queryKey: ["adaptive-practice", "proposal", effectiveSubjectId, classId, selectedTopicId, selectedMode],
+    queryFn: () => adaptivePracticeApi.getProposal(effectiveSubjectId, selectedTopicId || undefined, selectedMode, classId || undefined),
+    enabled: !!effectiveSubjectId && classResolved,
     staleTime: 30 * 1000,
   });
   const proposal = proposalQuery.data;
@@ -55,6 +71,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
     mutationFn: () =>
       adaptivePracticeApi.createSession({
         subjectId: effectiveSubjectId,
+        classId: classId || undefined,
         topicNodeId: selectedTopicId || proposal?.topicNodeId || "",
         practiceMode: selectedMode,
         timeBudgetMinutes: timeBudget,
@@ -66,12 +83,10 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
     },
   });
 
-  const handleSubjectChange = (subjectId: string) => {
-    const next = new URLSearchParams(searchParams);
-    next.set("subjectId", subjectId);
-    setSearchParams(next);
-    setSelectedTopicId("");
-  };
+  const stopActiveSessionMutation = useMutation({
+    mutationFn: () => adaptivePracticeApi.closeSession(activeSession!.sessionId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["adaptive-practice"] }),
+  });
 
   const handleResumeSession = () => {
     if (activeSession) {
@@ -81,8 +96,8 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
 
   return (
     <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8 min-w-0">
-      {/* Header & Subject Selector */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-200 dark:border-stone-800">
+      {/* Header */}
+      <div className="pb-4 border-b border-stone-200 dark:border-stone-800">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
@@ -96,27 +111,6 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
             Tổ chức phiên luyện tập cá nhân hóa có mục tiêu rõ ràng, tự động điều chỉnh độ khó và tổng hợp bằng chứng năng lực.
           </p>
         </div>
-
-        {/* Subject Switcher */}
-        {subjects.length > 0 && (
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <label htmlFor="subject-select" className="text-xs font-medium text-slate-600 dark:text-slate-400">
-              Môn học:
-            </label>
-            <select
-              id="subject-select"
-              value={effectiveSubjectId}
-              onChange={(e) => handleSubjectChange(e.target.value)}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:outline-indigo-500 shadow-2xs"
-            >
-              {subjects.map((sub) => (
-                <option key={sub.subjectId} value={sub.subjectId}>
-                  {sub.subjectName} ({sub.subjectCode})
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
       </div>
 
       {/* Region A: Active Session Banner (if present) */}
@@ -137,18 +131,44 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleResumeSession}
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all cursor-pointer shrink-0"
-          >
-            <span>Tiếp tục luyện tập</span>
-            <span>→</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => stopActiveSessionMutation.mutate()}
+              disabled={stopActiveSessionMutation.isPending}
+              className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              {stopActiveSessionMutation.isPending ? "Đang dừng..." : "Dừng phiên này"}
+            </button>
+            <button
+              type="button"
+              onClick={handleResumeSession}
+              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm cursor-pointer"
+            >
+              Tiếp tục luyện tập
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Region B & C: Main Proposal & Configuration Grid */}
+      {proposalQuery.isError ? (
+        <div role="alert" className="rounded-2xl border border-slate-200 bg-white p-6 text-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="font-semibold text-slate-900 dark:text-white">Không tải được đề xuất luyện tập.</p>
+          <button type="button" onClick={() => void proposalQuery.refetch()} className="mt-3 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100 cursor-pointer dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
+            Thử lại
+          </button>
+        </div>
+      ) : proposal?.unavailableReason ? (
+        <div role="status" className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="text-base font-bold text-slate-900 dark:text-white">Chưa có nội dung để luyện tập</h2>
+          <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-400">{proposal.unavailableReason}</p>
+          {selectedMode !== "Weakness" && (
+            <button type="button" onClick={() => setSelectedMode("Weakness")} className="mt-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-xs font-semibold text-white cursor-pointer">
+              Luyện theo điểm yếu
+            </button>
+          )}
+        </div>
+      ) : (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column (8 cols): Today Mission / Proposal */}
         <div className="lg:col-span-8 space-y-6">
@@ -189,7 +209,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
               <div className="space-y-2">
                 <div className="flex justify-between text-xs font-semibold">
                   <span className="text-slate-600 dark:text-slate-400">
-                    Năng lực ước lượng: <strong className="text-slate-900 dark:text-white">{proposal.currentMastery.toFixed(0)}%</strong>
+                    Năng lực ước lượng: <strong className="text-slate-900 dark:text-white">{proposal.isDiagnosticRecommended ? "Chưa có dữ liệu" : `${proposal.currentMastery.toFixed(0)}%`}</strong>
                   </span>
                   <span className="text-indigo-600 dark:text-indigo-400">
                     Mục tiêu phiên: <strong>{proposal.targetMastery.toFixed(0)}%</strong>
@@ -241,12 +261,18 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
               </div>
             </div>
 
+            {proposal && (proposal.availableQuestionCount ?? 0) > 0 && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Chủ đề này hiện có {proposal.availableQuestionCount} câu để luyện tập.
+              </p>
+            )}
+
             {/* CTA Button */}
-            <div className="pt-2">
+            <div className="pt-2 space-y-2">
               <button
                 type="button"
                 onClick={() => createSessionMutation.mutate()}
-                disabled={createSessionMutation.isPending || !proposal}
+                disabled={createSessionMutation.isPending || !proposal || !!activeSession}
                 className="w-full sm:w-auto px-8 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md hover:shadow-indigo-500/25 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {createSessionMutation.isPending ? (
@@ -258,6 +284,11 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
                   </>
                 )}
               </button>
+              {activeSession && (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Mỗi môn chỉ có một phiên đang chạy. Hãy tiếp tục hoặc dừng phiên ở trên trước khi bắt đầu phiên mới.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -274,7 +305,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
                 { mode: "Weakness" as AdaptivePracticeMode, label: "Luyện theo điểm yếu", desc: "Tập trung cải thiện các kỹ năng chưa vững" },
                 { mode: "LearningPath" as AdaptivePracticeMode, label: "Theo lộ trình học (LP)", desc: "Bám sát mục tiêu chặng từ Learning Path" },
                 { mode: "CustomTopic" as AdaptivePracticeMode, label: "Tự chọn chủ đề", desc: "Chủ động chọn chủ đề mong muốn ôn luyện" },
-                { mode: "SpacedReview" as AdaptivePracticeMode, label: "Ôn tập kiến thức cũ", desc: "Ôn giãn cách các kiến thức từng học" },
+                { mode: "SpacedReview" as AdaptivePracticeMode, label: "Ôn tập kiến thức cũ", desc: "Ôn lại chủ đề đã học khi đến hạn" },
               ].map((item) => (
                 <button
                   key={item.mode}
@@ -318,6 +349,10 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      )}
+
+      <BookmarkedQuestions subjectId={effectiveSubjectId} />
 
       {/* Region D: Recent Practice History */}
       <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
@@ -378,11 +413,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
                             : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
                         }`}
                       >
-                        {item.closeReason === "GoalAchievedWithEvidence"
-                          ? "Đạt mục tiêu"
-                          : item.closeReason === "RemediationNeeded"
-                          ? "Cần bổ trợ"
-                          : "Đã hoàn thành"}
+                        {practiceEndLabel(item.closeReason)}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-slate-500 dark:text-slate-400 text-[11px]">

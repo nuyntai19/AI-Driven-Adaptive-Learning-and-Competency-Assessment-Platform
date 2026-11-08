@@ -20,6 +20,7 @@ public class StudentQuestionDto
     public string? SubmittedAnswer { get; set; }
     public string? SubmittedAnswerDisplayLatex { get; set; }
     public string? SubmittedReasoning { get; set; }
+    [System.Text.Json.Serialization.JsonNumberHandling(System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString | System.Text.Json.Serialization.JsonNumberHandling.WriteAsString)]
     public ulong? SubmittedAttemptId { get; set; }
     public bool HasAttachment { get; set; }
     public bool? EffectiveIsCorrect { get; set; }

@@ -144,11 +144,11 @@ public sealed class LearningPathPlacementTests
     {
         using var f = new LearningPathV4Fixture();
         for (ulong i = 1; i <= 5; i++) await f.RecordEvidence(101, i, false);
-        for (ulong i = 6; i <= 10; i++) await f.RecordEvidence(101, i);
+        for (ulong i = 6; i <= 12; i++) await f.RecordEvidence(101, i);
         var proposal = await Placement(f, "101");
         await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId);
         var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
-        Assert.False(agenda.Missions.Single().CanStart); // 2 of 12 questions left: not enough for a fair new test.
+        Assert.False(agenda.Missions.Single().CanStart); // All 12 questions are used: no new test is possible.
         Assert.Equal("Confirmed", agenda.PlacementReport!.Skills.Single().Status);
         Assert.True(agenda.PlacementReport.IsComplete);
         Assert.Null(agenda.PlacementReport.ScoreOutOfTen);

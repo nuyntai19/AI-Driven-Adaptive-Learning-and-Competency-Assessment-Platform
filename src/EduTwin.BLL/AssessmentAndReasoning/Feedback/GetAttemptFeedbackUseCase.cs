@@ -333,8 +333,11 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             // proposal. The explicit decision, not that version, distinguishes it
             // from a teacher adjustment.
             var isApprovedAsIs = string.Equals(analysis.ReviewDecision, "Approved", StringComparison.OrdinalIgnoreCase);
-            int? teacherReasoningQualityInt = analysis.OverrideReasoningQuality.HasValue
-                ? (int)Math.Round(analysis.OverrideReasoningQuality.Value, MidpointRounding.AwayFromZero)
+            // Approving as-is confirms the AI's score without storing an override.
+            var teacherReasoningQuality = analysis.OverrideReasoningQuality
+                ?? (isApprovedAsIs && !analysis.IsFallback ? analysis.ReasoningQuality : null);
+            int? teacherReasoningQualityInt = teacherReasoningQuality.HasValue
+                ? (int)Math.Round(teacherReasoningQuality.Value, MidpointRounding.AwayFromZero)
                 : null;
 
             teacherEvaluationDto = new AttemptFeedbackTeacherEvaluationDto

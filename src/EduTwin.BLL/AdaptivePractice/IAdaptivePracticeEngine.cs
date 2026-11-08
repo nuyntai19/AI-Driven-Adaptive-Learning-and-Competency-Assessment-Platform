@@ -14,6 +14,7 @@ public interface IAdaptivePracticeEngine
         Guid subjectId,
         ulong? customTopicId,
         AdaptivePracticeMode mode,
+        Guid? classId,
         CancellationToken ct);
 
     Task<AdaptivePracticeSessionDto> CreateSessionAsync(

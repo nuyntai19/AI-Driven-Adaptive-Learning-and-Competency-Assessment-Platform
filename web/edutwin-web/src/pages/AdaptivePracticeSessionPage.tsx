@@ -7,10 +7,44 @@ import { RichMathEditor } from "../components/math/RichMathEditor";
 import { ScratchpadInlinePanel, type ScratchpadInlinePanelHandle } from "../components/math/ScratchpadInlinePanel";
 import { transcribeHandwriting } from "../api/handwritingApi";
 import { readScratchpadPhoto } from "../utils/scratchpadPngImport";
+import { deriveFinalAnswer } from "../utils/finalAnswer";
+import { answerReasoningPlaceholder, answerWorkPlaceholder, usesMathInput } from "../utils/answerPlaceholders";
+import { QuestionImage } from "../components/QuestionImage";
+import { WorkToolbar } from "../components/learning/WorkToolbar";
+import { BookmarkButton } from "../components/learning/BookmarkButton";
+import { GradedAnswerPreview } from "../components/learning/GradedAnswerPreview";
 import type {
   AdaptivePracticeHint,
   AdaptivePracticeAnswerFeedback,
 } from "../types/adaptivePractice";
+
+const PANEL = "rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-[#0f172a]";
+const PRESS = "transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] motion-reduce:transform-none";
+const PRIMARY = `rounded-lg bg-indigo-600 hover:bg-indigo-700 px-5 py-2.5 text-sm font-semibold text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${PRESS}`;
+const SECONDARY = `rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 ${PRESS}`;
+
+const questionStartKey = (itemId: string) => `edutwin-practice-question-start:${itemId}`;
+
+function rememberQuestionStart(itemId: string, startedAt: number): void {
+  try {
+    sessionStorage.setItem(questionStartKey(itemId), String(startedAt));
+  } catch {
+    // Without storage a reload only restarts this question's clock.
+  }
+}
+
+/** When this question was first shown, kept across a page reload. */
+function questionStartedAt(itemId: string): number {
+  let stored = 0;
+  try {
+    stored = Number(sessionStorage.getItem(questionStartKey(itemId))) || 0;
+  } catch {
+    stored = 0;
+  }
+  const startedAt = stored > 0 ? stored : Date.now();
+  rememberQuestionStart(itemId, startedAt);
+  return startedAt;
+}
 
 export const AdaptivePracticeSessionPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -20,11 +54,14 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   const [selectedOption, setSelectedOption] = useState<string>("");
   const [reasoningText, setReasoningText] = useState<string>("");
   const [activeHint, setActiveHint] = useState<AdaptivePracticeHint | null>(null);
+  const [highestHintRead, setHighestHintRead] = useState<number>(0);
   const [hintLoading, setHintLoading] = useState<boolean>(false);
   const [isHintOpen, setIsHintOpen] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<AdaptivePracticeAnswerFeedback | null>(null);
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [showExitConfirm, setShowExitConfirm] = useState<boolean>(false);
+  const [isStopping, setIsStopping] = useState<boolean>(false);
+  const [stopError, setStopError] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
 
   // Ba phương thức nhập: bàn phím / vẽ trên A4 / ảnh chụp — tất cả cùng
@@ -48,6 +85,9 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const startTimeRef = useRef<number>(Date.now());
+  const pausedAtRef = useRef<number | null>(null);
+  // One id per question, so a retry after a lost response stays idempotent.
+  const submissionIdRef = useRef<string | null>(null);
 
   // 1. Fetch Session Info
   const sessionQuery = useQuery({
@@ -66,6 +106,19 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
     refetchOnWindowFocus: false,
   });
   const question = questionQuery.data;
+
+  // The server closes the session when no question is left, so the cached
+  // status is stale; refresh it to show the ended state instead of nothing.
+  const questionAnsweredEmpty = questionQuery.isSuccess && !questionQuery.data && !feedback;
+  const refetchSession = sessionQuery.refetch;
+  useEffect(() => {
+    if (questionAnsweredEmpty) void refetchSession();
+  }, [questionAnsweredEmpty, questionQuery.dataUpdatedAt, refetchSession]);
+
+  // The server's count survives a reload; the page only ticks between syncs.
+  useEffect(() => {
+    if (session) setElapsedSeconds(session.elapsedSeconds);
+  }, [session?.elapsedSeconds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Timer effect
   useEffect(() => {
@@ -88,7 +141,9 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
       setPhotoDataUrl(null);
       setScanNotice(null);
       setScanError(null);
-      startTimeRef.current = Date.now();
+      setHighestHintRead(0);
+      startTimeRef.current = questionStartedAt(String(question.sessionItemId));
+      submissionIdRef.current = null;
     }
   }, [question?.sessionItemId]);
 
@@ -97,14 +152,13 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
     mutationFn: async () => {
       if (!question || !sessionId) return;
       // One single work box: the submitted answer is derived from the work
-      // — the whole text for essays, its last non-empty line otherwise.
-      const workLines = reasoningText.split("\n").map((s) => s.trim()).filter(Boolean);
-      const derivedAnswer = question.questionType === "Essay" ? reasoningText.trim() : (workLines[workLines.length - 1] ?? "");
+      // — the whole text for essays and language subjects, its last non-empty line otherwise.
+      const derivedAnswer = deriveFinalAnswer(reasoningText, question.questionType, question.answerEvaluationMode, !usesMathInput(session?.subjectName));
       const finalAnswer = question.questionType === "MultipleChoice" ? selectedOption : derivedAnswer;
       const timeSpent = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000));
 
       return await adaptivePracticeApi.submitAnswer(sessionId, {
-        clientSubmissionId: crypto.randomUUID(),
+        clientSubmissionId: (submissionIdRef.current ??= crypto.randomUUID()),
         questionId: question.questionId,
         sessionItemId: question.sessionItemId,
         finalAnswer,
@@ -176,6 +230,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
       const hint = await adaptivePracticeApi.getHint(sessionId, question.sessionItemId, level);
       setActiveHint(hint);
       setIsHintOpen(true);
+      setHighestHintRead((current) => Math.max(current, hint.hintLevel));
     } catch {
       // ignore
     } finally {
@@ -187,6 +242,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   const handlePause = async () => {
     if (!sessionId) return;
     await adaptivePracticeApi.pauseSession(sessionId);
+    pausedAtRef.current = Date.now();
     setIsPaused(true);
   };
 
@@ -194,16 +250,29 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   const handleResume = async () => {
     if (!sessionId) return;
     await adaptivePracticeApi.resumeSession(sessionId);
+    if (pausedAtRef.current !== null && question) {
+      startTimeRef.current += Date.now() - pausedAtRef.current;
+      rememberQuestionStart(String(question.sessionItemId), startTimeRef.current);
+      pausedAtRef.current = null;
+    }
     setIsPaused(false);
     queryClient.invalidateQueries({ queryKey: ["adaptive-practice", "session", sessionId] });
   };
 
   // Close Session voluntarily
   const handleStopSession = async () => {
-    if (!sessionId) return;
-    await adaptivePracticeApi.closeSession(sessionId, "StudentStopped");
-    queryClient.invalidateQueries({ queryKey: ["adaptive-practice"] });
-    navigate(`/hoc-tap/luyen-tap/phien/${sessionId}/tong-ket`);
+    if (!sessionId || isStopping) return;
+    setIsStopping(true);
+    setStopError(null);
+    try {
+      await adaptivePracticeApi.closeSession(sessionId);
+      queryClient.invalidateQueries({ queryKey: ["adaptive-practice"] });
+      navigate(`/hoc-tap/luyen-tap/phien/${sessionId}/tong-ket`);
+    } catch {
+      setStopError("Chưa dừng được phiên. Hãy thử lại.");
+    } finally {
+      setIsStopping(false);
+    }
   };
 
   // Advance to next question or summary
@@ -225,7 +294,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
 
   if (sessionQuery.isLoading || questionQuery.isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6 space-y-4">
+      <div className="min-h-screen bg-stone-50/50 dark:bg-[#101623] student-shell flex flex-col items-center justify-center p-6 space-y-4">
         <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
         <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
           Đang chuẩn bị câu hỏi thích ứng tiếp theo...
@@ -236,13 +305,13 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
 
   if (session?.status === "Closed" && !feedback) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6 space-y-4">
+      <div className="min-h-screen bg-stone-50/50 dark:bg-[#101623] student-shell flex flex-col items-center justify-center p-6 space-y-4">
         <h2 className="text-xl font-bold text-slate-800 dark:text-white">
           Phiên luyện tập đã kết thúc
         </h2>
-        {session.closeReason === "OutOfQuestions" && session.questionCount === 0 && (
+        {session.closeReason === "OutOfQuestions" && (
           <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md text-center">
-            Phiên kết thúc sớm vì chủ đề này tạm hết câu hỏi khả dụng cho bạn. Hãy quay lại sau hoặc chọn chủ đề khác để luyện tập.
+            Phiên kết thúc sớm vì chủ đề này đã hết câu hỏi khả dụng cho bạn. Hãy quay lại sau hoặc chọn chủ đề khác để luyện tập.
           </p>
         )}
         <button
@@ -258,408 +327,277 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
 
   const answerEntered = question?.questionType === "MultipleChoice" ? !!selectedOption : reasoningText.trim().length > 0;
 
-  // Placeholder cho ô bài làm duy nhất, theo loại câu.
-  const workPlaceholder = question?.questionType === "Essay"
-    ? "Viết bài làm của bạn..."
-    : "Trình bày bài làm của bạn...";
+  const mathInput = usesMathInput(session?.subjectName);
+  const isMcq = question?.questionType === "MultipleChoice" && question.options.length > 0;
+  // The A4 sheet takes the whole right column, so the typed work moves beside it.
+  const boardBeside = inputMode === "draw" && !isMcq && !feedback;
+  const correctOption = isMcq
+    ? question?.options.find((o) => o.optionId === feedback?.correctAnswer || o.label === feedback?.correctAnswer)
+    : undefined;
+  const correctAnswerText = correctOption ? `${correctOption.label}. ${correctOption.text}` : feedback?.correctAnswer;
+
+  const workEditor = (minHeight: string) => question && (
+    <div className="space-y-2">
+      <label htmlFor="work-text" className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
+        {inputMode === "keyboard" ? "Bài làm của bạn" : "Bài làm của bạn (kết quả quét, hãy kiểm tra lại)"}
+      </label>
+      <RichMathEditor
+        id="work-text"
+        variant="student"
+        value={reasoningText}
+        onChange={setReasoningText}
+        placeholder={answerWorkPlaceholder(mathInput)}
+        minHeight={minHeight}
+      />
+      <GradedAnswerPreview
+        answer={deriveFinalAnswer(reasoningText, question.questionType, question.answerEvaluationMode, !mathInput)}
+        questionType={question.questionType}
+        evaluationMode={question.answerEvaluationMode}
+        wholeWork={!mathInput}
+      />
+    </div>
+  );
+
+  const actionBar = question && (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={() => handleFetchHint(1)} disabled={hintLoading} className={SECONDARY}>
+          {hintLoading ? "Đang chuẩn bị gợi ý..." : "Gợi ý thông minh"}
+        </button>
+        {Math.max(question.hintsUsedCount, highestHintRead) > 0 && (
+          <span className="text-xs text-slate-500 dark:text-slate-400">Đã dùng {Math.max(question.hintsUsedCount, highestHintRead)} mức</span>
+        )}
+      </div>
+      <button type="button" onClick={() => submitMutation.mutate()} disabled={!answerEntered || submitMutation.isPending} className={PRIMARY}>
+        {submitMutation.isPending ? "Đang chấm..." : "Nộp câu trả lời"}
+      </button>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white flex flex-col font-sans antialiased">
-      {/* Top Navigation & Session Status Bar */}
-      <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-2xs">
-        <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          {/* Topic & Goal Info */}
+    <div className="min-h-screen bg-stone-50/50 dark:bg-[#101623] text-slate-900 dark:text-white flex flex-col antialiased student-shell">
+      <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#151d2f]/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
+        <div className="w-full max-w-[1700px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 truncate max-w-[200px] sm:max-w-xs">
-                {session?.topicName}
-              </span>
-              <span className="hidden sm:inline-block text-slate-300 dark:text-slate-700">·</span>
-              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 hidden sm:inline">
-                Mục tiêu: Đạt {session?.targetMastery.toFixed(0)}% năng lực
-              </span>
-            </div>
-            {/* Dynamic Question Counter (BR-26) */}
-            <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
-              Câu {question?.sequenceNumber || session?.questionCount || 1} · dự kiến {session?.minimumQuestions}–{session?.maximumQuestions} câu
+            <div className="truncate text-sm font-bold text-slate-900 dark:text-white">{session?.topicName}</div>
+            <div className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
+              Câu {question?.sequenceNumber || session?.questionCount || 1} · dự kiến {session?.minimumQuestions}–{session?.maximumQuestions} câu · mục tiêu {session?.targetMastery.toFixed(0)}%
             </div>
           </div>
-
-          {/* Timer & Session Control Actions */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-mono font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-              ⏱ {formatTime(elapsedSeconds)}
-            </div>
-
-            <button
-              type="button"
-              onClick={handlePause}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
-            >
-              Tạm dừng
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowExitConfirm(true)}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
-            >
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="px-2 text-sm font-semibold tabular-nums text-slate-700 dark:text-slate-300" aria-label="Thời gian đã làm trên thời gian dự kiến">{formatTime(elapsedSeconds)} / {session?.timeBudgetMinutes}:00</span>
+            <button type="button" onClick={handlePause} disabled={isPaused || session?.status !== "InProgress"} className={SECONDARY}>Tạm dừng</button>
+            <button type="button" onClick={() => setShowExitConfirm(true)} className={`rounded-lg px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 cursor-pointer dark:text-rose-400 dark:hover:bg-rose-950/40 ${PRESS}`}>
               Dừng phiên
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Workspace Area */}
-      <main className={`flex-1 w-full ${inputMode === "draw" ? "max-w-6xl" : "max-w-4xl"} mx-auto px-4 sm:px-6 py-8 space-y-6`}>
+      <main className="flex-1 w-full max-w-[1700px] mx-auto px-4 sm:px-6 py-3 space-y-3">
+        {!question && !feedback && (questionQuery.isError || session?.status === "Paused") && (
+          <div role={questionQuery.isError ? "alert" : "status"} className={`${PANEL} text-sm`}>
+            <p className="font-semibold text-slate-900 dark:text-white">
+              {questionQuery.isError ? "Không tải được câu hỏi tiếp theo." : "Phiên luyện tập đang tạm dừng."}
+            </p>
+            <button
+              type="button"
+              onClick={() => (questionQuery.isError ? void questionQuery.refetch() : void handleResume())}
+              className={`mt-3 ${PRIMARY}`}
+            >
+              {questionQuery.isError ? "Thử lại" : "Tiếp tục luyện tập"}
+            </button>
+          </div>
+        )}
+
         {question && (
-          <div className="p-6 sm:p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-6">
-            {/* Selection Reason Pill & Difficulty Badge */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-bold ${
-                    question.isPrerequisiteCheck
-                      ? "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700"
-                      : "bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800"
-                  }`}
-                >
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 items-start">
+            <section aria-label="Đề bài" className={`${PANEL} min-w-0 space-y-4 lg:sticky lg:top-20`}>
+              <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 text-xs">
+                <p className={question.isPrerequisiteCheck ? "font-semibold text-amber-700 dark:text-amber-400" : "text-slate-500 dark:text-slate-400"}>
                   {question.selectionReasonText}
+                </p>
+                <span className="flex shrink-0 items-center gap-3 tabular-nums text-slate-500 dark:text-slate-400">
+                  Độ khó {question.difficulty}/5
+                  <BookmarkButton questionId={question.questionId} />
                 </span>
               </div>
 
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 font-semibold">
-                <span>Độ khó:</span>
-                <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                  {"★".repeat(question.difficulty)}{"☆".repeat(5 - question.difficulty)}
-                </span>
+              <div className="space-y-3 text-base sm:text-lg font-semibold leading-relaxed text-slate-900 dark:text-white">
+                <RichMathText content={question.questionText} text={question.questionText} />
+                <QuestionImage questionId={question.questionId} hasImage={question.hasImage} />
               </div>
-            </div>
 
-            {/* Question Text */}
-            <div className="text-base sm:text-lg leading-relaxed text-slate-800 dark:text-slate-100 font-medium space-y-3">
-              <RichMathText content={question.questionText} text={question.questionText} />
-            </div>
+              {isHintOpen && activeHint && (
+                <div className="space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <h2 className="text-sm font-semibold text-amber-700 dark:text-amber-400">{activeHint.hintTitle}</h2>
+                    <button type="button" onClick={() => setIsHintOpen(false)} className="text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer dark:text-slate-400 dark:hover:text-slate-200">
+                      Ẩn gợi ý
+                    </button>
+                  </div>
+                  <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                    <RichMathText text={activeHint.hintContent} />
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{activeHint.supportLevelDescription}</p>
+                  {activeHint.hintLevel < 3 && (
+                    <button type="button" onClick={() => handleFetchHint(activeHint.hintLevel + 1)} disabled={hintLoading} className={SECONDARY}>
+                      {hintLoading ? "Đang chuẩn bị..." : `Xem gợi ý mức ${activeHint.hintLevel + 1}`}
+                    </button>
+                  )}
+                </div>
+              )}
 
-            {/* Answer Options / Inputs */}
-            {!feedback && (
-              <div className="pt-4 space-y-4">
-                {question.questionType === "MultipleChoice" && question.options.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {boardBeside && (
+                <>
+                  {workEditor("120px")}
+                  {actionBar}
+                </>
+              )}
+            </section>
+
+            <section aria-label={feedback ? "Kết quả câu trả lời" : "Làm bài"} className={`${PANEL} min-w-0 space-y-4`}>
+              {feedback ? (
+                <>
+                  <div className="space-y-2">
+                    <h2 className={`text-lg font-bold ${feedback.isCorrect ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}>
+                      {feedback.isCorrect ? "Chính xác" : "Chưa chính xác"}
+                    </h2>
+                    {!feedback.isCorrect && correctAnswerText && (
+                      <p className="text-sm text-slate-700 dark:text-slate-300">
+                        Đáp án đúng: <strong className="text-slate-900 dark:text-white"><RichMathText text={correctAnswerText} /></strong>
+                      </p>
+                    )}
+                    <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                      <RichMathText text={feedback.stepGuidance} />
+                    </div>
+                    {feedback.misconceptionHypothesis && (
+                      <p className="text-sm text-amber-700 dark:text-amber-400">{feedback.misconceptionHypothesis}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+                    <p className="text-sm tabular-nums text-slate-600 dark:text-slate-400">
+                      Năng lực ước lượng: <strong className="text-slate-900 dark:text-white">{feedback.updatedEstimatedMastery.toFixed(0)}%</strong>
+                    </p>
+                    <button type="button" onClick={handleNextQuestion} className={PRIMARY}>
+                      {feedback.isSessionClosed ? "Xem tổng kết" : "Câu tiếp theo"}
+                    </button>
+                  </div>
+                </>
+              ) : isMcq ? (
+                <>
+                  <fieldset className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+                    <legend className="sr-only">Chọn một đáp án</legend>
                     {question.options.map((opt) => {
                       const isSelected = selectedOption === opt.label || selectedOption === opt.optionId;
                       return (
                         <button
                           key={opt.optionId}
                           type="button"
+                          aria-pressed={isSelected}
                           onClick={() => setSelectedOption(opt.label)}
-                          className={`p-4 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                          className={`flex items-start gap-3 rounded-xl border p-3 text-left cursor-pointer ${PRESS} ${
                             isSelected
-                              ? "border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/60 ring-2 ring-indigo-500/20 text-indigo-950 dark:text-indigo-100"
-                              : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+                              ? "border-indigo-500 bg-indigo-50 text-indigo-950 dark:bg-indigo-950/60 dark:text-indigo-100"
+                              : "border-slate-200 text-slate-800 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800/50"
                           }`}
                         >
-                          <span
-                            className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
-                              isSelected
-                                ? "bg-indigo-600 text-white"
-                                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
-                            }`}
-                          >
+                          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${isSelected ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
                             {opt.label}
                           </span>
-                          <div className="text-sm pt-0.5 leading-snug">
-                            <RichMathText content={opt.text} />
-                          </div>
+                          <span className="pt-0.5 text-sm leading-snug"><RichMathText content={opt.text} /></span>
                         </button>
                       );
                     })}
+                  </fieldset>
+                  <div className="space-y-2">
+                    <span className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Giải thích vì sao em chọn đáp án này (không bắt buộc)</span>
+                    <RichMathEditor variant="student" value={reasoningText} onChange={setReasoningText} placeholder={answerReasoningPlaceholder(mathInput)} minHeight="120px" />
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* Ba phương thức nhập: bàn phím / vẽ A4 / ảnh chụp */}
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cách làm bài</span>
-                      <div className="inline-flex rounded-2xl bg-slate-100 dark:bg-slate-800/80 p-1 gap-1" role="tablist" aria-label="Phương thức nhập bài làm">
-                        {([
-                          ["keyboard", "⌨️", "Bàn phím"],
-                          ["draw", "✏️", "Vẽ trên A4"],
-                          ["photo", "📷", "Ảnh chụp"],
-                        ] as const).map(([value, icon, label]) => (
-                          <button
-                            key={value}
-                            type="button"
-                            role="tab"
-                            aria-selected={inputMode === value}
-                            onClick={() => setInputMode(value)}
-                            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${inputMode === value ? "bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 shadow-sm ring-1 ring-indigo-500/50" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"}`}
-                          >
-                            {icon} {label}
-                          </button>
-                        ))}
+                  {actionBar}
+                </>
+              ) : (
+                <>
+                  <WorkToolbar showModes mode={inputMode} onModeChange={setInputMode} showTools={false} activeTool={null} onToggleTool={() => undefined} />
+
+                  {inputMode === "draw" && (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm text-slate-600 dark:text-slate-400">Viết bài làm trên giấy A4, rồi quét để đưa vào bài làm.</p>
+                        <button type="button" onClick={() => void handleScanBoard()} disabled={isScanning} className={PRIMARY}>
+                          {isScanning ? "Đang quét..." : "Quét bài làm"}
+                        </button>
+                      </div>
+                      <div className="h-[calc(100vh-18.5rem)] min-h-[460px]">
+                        <ScratchpadInlinePanel
+                          ref={boardRef}
+                          centerId={session?.centerId ?? ""}
+                          userId={session?.studentId ?? ""}
+                          clientSubmissionId={`adaptive:${sessionId}:${question.sessionItemId}`}
+                          backgroundImageUrl={photoDataUrl}
+                          onAttachSnapshot={(_blob, url) => setPhotoDataUrl(url)}
+                          questionNode={<RichMathText text={question.questionText} />}
+                        />
                       </div>
                     </div>
+                  )}
 
-                    {inputMode === "draw" && (
-                      <div className="space-y-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-indigo-200/80 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/40 px-3.5 py-2.5">
-                          <div className="min-w-0">
-                            <div className="text-xs font-black text-indigo-900 dark:text-indigo-100">📄 Giấy A4 — viết bài làm của bạn</div>
-                            <div className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80">Sửa lại trên giấy rồi quét lại để cập nhật</div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => void handleScanBoard()}
-                            disabled={isScanning}
-                            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-xs cursor-pointer shadow-sm shrink-0"
-                          >
-                            {isScanning ? "Đang quét…" : "📝 Quét bài làm trên A4"}
-                          </button>
-                        </div>
-                        <div className="h-[720px]">
-                          <ScratchpadInlinePanel
-                            ref={boardRef}
-                            centerId={session?.centerId ?? ""}
-                            userId={session?.studentId ?? ""}
-                            clientSubmissionId={`adaptive:${sessionId}:${question.sessionItemId}`}
-                            backgroundImageUrl={photoDataUrl}
-                            onAttachSnapshot={(_blob, url) => setPhotoDataUrl(url)}
-                            questionNode={<RichMathText text={question.questionText} />}
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {inputMode === "photo" && (
-                      <div className="space-y-3">
-                        <input
-                          ref={photoInputRef}
-                          type="file"
-                          accept="image/png,image/jpeg,image/webp"
-                          className="hidden"
-                          aria-label="Chọn ảnh bài giải"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0] ?? null;
-                            e.target.value = "";
-                            void handlePhotoFile(f);
-                          }}
-                        />
-                        {photoDataUrl ? (
-                          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/50 p-3.5">
-                            <img src={photoDataUrl} alt="Ảnh bài giải đã tải lên" className="w-24 h-16 object-cover rounded-xl border border-slate-300 dark:border-slate-600 bg-white" />
-                            <div className="flex-1 min-w-[160px]">
-                              <div className="text-xs font-black text-slate-800 dark:text-slate-100">📷 Ảnh bài giải của bạn</div>
-                              <p className="text-[11px] text-slate-500 dark:text-slate-400">Ảnh chỉ dùng để quét nội dung vào bài làm, không lưu kèm phiên luyện tập.</p>
-                            </div>
-                            <div className="flex gap-2">
-                              <button type="button" onClick={() => void runScan(photoDataUrl)} disabled={isScanning} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-xs cursor-pointer">
-                                {isScanning ? "Đang quét…" : "🔄 Quét lại"}
-                              </button>
-                              <button type="button" onClick={() => photoInputRef.current?.click()} disabled={isScanning} className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 font-bold text-xs text-slate-600 dark:text-slate-200 cursor-pointer disabled:opacity-60">
-                                Đổi ảnh
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => photoInputRef.current?.click()}
-                            disabled={isScanning}
-                            className="w-full rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30 transition-colors px-4 py-6 text-center cursor-pointer disabled:opacity-60"
-                          >
-                            <div className="text-2xl mb-1">📷</div>
-                            <div className="text-sm font-black text-slate-700 dark:text-slate-200">{isScanning ? "Đang quét ảnh…" : "Chụp hoặc tải ảnh bài giải lên"}</div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Hệ thống sẽ quét nội dung vào ô bài làm bên dưới</div>
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    {scanNotice && <p role="status" className="text-xs font-medium text-indigo-700 dark:text-indigo-300">{scanNotice}</p>}
-                    {scanError && <p role="alert" className="text-xs font-medium text-rose-700 dark:text-rose-300">{scanError}</p>}
-
+                  {inputMode === "photo" && (
                     <div className="space-y-3">
-                      <label htmlFor="work-text" className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                        {inputMode === "keyboard" ? "Bài làm của bạn:" : "Bài làm của bạn (kết quả quét — kiểm tra và sửa lại nếu cần):"}
-                      </label>
-                      <RichMathEditor
-                        id="work-text"
-                        variant="student"
-                        value={reasoningText}
-                        onChange={setReasoningText}
-                        placeholder={`${workPlaceholder} (Gõ $ hoặc Ctrl+M để chèn công thức toán)`}
-                        minHeight="160px"
+                      <input
+                        ref={photoInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        aria-label="Chọn ảnh bài giải"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0] ?? null;
+                          e.target.value = "";
+                          void handlePhotoFile(f);
+                        }}
                       />
-                      {question.questionType !== "Essay" && (
-                        <p className="text-[11px] text-slate-400">Dòng cuối cùng của bài làm được tính là đáp án cuối.</p>
+                      {photoDataUrl ? (
+                        <div className="flex flex-wrap items-center gap-3">
+                          <img src={photoDataUrl} alt="Ảnh bài giải đã tải lên" className="h-16 w-24 rounded-lg border border-slate-300 bg-white object-cover dark:border-slate-600" />
+                          <p className="min-w-[160px] flex-1 text-xs text-slate-500 dark:text-slate-400">Ảnh chỉ dùng để quét nội dung vào bài làm, không lưu kèm phiên luyện tập.</p>
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => void runScan(photoDataUrl)} disabled={isScanning} className={SECONDARY}>{isScanning ? "Đang quét..." : "Quét lại"}</button>
+                            <button type="button" onClick={() => photoInputRef.current?.click()} disabled={isScanning} className={SECONDARY}>Đổi ảnh</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => photoInputRef.current?.click()}
+                          disabled={isScanning}
+                          className={`w-full rounded-xl border border-dashed border-slate-300 px-4 py-5 text-center cursor-pointer hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:hover:bg-slate-800/50 ${PRESS}`}
+                        >
+                          <span className="block text-sm font-semibold text-slate-800 dark:text-slate-200">{isScanning ? "Đang quét ảnh..." : "Chụp hoặc tải ảnh bài giải lên"}</span>
+                          <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">Nội dung sẽ được quét vào ô bài làm bên dưới</span>
+                        </button>
                       )}
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Multiple choice: the single box holds the explanation of
-                    why the student picked that option. */}
-                {question.questionType === "MultipleChoice" && (
-                <div className="pt-2 space-y-2">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Giải thích vì sao em chọn đáp án này (không bắt buộc)
-                  </span>
-                  <RichMathEditor
-                    variant="student"
-                    value={reasoningText}
-                    onChange={setReasoningText}
-                    placeholder="Giải thích vì sao em chọn đáp án này..."
-                    minHeight="96px"
-                  />
-                </div>
-                )}
+                  {scanNotice && <p role="status" className="text-xs font-medium text-indigo-700 dark:text-indigo-300">{scanNotice}</p>}
+                  {scanError && <p role="alert" className="text-xs font-medium text-rose-700 dark:text-rose-300">{scanError}</p>}
 
-                {/* Action Bar: Hints & Submit */}
-                <div className="pt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-800">
-                  {/* Progressive Hint Button */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleFetchHint(1)}
-                      disabled={hintLoading}
-                      className="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 transition-colors flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <span>💡</span>
-                      <span>{hintLoading ? "Đang chuẩn bị gợi ý..." : "Gợi ý thông minh"}</span>
-                    </button>
-                    {question.hintsUsedCount > 0 && (
-                      <span className="text-[11px] text-slate-400">
-                        (Đã dùng {question.hintsUsedCount} mức)
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Submit Button */}
-                  <button
-                    type="button"
-                    onClick={() => submitMutation.mutate()}
-                    disabled={!answerEntered || submitMutation.isPending}
-                    className="px-8 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md hover:shadow-indigo-500/25 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {submitMutation.isPending ? "Đang chấm..." : "Nộp câu trả lời"}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Instant Answer Feedback Area */}
-            {feedback && (
-              <div className="pt-4 space-y-4 border-t border-slate-100 dark:border-slate-800 animate-fadeIn">
-                <div
-                  className={`p-5 rounded-2xl border flex items-start gap-4 ${
-                    feedback.isCorrect
-                      ? "bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800/80 text-emerald-900 dark:text-emerald-200"
-                      : "bg-rose-50/80 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800/80 text-rose-900 dark:text-rose-200"
-                  }`}
-                >
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg shrink-0 ${
-                      feedback.isCorrect ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
-                    }`}
-                  >
-                    {feedback.isCorrect ? "✓" : "✗"}
-                  </div>
-                  <div className="space-y-1.5 flex-1 min-w-0">
-                    <h4 className="text-base font-bold">
-                      {feedback.isCorrect ? "Chính xác!" : "Chưa chính xác"}
-                    </h4>
-                    <p className="text-xs leading-relaxed opacity-90">
-                      {feedback.stepGuidance}
-                    </p>
-                    {feedback.misconceptionHypothesis && (
-                      <div className="mt-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-200">
-                        <strong>Phân tích dấu hiệu:</strong> {feedback.misconceptionHypothesis}
-                      </div>
-                    )}
-                    <div className="pt-2 text-xs font-semibold">
-                      Năng lực ước lượng hiện tại: <strong>{feedback.updatedEstimatedMastery.toFixed(0)}%</strong>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-end pt-2">
-                  <button
-                    type="button"
-                    onClick={handleNextQuestion}
-                    className="px-8 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md transition-all cursor-pointer flex items-center gap-2"
-                  >
-                    <span>{feedback.isSessionClosed ? "Xem tổng kết phiên luyện tập" : "Câu tiếp theo"}</span>
-                    <span>→</span>
-                  </button>
-                </div>
-              </div>
-            )}
+                  {!boardBeside && workEditor(inputMode === "keyboard" ? "clamp(220px, 42vh, 460px)" : "180px")}
+                  {!boardBeside && actionBar}
+                </>
+              )}
+              {submitMutation.isError && !feedback && (
+                <p role="alert" className="text-xs font-medium text-rose-700 dark:text-rose-300">Chưa nộp được câu trả lời. Hãy thử lại.</p>
+              )}
+            </section>
           </div>
         )}
       </main>
 
-      {/* Progressive Hint Drawer / Modal */}
-      {isHintOpen && activeHint && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">💡</span>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  {activeHint.hintTitle}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsHintOpen(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold text-lg"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 text-xs text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
-              <RichMathText text={activeHint.hintContent} />
-            </div>
-
-            <div className="text-[11px] text-amber-700 dark:text-amber-400 italic">
-              ℹ {activeHint.supportLevelDescription}
-            </div>
-
-            {/* Stepped Hint Escalation */}
-            <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800">
-              {activeHint.hintLevel < 3 ? (
-                <button
-                  type="button"
-                  onClick={() => handleFetchHint(activeHint.hintLevel + 1)}
-                  disabled={hintLoading}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-amber-100 hover:bg-amber-200 dark:bg-amber-950 dark:hover:bg-amber-900 text-amber-900 dark:text-amber-200 transition-colors"
-                >
-                  {hintLoading ? "Đang chuẩn bị..." : `Xem gợi ý mức ${activeHint.hintLevel + 1} (Chi tiết hơn)`}
-                </button>
-              ) : (
-                <span className="text-[11px] text-slate-400">Đã đạt mức gợi ý cao nhất</span>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setIsHintOpen(false)}
-                className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 text-white dark:text-slate-900 font-bold text-xs"
-              >
-                Đã hiểu, quay lại giải
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Pause Modal */}
       {isPaused && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 text-center space-y-4 shadow-xl">
-            <div className="w-12 h-12 mx-auto rounded-full bg-amber-100 dark:bg-amber-950/60 flex items-center justify-center text-xl text-amber-600">
-              ⏸
-            </div>
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 p-6 text-center space-y-4 shadow-xl">
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">
               Phiên luyện tập đang tạm dừng
             </h3>
@@ -689,7 +627,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
       {/* Confirm Exit Modal */}
       {showExitConfirm && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xl">
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xl">
             <h3 className="text-base font-bold text-slate-900 dark:text-white">
               Bạn có chắc chắn muốn dừng phiên luyện tập?
             </h3>
@@ -707,11 +645,13 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleStopSession}
-                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer shadow-md"
+                disabled={isStopping}
+                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer shadow-md disabled:opacity-50"
               >
-                Dừng và xem kết quả
+                {isStopping ? "Đang dừng phiên..." : "Dừng và xem kết quả"}
               </button>
             </div>
+            {stopError && <p role="alert" className="text-xs font-medium text-rose-700 dark:text-rose-300">{stopError}</p>}
           </div>
         </div>
       )}

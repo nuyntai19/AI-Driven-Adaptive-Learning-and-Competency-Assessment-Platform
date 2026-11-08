@@ -42,10 +42,13 @@ export interface AdaptivePracticeProposal {
   isDiagnosticRecommended: boolean;
   defaultMode: AdaptivePracticeMode;
   availableTopics: AdaptivePracticeTopicOption[];
+  unavailableReason?: string | null;
+  availableQuestionCount?: number;
 }
 
 export interface CreateAdaptivePracticeSessionRequest {
   subjectId: string;
+  classId?: string;
   topicNodeId: string;
   practiceMode?: AdaptivePracticeMode;
   timeBudgetMinutes?: number;
@@ -96,6 +99,7 @@ export interface AdaptivePracticeQuestion {
   difficulty: number;
   questionText: string;
   questionType: 'MultipleChoice' | 'ShortAnswer' | 'Essay';
+  answerEvaluationMode?: string;
   options: AdaptivePracticeQuestionOption[];
   hasImage: boolean;
   maxScore: number;

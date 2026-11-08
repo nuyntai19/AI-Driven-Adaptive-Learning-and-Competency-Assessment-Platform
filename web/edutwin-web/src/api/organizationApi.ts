@@ -207,7 +207,7 @@ export const organizationApi = {
 
   createSubject: async (request: CreateSubjectRequest): Promise<SubjectDto> => {
     const payload = {
-      subjectCode: request.subjectCode.trim(),
+      subjectCode: request.subjectCode?.trim(),
       subjectName: request.subjectName.trim(),
       description: request.description?.trim() || null,
     };

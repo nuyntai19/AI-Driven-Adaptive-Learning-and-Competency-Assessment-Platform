@@ -35,7 +35,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantOwnedEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(65, entityTypes.Count); // 61 + 3 Adaptive Practice entities + TeacherStudentNote
+        Assert.Equal(66, entityTypes.Count); // 61 + 3 Adaptive Practice entities + TeacherStudentNote + StudentQuestionBookmark
 
         foreach (var entityType in entityTypes)
         {
@@ -67,7 +67,7 @@ public class GlobalQueryFilterTests
         using var context = CreateContext();
         var entityTypes = context.Model.GetEntityTypes().Where(e => typeof(ITenantAppendOnlyEntity).IsAssignableFrom(e.ClrType)).ToList();
 
-        Assert.Equal(15, entityTypes.Count); // 14 + AdaptivePracticeSessionItem
+        Assert.Equal(16, entityTypes.Count); // 14 + AdaptivePracticeSessionItem + StudentQuestionBookmark
 
         foreach (var entityType in entityTypes)
         {
@@ -253,6 +253,7 @@ public class GlobalQueryFilterTests
             "src/EduTwin.API/Notifications/NotificationBackgroundService.cs",
             "src/EduTwin.BLL/KnowledgeGraph/CreateKnowledgeEdgeUseCase.cs",
             "src/EduTwin.BLL/KnowledgeGraph/CreateKnowledgeNodeUseCase.cs",
+            "src/EduTwin.BLL/KnowledgeGraph/CreateSubjectUseCase.cs",
             // Explicit sender/recipient relay policy; own-message aggregate receipts only.
             "src/EduTwin.BLL/Notifications/NotificationAudiencePolicy.cs",
             "src/EduTwin.BLL/Notifications/NotificationManualService.cs",

@@ -9,6 +9,10 @@ namespace EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
 
 public class ShortAnswerGrader : IQuestionGrader
 {
+    private static readonly System.Text.RegularExpressions.Regex SpaceAroundSeparators = new(@"\s*([,;])\s*", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static readonly System.Text.RegularExpressions.Regex TrailingSentencePunctuation = new(@"[.!?…。]+$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private readonly IMathAnswerNormalizer _mathNormalizer;
     private readonly ICoordinateAnswerNormalizer _coordinateNormalizer;
 
@@ -181,8 +185,10 @@ public class ShortAnswerGrader : IQuestionGrader
         }
 
         // Mode: TextExact (Default)
-        var normalizedStudentAnswer = studentAnswer.Trim();
-        var normalizedCorrectAnswer = correctAnswer.Trim();
+        // "-1, 4" and "-1,4" are the same list; other inner spaces still count.
+        // A full stop at the end does not change the answer: "She left" and "She left." match.
+        var normalizedStudentAnswer = WithoutTrailingPunctuation(SpaceAroundSeparators.Replace(studentAnswer.Trim(), "$1"));
+        var normalizedCorrectAnswer = WithoutTrailingPunctuation(SpaceAroundSeparators.Replace(correctAnswer.Trim(), "$1"));
 
         bool isCorrect = string.Equals(normalizedStudentAnswer, normalizedCorrectAnswer, StringComparison.OrdinalIgnoreCase);
         var reasonCode = isCorrect
@@ -198,6 +204,12 @@ public class ShortAnswerGrader : IQuestionGrader
             Feedback = isCorrect ? "Correct answer." : "Incorrect answer.",
             ReasonCode = reasonCode
         };
+    }
+
+    private static string WithoutTrailingPunctuation(string value)
+    {
+        var stripped = TrailingSentencePunctuation.Replace(value, "").TrimEnd();
+        return stripped.Length == 0 ? value : stripped;
     }
 
     private static bool AreEqualIgnoringWhitespace(string left, string right)

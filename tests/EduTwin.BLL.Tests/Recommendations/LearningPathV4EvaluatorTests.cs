@@ -57,4 +57,23 @@ public sealed class LearningPathV4EvaluatorTests
         await f.Db.SaveChangesAsync();
         Assert.Equal("InsufficientEvidence", (await f.Evaluator.EvaluateMissionRunAsync(f.Center, f.Student, run.SessionRunId)).Outcome);
     }
+    [Fact]
+    public async Task BankTooSmallForTheMinimum_ClosesTheRunWithoutAConclusion()
+    {
+        using var f = new LearningPathV4Fixture(); var mission = await f.Activate("IndependentCheck", "103");
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId));
+        // Keep one issued question, as when the bank only holds one for this skill.
+        var extra = await f.Db.ActivityRuns.Include(a => a.IssuedItems).Where(a => a.SessionRunId == run.SessionRunId).OrderBy(a => a.ActivityOrder).Skip(1).ToListAsync();
+        f.Db.RemoveRange(extra.SelectMany(a => a.IssuedItems)); f.Db.RemoveRange(extra); await f.Db.SaveChangesAsync();
+        var only = run.Activities[0]; var questionId = only.Question!.Question!.QuestionId;
+        await f.Execution.SubmitActivityAsync(f.Center, f.Student, only.ActivityRunId, new SubmitActivityRequest { ClientSubmissionId = Guid.NewGuid(), QuestionId = questionId, FinalAnswer = $"answer-{questionId % 100}" });
+        foreach (var a in await f.Db.Attempts.ToListAsync()) { a.Status = AttemptStatus.Completed; await f.Assess(a, false); }
+        foreach (var j in await f.Db.AIAnalysisJobs.ToListAsync()) j.Status = AIJobStatus.Completed;
+        await f.Db.SaveChangesAsync();
+
+        var result = await f.Evaluator.EvaluateMissionRunAsync(f.Center, f.Student, run.SessionRunId);
+
+        Assert.Equal("Inconclusive", result.Outcome);
+        Assert.Equal(SessionRunStatus.Completed, (await f.Db.LearningPathSessionRuns.SingleAsync()).Status);
+    }
 }

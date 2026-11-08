@@ -14,6 +14,9 @@ public class LearningAgendaDto
     public List<string> SelfReportedPrerequisiteSkillIds { get; set; } = new();
     /// <summary>Minutes of work available today at the largest time budget; more time adds nothing.</summary>
     public uint AvailableTodayMinutes { get; set; }
+
+    /// <summary>What the student could add with the minutes today's plan leaves free.</summary>
+    public List<ExtraTimeOptionDto> ExtraOptions { get; set; } = [];
     /// <summary>Why the first step of today's plan comes first.</summary>
     public string? PrimaryReason { get; set; }
     /// <summary>Parts the student left out of the placement check (self-assessed as mastered); each gets a short confirmation review at the end of the route.</summary>
@@ -198,4 +201,15 @@ public class LearningAnswerReferenceDto
     public bool? IsCorrect { get; set; }
     public DateTime SubmittedAt { get; set; }
     public bool Guided { get; set; }
+}
+
+public sealed class ExtraTimeOptionDto
+{
+    /// <summary>Practice or Assignment.</summary>
+    public string Kind { get; set; } = "Practice";
+    public string Title { get; set; } = string.Empty;
+    public string? SkillId { get; set; }
+    public Guid? AssignmentId { get; set; }
+    public uint QuestionCount { get; set; }
+    public uint EstimatedMinutes { get; set; }
 }

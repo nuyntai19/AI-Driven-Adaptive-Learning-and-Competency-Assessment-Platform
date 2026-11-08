@@ -11,7 +11,7 @@ public sealed partial class LearningPathV4Planner
     public async Task<PathProposalDto> CustomizePathProposalAsync(Guid centerId, Guid studentId, Guid proposalId,
         CustomizePathProposalRequest request, CancellationToken cancellationToken = default)
     {
-        if (request.AvailableMinutesPerDay is < 5 or > 300 || request.AvailableDaysPerWeek is < 1 or > 7 ||
+        if (request.AvailableMinutesPerDay is < LearningPathPacing.MinGoalDailyMinutes or > LearningPathPacing.MaxDailyMinutes || request.AvailableDaysPerWeek is < 1 or > 7 ||
             request.PracticeQuestionsPerSet is < 3 or > 20 || request.TargetSkillIds is not { Count: > 0 and <= 200 } ||
             request.PracticeQuestionsBySkill is null || request.PracticeQuestionsBySkill.Count > 200 ||
             request.PracticeQuestionsBySkill.Values.Any(count => count is < 3 or > 20))

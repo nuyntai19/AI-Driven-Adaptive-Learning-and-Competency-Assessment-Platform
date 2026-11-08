@@ -46,7 +46,7 @@ export const SideAssistantWorkspace: React.FC<SideAssistantWorkspaceProps> = ({
   return (
     <aside
       aria-label="Khung trợ lý học tập kế bên"
-      className="flex flex-col h-[520px] sm:h-[640px] lg:h-[780px] max-h-[calc(100vh-2rem)] min-h-[380px] w-full bg-slate-900/95 rounded-3xl border border-slate-700/80 shadow-2xl overflow-hidden backdrop-blur-md animate-in fade-in slide-in-from-right-4 duration-200"
+      className="flex flex-col h-[520px] sm:h-[640px] lg:h-[calc(100vh-6.5rem)] max-h-[calc(100vh-2rem)] min-h-[380px] w-full bg-slate-900/95 rounded-3xl border border-slate-700/80 shadow-2xl overflow-hidden backdrop-blur-md animate-in fade-in slide-in-from-right-4 duration-200"
     >
       {/* Top Header with Tab Switchers & Close Button */}
       <header className="flex items-center justify-between px-2.5 sm:px-3.5 py-2.5 bg-slate-950/85 border-b border-slate-800 shrink-0 gap-2">

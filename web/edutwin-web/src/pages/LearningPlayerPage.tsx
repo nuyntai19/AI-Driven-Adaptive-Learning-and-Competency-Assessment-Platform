@@ -52,6 +52,11 @@ import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { type VisualMathFieldRef } from "../components/math/VisualMathField";
 import { RichMathText } from "../components/math/RichMathText";
 import { QuestionImage } from "../components/QuestionImage";
+import { deriveFinalAnswer, normalizeFinalAnswer } from "../utils/finalAnswer";
+import { answerReasoningPlaceholder, answerWorkPlaceholder, usesMathInput } from "../utils/answerPlaceholders";
+import { WorkToolbar } from "../components/learning/WorkToolbar";
+import { useQuestionBookmarks } from "../utils/useQuestionBookmarks";
+import { GradedAnswerPreview } from "../components/learning/GradedAnswerPreview";
 import { RichMathEditor, type RichMathEditorRef } from "../components/math/RichMathEditor";
 import type { AnswerEditorRef } from "../components/math/answer-editor/answerEditorHelpers";
 import { SideAssistantWorkspace, type AssistantToolTab } from "../components/math/SideAssistantWorkspace";
@@ -86,11 +91,12 @@ import {
   type SnapshotUploadTracker,
 } from "../utils/assignmentSnapshotUploader";
 
+const WORK_EDITOR_MIN_HEIGHT = "clamp(220px, 36vh, 420px)";
+
 interface StoredAnswer {
   finalAnswer: string;
   answerDisplayLatex: string;
   reasoningText: string;
-  confidence: number | null;
   timeSpentSeconds: number;
   answerChanges: number;
   snapshotDataUrl?: string | null;
@@ -120,7 +126,6 @@ function loadStoredAssignmentAnswers(scope: AssignmentDraftScope | null): Record
             ? stored.answerDisplayLatex
             : (typeof stored.finalAnswer === "string" ? stored.finalAnswer : ""),
         reasoningText: typeof stored.reasoningText === "string" ? stored.reasoningText : "",
-        confidence: typeof stored.confidence === "number" ? stored.confidence : null,
         timeSpentSeconds: typeof stored.timeSpentSeconds === "number" ? stored.timeSpentSeconds : 0,
         answerChanges: typeof stored.answerChanges === "number" ? stored.answerChanges : 0,
         snapshotDataUrl: typeof stored.snapshotDataUrl === "string" ? stored.snapshotDataUrl : null,
@@ -239,7 +244,6 @@ const PracticePlayerPage = () => {
   const [finalAnswer, setFinalAnswer] = useState<string>("");
   const [answerDisplayLatex, setAnswerDisplayLatex] = useState<string>("");
   const [reasoningText, setReasoningText] = useState<string>("");
-  const [confidence, setConfidence] = useState<number | null>(null);
   const [answerChanges, setAnswerChanges] = useState<number>(0);
   const answerChangesRef = useRef<number>(0);
   const [timeSpentSeconds, setTimeSpentSeconds] = useState<number>(0);
@@ -259,7 +263,6 @@ const PracticePlayerPage = () => {
   // finalAnswer/reasoningText remain the single source of truth.
   const boardPanelRef = useRef<ScratchpadInlinePanelHandle>(null);
   const boardInsertHandlerRef = useRef<((text: string) => void) | null>(null);
-  const boardSectionRef = useRef<HTMLDivElement>(null);
   const stepTextareaRefs = useRef<Array<HTMLTextAreaElement | null>>([]);
   const focusedStepIndexRef = useRef<number | null>(null);
   const [stepFocusRequest, setStepFocusRequest] = useState<number | null>(null);
@@ -335,30 +338,7 @@ const PracticePlayerPage = () => {
   // Học sinh đánh dấu câu chưa biết làm; sau khi nộp và xem lại đáp án, các
   // câu đã đánh dấu vẫn hiện rõ trên danh sách câu để quay lại xem. Lưu tại
   // trình duyệt theo từng bài/buổi vì đây là ghi chú cá nhân của học sinh.
-  const bookmarkScope = assignmentId ?? pathSessionId ?? (subjectId ? `subject-${subjectId}` : "practice");
-  const bookmarkStorageKey = `edutwin-bookmarks:${bookmarkScope}`;
-  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem(bookmarkStorageKey);
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
-    } catch { return []; }
-  });
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(bookmarkStorageKey);
-      const parsed = raw ? JSON.parse(raw) : [];
-      setBookmarkedIds(Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : []);
-    } catch { setBookmarkedIds([]); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookmarkStorageKey]);
-  const toggleBookmark = (qId: string) => {
-    setBookmarkedIds((prev) => {
-      const next = prev.includes(qId) ? prev.filter((x) => x !== qId) : [...prev, qId];
-      try { localStorage.setItem(bookmarkStorageKey, JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  };
+  const { bookmarkedIds, toggleBookmark } = useQuestionBookmarks();
 
   // After a step split/add, move focus into the freshly created step card.
   useEffect(() => {
@@ -425,7 +405,6 @@ const PracticePlayerPage = () => {
     finalAnswer: string;
     answerDisplayLatex?: string;
     reasoningText?: string;
-    confidence: number | null;
     timeSpentSeconds: number;
     answerChanges: number;
     drawingUploadToken?: string;
@@ -605,7 +584,6 @@ const PracticePlayerPage = () => {
     setFinalAnswer("");
     setAnswerDisplayLatex("");
     setReasoningText("");
-    setConfidence(80);
     setAnswerChanges(0);
     answerChangesRef.current = 0;
     setTimeSpentSeconds(0);
@@ -856,7 +834,6 @@ const PracticePlayerPage = () => {
         finalAnswer: da.finalAnswer ?? "",
         answerDisplayLatex: da.answerDisplayLatex ?? "",
         reasoningText: da.reasoningText ?? "",
-        confidence: da.confidence ?? null,
         timeSpentSeconds: da.timeSpentSeconds ?? 0,
         answerChanges: da.answerChanges ?? 0,
         drawingUploadToken: da.drawingUploadToken ?? null,
@@ -951,7 +928,6 @@ const PracticePlayerPage = () => {
           finalAnswer: ans.finalAnswer || undefined,
           answerDisplayLatex: ans.answerDisplayLatex || undefined,
           reasoningText: ans.reasoningText || undefined,
-          confidence: ans.confidence,
           timeSpentSeconds: ans.timeSpentSeconds,
           answerChanges: ans.answerChanges,
           drawingUploadToken: ans.drawingUploadToken || undefined,
@@ -1039,7 +1015,6 @@ const PracticePlayerPage = () => {
           finalAnswer: da.finalAnswer || "",
           answerDisplayLatex: da.answerDisplayLatex || "",
           reasoningText: da.reasoningText || "",
-          confidence: da.confidence ?? null,
           timeSpentSeconds: da.timeSpentSeconds ?? 0,
           answerChanges: da.answerChanges ?? 0,
           drawingUploadToken: da.drawingUploadToken || null,
@@ -1059,7 +1034,6 @@ const PracticePlayerPage = () => {
         setFinalAnswer(activeAnswer.finalAnswer || "");
         setAnswerDisplayLatex(assignmentQuestion?.questionType === "MultipleChoice" ? "" : (activeAnswer.answerDisplayLatex || ""));
         setReasoningText(activeAnswer.reasoningText || "");
-        setConfidence(activeAnswer.confidence ?? null);
         setTimeSpentSeconds(activeAnswer.timeSpentSeconds ?? 0);
         const initialChanges = activeAnswer.answerChanges ?? 0;
         answerChangesRef.current = initialChanges;
@@ -1072,7 +1046,6 @@ const PracticePlayerPage = () => {
         setFinalAnswer("");
         setAnswerDisplayLatex("");
         setReasoningText("");
-        setConfidence(80);
         setTimeSpentSeconds(0);
         answerChangesRef.current = 0;
         setAnswerChanges(0);
@@ -1368,7 +1341,6 @@ const PracticePlayerPage = () => {
       setFinalAnswer(effectiveSubmittedAnswer || "");
       setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (effectiveSubmittedAnswerDisplayLatex || ""));
       setReasoningText(effectiveSubmittedReasoning || "");
-      setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? saved?.confidence ?? null);
       setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? saved?.timeSpentSeconds ?? 0);
       const initialChanges = assignmentQuestion?.latestAttempt?.answerChanges ?? saved?.answerChanges ?? 0;
       answerChangesRef.current = initialChanges;
@@ -1381,7 +1353,6 @@ const PracticePlayerPage = () => {
       setFinalAnswer(saved.finalAnswer || "");
       setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (saved.answerDisplayLatex || ""));
       setReasoningText(saved.reasoningText || "");
-      setConfidence(saved.confidence ?? null);
       setTimeSpentSeconds(saved.timeSpentSeconds ?? 0);
       const initialChanges = saved.answerChanges ?? 0;
       answerChangesRef.current = initialChanges;
@@ -1393,7 +1364,6 @@ const PracticePlayerPage = () => {
       setFinalAnswer(effectiveSubmittedAnswer || "");
       setAnswerDisplayLatex(question?.questionType === "MultipleChoice" ? "" : (effectiveSubmittedAnswerDisplayLatex || ""));
       setReasoningText(effectiveSubmittedReasoning || "");
-      setConfidence(assignmentQuestion?.latestAttempt?.confidence ?? null);
       setTimeSpentSeconds(assignmentQuestion?.latestAttempt?.timeSpentSeconds ?? 0);
       const initialChanges = assignmentQuestion?.latestAttempt?.answerChanges ?? 0;
       answerChangesRef.current = initialChanges;
@@ -1405,7 +1375,6 @@ const PracticePlayerPage = () => {
       setFinalAnswer("");
       setAnswerDisplayLatex("");
       setReasoningText("");
-      setConfidence(80);
       setTimeSpentSeconds(0);
       answerChangesRef.current = 0;
       setAnswerChanges(0);
@@ -1434,7 +1403,6 @@ const PracticePlayerPage = () => {
     (
       newFinalAnswer?: string,
       newReasoning?: string,
-      newConf?: number | null,
       newAnswerDisplayLatex?: string,
       newAnswerChanges?: number
     ) => {
@@ -1447,7 +1415,6 @@ const PracticePlayerPage = () => {
         answerDisplayLatex:
           newAnswerDisplayLatex !== undefined ? newAnswerDisplayLatex : answerDisplayLatex,
         reasoningText: newReasoning !== undefined ? newReasoning : reasoningText,
-        confidence: newConf !== undefined ? newConf : confidence,
         timeSpentSeconds,
         answerChanges: newAnswerChanges !== undefined ? newAnswerChanges : answerChanges,
         snapshotDataUrl: attachedSnapshotDataUrl,
@@ -1470,7 +1437,6 @@ const PracticePlayerPage = () => {
       finalAnswer,
       answerDisplayLatex,
       reasoningText,
-      confidence,
       timeSpentSeconds,
       answerChanges,
       attachedSnapshotDataUrl,
@@ -1536,7 +1502,6 @@ const PracticePlayerPage = () => {
     setFinalAnswer("");
     setAnswerDisplayLatex("");
     setReasoningText("");
-    setConfidence(80);
     setTimeSpentSeconds(0);
     answerChangesRef.current = 0;
     setAnswerChanges(0);
@@ -1755,13 +1720,13 @@ const PracticePlayerPage = () => {
     setFinalAnswer(plainText);
     setAnswerDisplayLatex(latex);
     setAnswerChanges(nextAnswerChanges);
-    persistCurrentAnswer(plainText, undefined, undefined, latex, nextAnswerChanges);
+    persistCurrentAnswer(plainText, undefined, latex, nextAnswerChanges);
   };
 
   const handleReasoningChange = (val: string) => {
     if (isReadOnly) return;
     setReasoningText(val);
-    persistCurrentAnswer(undefined, val, undefined);
+    persistCurrentAnswer(undefined, val);
   };
 
   // Unified single work box (keyboard mode): the student writes the whole
@@ -1774,16 +1739,17 @@ const PracticePlayerPage = () => {
     if (isReadOnly) return;
     handleReasoningChange(val);
     if (question?.questionType === "MultipleChoice") return;
-    const lines = val.split("\n").map((s) => s.trim()).filter(Boolean);
-    const derived = lines.length ? lines[lines.length - 1] : "";
+    const derived = deriveFinalAnswer(val, question?.questionType, question?.answerEvaluationMode, !mathToolsEnabled);
     if (derived !== finalAnswer) handleAnswerChange(derived, "");
+    // Each handler above persisted a stale copy of the other field.
+    persistCurrentAnswer(derived, val, "", answerChangesRef.current);
   };
 
-  const handleConfidenceChange = (val: number) => {
-    if (isReadOnly) return;
-    setConfidence(val);
-    persistCurrentAnswer(undefined, undefined, val);
-  };
+  // The answer a marked step stands for; an essay is always submitted whole.
+  const answerFromStep = (step: string, work: string) =>
+    question?.questionType === "Essay" ? work.trim()
+      : !mathToolsEnabled ? deriveFinalAnswer(work, question?.questionType, question?.answerEvaluationMode, true)
+      : normalizeFinalAnswer(step, question?.answerEvaluationMode);
 
   // 1-Click insertion from Casio or Toolbar
   const insertTextAtCursor = (textToInsert: string) => {
@@ -1860,7 +1826,6 @@ const PracticePlayerPage = () => {
           finalAnswer,
           answerDisplayLatex,
           reasoningText,
-          confidence,
           timeSpentSeconds,
           answerChanges,
         };
@@ -1954,9 +1919,9 @@ const PracticePlayerPage = () => {
     // thể đổi dấu chọn sang bước khác). Trắc nghiệm giữ nguyên lựa chọn.
     if (question?.questionType !== "MultipleChoice") {
       const conclusionIndex = blockStart + newLines.length - 1;
-      const conclusion = nextSteps[conclusionIndex] ?? "";
+      const conclusion = answerFromStep(nextSteps[conclusionIndex] ?? "", merged);
       if (conclusion !== finalAnswer) handleAnswerChange(conclusion, "");
-      persistCurrentAnswer(conclusion, merged, undefined, "");
+      persistCurrentAnswer(conclusion, merged, "");
       setFinalStepOverride({ qId, index: conclusionIndex });
     }
     setHandwritingTranscribeNotice(replaced
@@ -2073,7 +2038,6 @@ const PracticePlayerPage = () => {
           finalAnswer,
           answerDisplayLatex,
           reasoningText,
-          confidence,
           timeSpentSeconds,
           answerChanges,
           snapshotDataUrl: attachedSnapshotDataUrl,
@@ -2125,7 +2089,6 @@ const PracticePlayerPage = () => {
             finalAnswer: string;
             answerDisplayLatex?: string;
             reasoningText?: string;
-            confidence: number | null;
             timeSpentSeconds: number;
             answerChanges: number;
             drawingUploadToken?: string;
@@ -2139,7 +2102,6 @@ const PracticePlayerPage = () => {
               finalAnswer: answerTrimmed,
               answerDisplayLatex: src?.answerDisplayLatex?.trim() || undefined,
               reasoningText: reasoningTrimmed,
-              confidence: src?.confidence ?? null,
               timeSpentSeconds: src?.timeSpentSeconds ?? 0,
               answerChanges: src?.answerChanges ?? 0,
               drawingUploadToken: src?.drawingUploadToken || (q.questionId === currentQId ? currentToken || undefined : undefined),
@@ -2182,7 +2144,6 @@ const PracticePlayerPage = () => {
               skipped: isSkipped,
               answerDisplayLatex: qAnswer?.answerDisplayLatex?.trim() || undefined,
               reasoningText: rawAnswer ? (qAnswer?.reasoningText?.trim() || undefined) : undefined,
-              confidence: qAnswer?.confidence ?? null,
               timeSpentSeconds: qAnswer?.timeSpentSeconds ?? 0,
               answerChanges: qAnswer?.answerChanges ?? 0,
               drawingUploadToken: qAnswer?.drawingUploadToken || undefined,
@@ -2265,7 +2226,6 @@ const PracticePlayerPage = () => {
         finalAnswer: finalAnswer.trim() || "SKIPPED",
         reasoningText: reasoningToSubmit,
         timeSpentSeconds,
-        confidence,
         answerChanges,
         skipped: !finalAnswer.trim(),
         clientSubmissionId: getClientSubmissionId(),
@@ -2563,7 +2523,7 @@ const PracticePlayerPage = () => {
     };
   }, [assignment, isAssignmentSubmitted, assignmentQuestions]);
 
-  const mathToolsEnabled = !/tiếng anh|english|ngoại ngữ|ngữ văn|literature/i.test(assignment?.subjectName ?? "") && question?.languageCode?.toLowerCase() !== "en";
+  const mathToolsEnabled = usesMathInput(assignment?.subjectName, question?.languageCode);
 
   const isReadOnly =
     classReadOnly || (!assignmentId && !learningAccess.writable) ||
@@ -2582,9 +2542,16 @@ const PracticePlayerPage = () => {
   const boardFlowActive = inputMode === "draw" && !isReadOnly;
   const photoFlowActive = inputMode === "photo" && !isReadOnly;
   const stepsFlowActive = boardFlowActive || photoFlowActive;
+  // Work saved before the single box existed may hold only an answer.
+  const workText = reasoningText || finalAnswer;
   // Bố cục chia đôi của chế độ Vẽ A4: câu hỏi + phần trình bày bên trái,
   // giấy A4 bên phải. Chỉ cho câu tự luận/ngắn trên màn hình rộng.
   const splitDrawActive = boardFlowActive && !isMcqQuestion;
+  // While answering, the question sits beside the work so it stays in view.
+  const workSplitActive = !isReadOnly && !splitDrawActive;
+  // Reviewing a graded question: the work stays beside its feedback.
+  const reviewSplitActive = Boolean(assignmentId) && isCurrentQuestionSubmitted && !activeSideTool;
+  const wideWorkspace = splitDrawActive || workSplitActive || reviewSplitActive || isAssignmentSubmitted;
   // One step per line of reasoningText — the stored format does not change.
   const solutionSteps =
     stepsMirror && stepsMirror.qId === String(question?.questionId ?? "")
@@ -2603,7 +2570,7 @@ const PracticePlayerPage = () => {
       return finalStepOverride.index;
     }
     if (finalAnswer) {
-      const match = solutionSteps.map((s) => s.trim()).lastIndexOf(finalAnswer.trim());
+      const match = solutionSteps.map((s) => answerFromStep(s, s)).lastIndexOf(finalAnswer.trim());
       if (match >= 0) return match;
     }
     return solutionSteps.length - 1;
@@ -2618,9 +2585,9 @@ const PracticePlayerPage = () => {
     const joined = nextSteps.join("\n");
     handleReasoningChange(joined);
     if (!isMcqQuestion) {
-      const conclusion = nextSteps.length === 0 ? "" : (nextSteps[Math.min(markerIndex, nextSteps.length - 1)] ?? "");
+      const conclusion = nextSteps.length === 0 ? "" : answerFromStep(nextSteps[Math.min(markerIndex, nextSteps.length - 1)] ?? "", joined);
       if (conclusion !== finalAnswer) handleAnswerChange(conclusion, "");
-      persistCurrentAnswer(conclusion, joined, undefined, "");
+      persistCurrentAnswer(conclusion, joined, "");
       setFinalStepOverride({
         qId: String(question?.questionId ?? ""),
         index: nextSteps.length === 0 ? 0 : Math.min(markerIndex, nextSteps.length - 1),
@@ -3145,7 +3112,7 @@ const PracticePlayerPage = () => {
           {isTranscribingHandwriting ? "Đang quét…" : "📝 Quét bài làm trên A4"}
         </button>
       </div>
-      <div ref={boardSectionRef} className={tall ? "flex-1 min-h-[480px] lg:min-h-[560px]" : "h-[430px] sm:h-[500px]"}>
+      <div className={tall ? "flex-1 min-h-[480px] lg:min-h-[560px]" : "h-[430px] sm:h-[500px]"}>
         <ScratchpadInlinePanel
           ref={boardPanelRef}
           centerId={currentUser?.centerId ?? ""}
@@ -3182,7 +3149,8 @@ const PracticePlayerPage = () => {
           </p>
         )}
         {solutionSteps.map((step, i) => {
-          const isFinalStep = withFinalMarker && i === finalStepIndex;
+          // Language subjects grade every line, so no single step is "the answer".
+          const isFinalStep = withFinalMarker && mathToolsEnabled && i === finalStepIndex;
           return (
             <div
               key={i}
@@ -3237,7 +3205,7 @@ const PracticePlayerPage = () => {
                   className="flex-1 min-w-0 resize-none bg-transparent outline-none text-sm leading-relaxed text-slate-800 dark:text-slate-100 placeholder:text-slate-400 py-1"
                 />
               )}
-              {withFinalMarker &&
+              {withFinalMarker && mathToolsEnabled &&
                 (isFinalStep ? (
                   <span className="shrink-0 mt-1 px-2 py-1 rounded-lg bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wide">
                     Đáp án cuối
@@ -3377,36 +3345,6 @@ const PracticePlayerPage = () => {
     </div>
   );
 
-  // Bộ chuyển ba phương thức nhập bài làm.
-  const renderInputModeSwitcher = () => {
-    const modes: Array<{ value: InputMode; icon: string; label: string; hint: string }> = [
-      { value: "keyboard", icon: "⌨️", label: "Bàn phím", hint: "Gõ bài làm bằng bàn phím" },
-      { value: "draw", icon: "✏️", label: "Vẽ trên A4", hint: "Viết tay lên giấy A4 rồi quét vào phần trình bày" },
-      { value: "photo", icon: "📷", label: "Ảnh chụp", hint: "Chụp bài giải trên giấy rồi tải lên" },
-    ];
-    return (
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cách làm bài</span>
-        <div className="inline-flex rounded-2xl bg-slate-100 dark:bg-slate-800/80 p-1 gap-1" role="tablist" aria-label="Phương thức nhập bài làm">
-          {modes.map((m) => (
-            <button
-              key={m.value}
-              type="button"
-              role="tab"
-              aria-selected={inputMode === m.value}
-              onClick={() => setInputMode(m.value)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${inputMode === m.value ? "bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 shadow-sm ring-1 ring-indigo-500/50" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"}`}
-              title={m.hint}
-            >
-              {m.icon} {m.label}
-            </button>
-          ))}
-        </div>
-        <span className="text-[11px] text-slate-400">{modes.find((m) => m.value === inputMode)?.hint} — chuyển cách khác vẫn giữ nguyên bài đã làm</span>
-      </div>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-stone-50/50 dark:bg-[#101623] text-stone-800 dark:text-stone-100 flex flex-col antialiased student-shell">
       {pathSession && <div className="p-3" role="status">{pathSession.title} · {pathSession.recommendedQuestionIds.length} câu trong buổi
@@ -3414,7 +3352,7 @@ const PracticePlayerPage = () => {
       </div>}
       {/* Top Header Bar */}
       <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#151d2f]/95 backdrop-blur-md border-b border-stone-200/80 dark:border-stone-800/80 shadow-xs">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-2 py-2 min-h-14 sm:min-h-16">
+        <div className="max-w-[1700px] mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-2 py-2 min-h-14 sm:min-h-16">
           <div className="flex items-center gap-3">
             <Link
               to={
@@ -3594,20 +3532,18 @@ const PracticePlayerPage = () => {
       </header>
 
       {/* Main Dual-Pane Workspace */}
-      <main className="flex-1 max-w-[1700px] w-full mx-auto p-4 sm:p-6">
+      <main className="flex-1 max-w-[1700px] w-full mx-auto px-4 sm:px-6 py-3">
         <div
           className={`mx-auto transition-all duration-200 ${
-            splitDrawActive
-              ? "space-y-6"
-              : activeSideTool
-                ? "grid grid-cols-1 lg:grid-cols-12 gap-6 items-start"
-                : inputMode === "keyboard" && !isReadOnly
-                  ? "max-w-3xl space-y-6"
-                  : "max-w-4xl space-y-6"
+            activeSideTool
+              ? "grid grid-cols-1 lg:grid-cols-12 gap-6 items-start"
+              : wideWorkspace
+                ? "space-y-3"
+                : "max-w-4xl space-y-6"
           }`}
         >
           {/* Left / Main Question Area ~70% */}
-          <div className={activeSideTool ? "lg:col-span-8 xl:col-span-8 space-y-6" : "space-y-6"}>
+          <div className={`${activeSideTool ? "lg:col-span-8" : ""} ${wideWorkspace ? "space-y-3" : "space-y-6"}`}>
             {!isAssignmentSubmitted && isAssignmentExpired && (
               <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/60 p-4 text-xs font-bold text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-800 flex items-center justify-between">
                 <span>⏰ Đã hết thời gian làm bài. Bài làm không thể nộp thêm câu mới. Các câu đã nộp trước đó được giữ nguyên.</span>
@@ -3617,7 +3553,7 @@ const PracticePlayerPage = () => {
               {assignment?.readOnlyReason || "Phạm vi lịch sử — chỉ xem bài làm và câu hỏi cũ."}
             </p>}
             {!classReadOnly && !isAssignmentSubmitted && startAssignmentError && (
-              <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 p-4 text-sm font-semibold text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3">
+              <div role="alert" className="rounded-2xl bg-amber-50 dark:bg-amber-950/40 p-4 text-sm font-semibold text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <span className="text-base">⚠️</span>
                   <p>{startAssignmentError}</p>
@@ -3635,7 +3571,7 @@ const PracticePlayerPage = () => {
               </div>
             )}
             {submissionSaveError && (
-              <div className="rounded-2xl bg-rose-50 dark:bg-rose-950/40 p-4 text-sm font-semibold text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800 space-y-2">
+              <div role="alert" className="rounded-2xl bg-rose-50 dark:bg-rose-950/40 p-4 text-sm font-semibold text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800 space-y-2">
                 <div className="flex items-center gap-2">
                   <span className="text-base">❌</span>
                   <p>{submissionSaveError}</p>
@@ -3703,22 +3639,20 @@ const PracticePlayerPage = () => {
 
             {/* 0. Assignment Result Overview Banner when submitted */}
             {assignmentId && isAssignmentSubmitted && assignmentStats && (
-              <div className="rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 p-6 sm:p-7 shadow-xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
+              <div className="rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 shadow-xs space-y-3">
+                <div className="flex flex-col xl:flex-row xl:items-center gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 xl:shrink-0 xl:whitespace-nowrap">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">🏆</span>
-                      <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
-                        Kết quả tổng quan bài tập
-                      </h2>
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+                      Kết quả tổng quan bài tập
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 xl:max-w-xs xl:truncate">
                       {assignment?.title} · {assignmentStats.totalCount} câu hỏi
                     </p>
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <div className="rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800 px-4 py-2.5 text-center">
+                    <div className="rounded-xl bg-indigo-50 dark:bg-indigo-950/60 px-4 py-2 text-center">
                       <div className="text-[10px] uppercase font-bold text-indigo-500 dark:text-indigo-400">
                         {assignment?.summary?.teacherFinalReviewStatus === "Approved" ? "Tổng điểm chính thức" : "Điểm sơ bộ"}
                       </div>
@@ -3743,17 +3677,16 @@ const PracticePlayerPage = () => {
                       onClick={() => {
                         void refreshSubmittedAssignmentData();
                       }}
-                      className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer inline-flex items-center gap-1.5"
+                      className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer inline-flex items-center gap-1.5 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] motion-reduce:transform-none"
                       title="Làm mới kết quả bài làm"
                     >
-                      <span>🔄</span>
                       <span>Làm mới</span>
                     </button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 p-3.5">
+                <div className="flex-1 min-w-0 grid grid-cols-2 lg:grid-cols-4 gap-2">
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 px-3 py-2.5">
                     <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Số câu đúng</div>
                     <div className="text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
                       {assignmentStats.correctCount} / {assignmentStats.totalCount}
@@ -3765,7 +3698,7 @@ const PracticePlayerPage = () => {
                     )}
                   </div>
 
-                  <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 p-3.5">
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 px-3 py-2.5">
                     <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">AI đã phân tích</div>
                     <div className="text-base sm:text-lg font-black text-slate-800 dark:text-slate-200 mt-0.5">
                       {assignmentStats.aiAnalyzedCount} / {assignmentStats.totalCount} câu
@@ -3773,7 +3706,7 @@ const PracticePlayerPage = () => {
                     <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Đã xác định điểm: {assignmentStats.evaluatedCount}/{assignmentStats.totalCount} · Giáo viên chốt là bước riêng</div>
                   </div>
 
-                  <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 p-3.5">
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 px-3 py-2.5">
                     <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
                       {assignmentStats.aiProcessingCount > 0 ? "AI đang phân tích" : "Chờ GV duyệt"}
                     </div>
@@ -3790,7 +3723,7 @@ const PracticePlayerPage = () => {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 p-3.5">
+                  <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 px-3 py-2.5">
                     <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Trạng thái bài tập</div>
                     <div className="text-xs sm:text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-1">
                       {assignmentStats.aiProcessingCount > 0
@@ -3800,6 +3733,8 @@ const PracticePlayerPage = () => {
                         : assignment?.summary?.teacherFinalReviewStatus === "Approved" ? "Đã chốt kết quả" : "Đã có điểm · Chờ chốt toàn bài"}
                     </div>
                   </div>
+                </div>
+
                 </div>
 
                 {assignment?.summary?.teacherFinalReviewStatus === "Approved" && (
@@ -3813,14 +3748,12 @@ const PracticePlayerPage = () => {
 
                 {assignmentStats.aiProcessingCount > 0 ? (
                   <div className="rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 p-3 text-xs text-blue-900 dark:text-blue-200 flex items-center gap-2">
-                    <span>⏳</span>
                     <span>
                       Đang chờ hoàn tất phân tích {assignmentStats.aiProcessingCount} câu hỏi... Điểm số và nhận xét tổng thể sẽ tự động cập nhật khi AI hoàn tất.
                     </span>
                   </div>
                 ) : assignmentStats.teacherReviewCount > 0 ? (
                   <div className="rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-900 dark:text-amber-200 flex items-center gap-2">
-                    <span>⏳</span>
                     <span>
                       Bài tập đang có {assignmentStats.teacherReviewCount} câu cần giáo viên xem xét. Điểm tự động đã có vẫn được hiển thị; Điểm số cuối cùng sẽ được cập nhật sau khi giáo viên hoàn tất chấm bài.
                     </span>
@@ -3831,7 +3764,7 @@ const PracticePlayerPage = () => {
 
             {/* 1. Question Palette (Thanh chọn câu hỏi 1, 2, 3...) for Assignments */}
             {assignmentId && totalQuestions > 1 && (
-              <div className="rounded-2xl bg-white dark:bg-[#0f172a] p-4 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3">
+              <div className="xl:sticky xl:top-20 z-20 rounded-2xl bg-white dark:bg-[#0f172a] px-4 py-2 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
                     Danh sách câu:
@@ -3852,9 +3785,9 @@ const PracticePlayerPage = () => {
                           key={q.questionId}
                           type="button"
                           onClick={() => handleSwitchQuestion(q.questionId)}
-                          className={`relative w-8 h-8 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center justify-center ${
+                          className={`relative w-8 h-8 rounded-xl font-black text-xs transition-[background-color,transform] duration-150 ease-out active:scale-95 motion-reduce:transform-none cursor-pointer flex items-center justify-center ${
                             isCurrent
-                              ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400 ring-offset-2 dark:ring-offset-slate-900 scale-105"
+                              ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-2 ring-indigo-400 ring-offset-2 dark:ring-offset-slate-900"
                               : isVoided
                               ? "bg-purple-600 text-white shadow-2xs hover:bg-purple-700 ring-1 ring-purple-400/50"
                               : isProcessing
@@ -3941,9 +3874,9 @@ const PracticePlayerPage = () => {
             )}
 
             {/* 2. Main Question Card */}
-            <div className="rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 p-6 sm:p-8 shadow-xs space-y-6">
+            <div className="rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 shadow-xs space-y-4">
               {/* Question Header */}
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2 border-b border-slate-100 dark:border-slate-800 pb-3">
                 <div className="flex items-center gap-2.5">
                   <span className="text-sm font-black text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-3 py-1 rounded-xl border border-indigo-200/70 dark:border-indigo-800">
                     Câu {currentAssignmentIndex >= 0 ? currentAssignmentIndex + 1 : 1}
@@ -3954,6 +3887,16 @@ const PracticePlayerPage = () => {
                   <span className="text-xs font-medium text-slate-400">
                     Kỳ vọng: {question?.estimatedTimeSeconds || 90}s
                   </span>
+                </div>
+                <div className={`grow min-w-0 ${isReadOnly ? "" : "basis-[34rem]"}`}>
+                  <WorkToolbar
+                    showModes={!isReadOnly && !!question}
+                    mode={inputMode}
+                    onModeChange={setInputMode}
+                    showTools={mathToolsEnabled}
+                    activeTool={activeSideTool}
+                    onToggleTool={(tool) => setActiveSideTool(activeSideTool === tool ? null : tool)}
+                  />
                 </div>
                 {question && (
                   isReadOnly ? (
@@ -4045,91 +3988,18 @@ const PracticePlayerPage = () => {
                 </div>
               )}
 
-              {splitDrawActive ? null : questionStatement}
+              <div className={reviewSplitActive ? "grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-6 items-start" : "space-y-4"}>
+              <div className={reviewSplitActive ? "min-w-0 xl:sticky xl:top-36" : "min-w-0"}>
+              <div className={workSplitActive ? `grid grid-cols-1 gap-6 items-start ${activeSideTool ? "xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" : "lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]"}` : "space-y-5"}>
+              {splitDrawActive ? null : <div className={workSplitActive ? (activeSideTool ? "xl:sticky xl:top-24" : "lg:sticky lg:top-24") : undefined}>{questionStatement}</div>}
 
-              {/* 3. Thanh 3 Nút Công Cụ Trợ Lý (Casio, Nháp, Đồ Thị) */}
-              <div className="pt-2">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                      Công cụ hỗ trợ làm bài
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    {/* Button 1: Máy tính Casio fx-580VN */}
-                    {mathToolsEnabled && <button
-                      type="button"
-                      onClick={() => setActiveSideTool(activeSideTool === "casio" ? null : "casio")}
-                      className={`flex items-center gap-2.5 p-3 rounded-xl font-medium text-xs sm:text-sm transition-all border text-left cursor-pointer ${
-                        activeSideTool === "casio"
-                          ? "border-amber-500 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 ring-1 ring-amber-500"
-                          : "border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/50 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300"
-                      }`}
-                    >
-                      <span className="text-base leading-none">🖩</span>
-                      <div className="min-w-0">
-                        <div className="font-bold text-xs text-stone-900 dark:text-stone-100">Máy tính Casio</div>
-                        <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">fx-580VN X</div>
-                      </div>
-                    </button>}
-
-                    {/* Button 2: Bảng nháp vẽ tay — ở luồng bảng trung tâm, bảng
-                        đã nằm ngay trong bài làm nên nút này cuộn tới bảng thay
-                        vì mở thêm một bảng thứ hai ở khung trợ lý. */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (boardFlowActive) {
-                          boardSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-                        } else {
-                          setActiveSideTool(activeSideTool === "scratchpad" ? null : "scratchpad");
-                        }
-                      }}
-                      className={`flex items-center gap-2.5 p-3 rounded-xl font-medium text-xs sm:text-sm transition-all border text-left cursor-pointer ${
-                        !boardFlowActive && activeSideTool === "scratchpad"
-                          ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 ring-1 ring-emerald-500"
-                          : "border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/50 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300"
-                      }`}
-                    >
-                      <span className="text-base leading-none">✏️</span>
-                      <div className="min-w-0">
-                        <div className="font-bold text-xs text-stone-900 dark:text-stone-100">Bảng vẽ nháp</div>
-                        <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">
-                          {attachedSnapshotDataUrl ? "✓ Đã đính kèm ảnh" : boardFlowActive ? "Đang ở ngay trong bài làm ↓" : "Thu phóng & vẽ tự do"}
-                        </div>
-                      </div>
-                    </button>
-
-                    {/* Button 3: Khảo sát đồ thị */}
-                    {mathToolsEnabled && <button
-                      type="button"
-                      onClick={() => setActiveSideTool(activeSideTool === "graph" ? null : "graph")}
-                      className={`flex items-center gap-2.5 p-3 rounded-xl font-medium text-xs sm:text-sm transition-all border text-left cursor-pointer ${
-                        activeSideTool === "graph"
-                          ? "border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-900 dark:text-sky-200 ring-1 ring-sky-500"
-                          : "border-stone-200 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/50 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300"
-                      }`}
-                    >
-                      <span className="text-base leading-none">📈</span>
-                      <div className="min-w-0">
-                        <div className="font-bold text-xs text-stone-900 dark:text-stone-100">Vẽ đồ thị</div>
-                        <div className="text-[10px] text-stone-500 dark:text-stone-400 truncate">Khảo sát hàm Oxy</div>
-                      </div>
-                    </button>}
-                  </div>
-                </div>
-
+              <div className="min-w-0 space-y-4">
               {/* 4. Answer Section */}
-              <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
-                {!isReadOnly && question && (
-                  <div className="mb-4">{renderInputModeSwitcher()}</div>
-                )}
-                <div className="flex items-center justify-between mb-3">
+              <div className={workSplitActive || splitDrawActive ? undefined : "border-t border-slate-100 dark:border-slate-800 pt-5"}>
+                {!splitDrawActive && <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                      {splitDrawActive
-                        ? "Bài làm — viết tay trên giấy A4"
-                        : photoFlowActive && !isMcqQuestion
+                      {photoFlowActive && !isMcqQuestion
                           ? "Bài làm — ảnh chụp bài giải"
                           : boardFlowActive && !isMcqQuestion
                             ? "Bài làm — viết tay trên giấy A4"
@@ -4143,7 +4013,7 @@ const PracticePlayerPage = () => {
                       </span>
                     )}
                   </div>
-                </div>
+                </div>}
 
                 {/* Multiple choice grid */}
                 {question?.questionType === "MultipleChoice" ? (
@@ -4210,25 +4080,32 @@ const PracticePlayerPage = () => {
                     {/* One single work box for every subject: the whole
                         solution is written here; the last line counts as
                         the final answer (see handleUnifiedWorkChange). */}
-                    {!mathToolsEnabled ? <textarea aria-label="Bài làm của bạn" value={reasoningText} disabled={isReadOnly} onChange={e => handleUnifiedWorkChange(e.target.value)} placeholder="Trình bày bài làm của bạn..." className="w-full min-h-32 rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <RichMathEditor
+                    {!mathToolsEnabled ? <textarea aria-label="Bài làm của bạn" value={workText} disabled={isReadOnly} onChange={e => handleUnifiedWorkChange(e.target.value)} placeholder={isAssignmentSubmitted ? "Chưa có bài làm cho câu hỏi này." : answerWorkPlaceholder(false)} style={{ minHeight: workSplitActive ? WORK_EDITOR_MIN_HEIGHT : undefined }} className="w-full min-h-32 rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <RichMathEditor
                       ref={reasoningEditorRef}
                       variant="student"
-                      value={reasoningText}
+                      value={workText}
                       onChange={(val) => {
                         if (!isReadOnly) handleUnifiedWorkChange(val);
                       }}
                       onFocus={() => setActiveInputTarget("reasoning")}
                       disabled={isReadOnly}
-                      minHeight="120px"
+                      minHeight={workSplitActive ? WORK_EDITOR_MIN_HEIGHT : "120px"}
                       placeholder={
                         isAssignmentSubmitted
                           ? "Chưa có bài làm cho câu hỏi này."
-                          : "Trình bày bài làm của em... (Gõ $ hoặc Ctrl+M để chèn công thức toán)"
+                          : answerWorkPlaceholder(true)
                       }
                       className={isAssignmentSubmitted ? "opacity-90" : ""}
                     />}
                     {!isAssignmentSubmitted && (
-                      <p className="mt-2 text-[11px] text-slate-400">Dòng cuối cùng của bài làm được tính là đáp án cuối.</p>
+                      <div className="mt-2">
+                        <GradedAnswerPreview answer={finalAnswer} questionType={question?.questionType} evaluationMode={question?.answerEvaluationMode} wholeWork={!mathToolsEnabled} />
+                      </div>
+                    )}
+                    {isAssignmentSubmitted && reasoningText.trim() && finalAnswer.trim() && finalAnswer.trim() !== reasoningText.trim() && (
+                      <p className="mt-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        Đáp án đã nộp: <RichMathText text={finalAnswer} />
+                      </p>
                     )}
                   </div>
                 )}
@@ -4240,7 +4117,7 @@ const PracticePlayerPage = () => {
                   writes its whole work in section 4 (or on the board /
                   photo in the draw & photo flows), so this section renders
                   nothing for them besides the attachment card below. */}
-              <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
+              <div className="empty:hidden border-t border-slate-100 dark:border-slate-800 pt-6">
                 {isMcqQuestion && (
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-400">
@@ -4262,7 +4139,7 @@ const PracticePlayerPage = () => {
                   isMcqQuestion ? renderBoardWork(false) : null
                 ) : photoFlowActive ? (
                   isMcqQuestion ? renderPhotoWork(false) : null
-                ) : !isMcqQuestion ? null : !mathToolsEnabled ? <textarea aria-label="Giải thích vì sao em chọn đáp án này" value={reasoningText} disabled={isReadOnly} onChange={e => handleReasoningChange(e.target.value)} placeholder="Giải thích vì sao em chọn đáp án này..." className="w-full min-h-32 rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <RichMathEditor
+                ) : !isMcqQuestion ? null : !mathToolsEnabled ? <textarea aria-label="Giải thích vì sao em chọn đáp án này" value={reasoningText} disabled={isReadOnly} onChange={e => handleReasoningChange(e.target.value)} placeholder={isAssignmentSubmitted ? "Học sinh không giải thích." : answerReasoningPlaceholder(false)} className="w-full min-h-32 rounded-xl border border-slate-300 dark:border-slate-700 p-3 bg-transparent" /> : <RichMathEditor
                   ref={reasoningEditorRef}
                   variant="student"
                   value={reasoningText}
@@ -4275,7 +4152,7 @@ const PracticePlayerPage = () => {
                   placeholder={
                     isAssignmentSubmitted
                       ? "Học sinh không giải thích."
-                      : "Giải thích vì sao em chọn đáp án này... (Gõ $ hoặc Ctrl+M để chèn công thức toán)"
+                      : answerReasoningPlaceholder(true)
                   }
                   className={isAssignmentSubmitted ? "opacity-90" : ""}
                 />}
@@ -4355,10 +4232,13 @@ const PracticePlayerPage = () => {
                   </>
                 ) : null}
               </div>
+              </div>
+              </div>
+              </div>
 
               {/* Persisted question-level grading. Navigation only changes the attempt GET key. */}
               {assignmentId && isCurrentQuestionSubmitted && (
-                <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
+                <div className={reviewSplitActive ? "min-w-0" : "border-t border-slate-100 dark:border-slate-800 pt-5"}>
                   {reviewFeedbackQuery.isLoading ? (
                     <div
                       role="status"
@@ -4407,41 +4287,10 @@ const PracticePlayerPage = () => {
                   ) : null}
                 </div>
               )}
-
-              {/* Confidence Slider */}
-              <div className="border-t border-slate-100 dark:border-slate-800 pt-6">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                    Mức độ tự tin với câu trả lời
-                  </span>
-                  <span className="text-sm font-extrabold text-indigo-600 dark:text-indigo-400">
-                    {confidence === null ? "Chưa chọn" : `${confidence}%`}
-                  </span>
-                </div>
-
-                <div className="relative flex items-center">
-                  <input
-                    type="range"
-                    min={10}
-                    max={100}
-                    step={5}
-                    value={confidence ?? 50}
-                    onChange={(e) => {
-                      if (!isReadOnly) handleConfidenceChange(Number(e.target.value));
-                    }}
-                    disabled={isReadOnly}
-                    className={`w-full h-2 rounded-lg bg-slate-200 dark:bg-slate-700 appearance-none accent-indigo-600 focus:outline-none ${
-                      isReadOnly ? "cursor-default opacity-80" : "cursor-pointer"
-                    } ${confidence === null ? "opacity-50" : ""}`}
-                  />
-                </div>
-                {confidence === null && !isReadOnly && (
-                  <p className="mt-1.5 text-[11px] text-slate-400">Kéo thanh trượt nếu em muốn ghi lại mức tự tin của mình — để nguyên thì hệ thống không ghi nhận mức tự tin cho câu này.</p>
-                )}
               </div>
 
               {/* Bottom Actions for Question */}
-              <div className="flex flex-wrap items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-6 gap-3">
+              <div className="flex flex-wrap items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3 gap-3">
                 {/* Previous / Next buttons */}
                 {assignmentId && totalQuestions > 1 ? (
                   <div className="flex items-center justify-between w-full">
@@ -4496,11 +4345,11 @@ const PracticePlayerPage = () => {
 
           {/* Right Pane: Assistant Workspace ~30% */}
           {activeSideTool && (
-            <div className="lg:col-span-4 xl:col-span-4 sticky top-4 max-h-[calc(100vh-2rem)] flex flex-col">
+            <div className="lg:col-span-4 lg:sticky lg:top-20 flex flex-col">
               <SideAssistantWorkspace
                 mathToolsEnabled={mathToolsEnabled}
-                hideScratchpadTab={boardFlowActive}
-                activeTab={boardFlowActive && activeSideTool === "scratchpad" ? "casio" : mathToolsEnabled ? activeSideTool : "scratchpad"}
+                hideScratchpadTab
+                activeTab={activeSideTool}
                 onChangeTab={(tab) => setActiveSideTool(tab)}
                 onClose={() => setActiveSideTool(null)}
                 onInsertResult={!isReadOnly ? (val) => insertTextAtCursor(val) : undefined}

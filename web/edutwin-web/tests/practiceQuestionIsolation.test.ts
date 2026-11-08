@@ -13,7 +13,7 @@ const production = ts.transpileModule(source.slice(start, end) + "\nglobalThis.n
 
 function harness(writable: boolean, session: boolean) {
   const state: Record<string, unknown> = { FeedbackData: { attemptId: "old" }, FinalAnswer: "old", AnswerDisplayLatex: "old latex",
-    ReasoningText: "old reasoning", Confidence: 20, TimeSpentSeconds: 120, AnswerChanges: 4,
+    ReasoningText: "old reasoning", TimeSpentSeconds: 120, AnswerChanges: 4,
     AttachedSnapshotDataUrl: "old image", AttachedSnapshotBlob: new Blob(["old"]), AttachedSnapshotTime: "old time",
     ShowFullSnapshotModal: true, DrawingUploadToken: "consumed-token" };
   let questions = 0, sessions = 0;
@@ -31,7 +31,7 @@ for (const session of [false, true]) test(`next practice question isolates behav
   for (const name of ["FinalAnswer", "AnswerDisplayLatex", "ReasoningText"]) assert.equal(h.state[name], "");
   for (const name of ["FeedbackData", "AttachedSnapshotDataUrl", "AttachedSnapshotBlob", "AttachedSnapshotTime", "DrawingUploadToken"]) assert.equal(h.state[name], null);
   assert.equal(h.state.AnswerChanges, 0); assert.equal(h.context.answerChangesRef.current, 0);
-  assert.equal(h.state.Confidence, 80); assert.equal(h.state.TimeSpentSeconds, 0); assert.equal(h.state.ShowFullSnapshotModal, false);
+  assert.equal(h.state.TimeSpentSeconds, 0); assert.equal(h.state.ShowFullSnapshotModal, false);
   assert.equal(Object.keys(h.context.snapshotUploadsRef.current).length, 0);
   assert.equal(h.context.practiceSubmissionRef.current,null);
   assert.deepEqual(h.counts(), { questions: 1, sessions: session ? 1 : 0 });

@@ -12,8 +12,8 @@ interface ApiResponse<T> {
   };
 }
 
-export const getStudentTwin = async (subjectId: string): Promise<StudentTwinDataDto> => {
-  const params = { subjectId };
+export const getStudentTwin = async (subjectId: string, classId?: string, history = false): Promise<StudentTwinDataDto> => {
+  const params = { subjectId, classId: classId || undefined, history };
   const response = await httpClient.get<ApiResponse<StudentTwinDataDto>>("/students/me/twin", {
     params,
   });
@@ -22,9 +22,17 @@ export const getStudentTwin = async (subjectId: string): Promise<StudentTwinData
 
 export const getStudentTwinHistory = async (
   subjectId?: string,
-  topicNodeId?: string
+  topicNodeId?: string,
+  classId?: string,
+  history = false
 ): Promise<TwinUpdateHistoryItemDto[]> => {
   const params: Record<string, string> = {};
+  if (classId) {
+    params.classId = classId;
+  }
+  if (history) {
+    params.history = "true";
+  }
   if (subjectId) {
     params.subjectId = subjectId;
   }

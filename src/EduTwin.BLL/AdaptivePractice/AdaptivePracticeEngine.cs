@@ -7,10 +7,13 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
+using EduTwin.BLL.Organization;
 using EduTwin.Contracts.AdaptivePractice;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.CurriculumAndQuestions;
+using EduTwin.Contracts.DigitalTwin;
 using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.Contracts.Recommendations;
 using EduTwin.DAL.AdaptivePractice;
@@ -25,6 +28,11 @@ namespace EduTwin.BLL.AdaptivePractice;
 
 public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
 {
+    private static readonly PreliminaryGraderFactory Graders = new(
+        new MultipleChoiceGrader(),
+        new ShortAnswerGrader(),
+        new EssayGrader());
+
     private readonly EduTwinDbContext _dbContext;
 
     public AdaptivePracticeEngine(EduTwinDbContext dbContext)
@@ -38,6 +46,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         Guid subjectId,
         ulong? customTopicId,
         AdaptivePracticeMode mode,
+        Guid? classId,
         CancellationToken ct)
     {
         var subject = await _dbContext.Subjects
@@ -45,21 +54,60 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             .SingleOrDefaultAsync(s => s.CenterId == centerId && s.SubjectId == subjectId && !s.IsDeleted, ct)
             ?? throw new InvalidOperationException($"Subject '{subjectId}' not found in center.");
 
-        var allTopics = await _dbContext.KnowledgeNodes
-            .AsNoTracking()
-            .Where(kn => kn.CenterId == centerId && kn.SubjectId == subjectId && kn.IsActive && !kn.IsDeleted)
-            .OrderBy(kn => kn.NodeId)
-            .ToListAsync(ct);
-
-        if (allTopics.Count == 0)
+        // Practice follows the class in view: only what its curriculum teaches.
+        var scope = await StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, subjectId, classId, false, ct);
+        AdaptivePracticeProposalDto Unavailable(string reason) => new()
         {
-            throw new InvalidOperationException($"No active topics found for subject '{subject.Name}'.");
+            SubjectId = subjectId,
+            SubjectName = subject.Name,
+            AvailableTopics = [],
+            UnavailableReason = reason
+        };
+        if (!scope.Allowed)
+        {
+            return Unavailable(scope.Reason ?? "Lớp đang xem chưa có nội dung để luyện tập.");
         }
+
+        var scopedTopics = await _dbContext.KnowledgeNodes
+            .AsNoTracking()
+            .Where(kn => kn.CenterId == centerId && kn.SubjectId == subjectId && kn.NodeType == NodeType.Topic && kn.IsActive && !kn.IsDeleted)
+            .ToListAsync(ct);
 
         var twins = await _dbContext.KnowledgeTwins
             .AsNoTracking()
             .Where(kt => kt.CenterId == centerId && kt.StudentId == studentId && kt.SubjectId == subjectId && !kt.IsDeleted)
             .ToDictionaryAsync(kt => kt.TopicNodeId, ct);
+
+        // Offering a topic with nothing to ask would end the session at question zero.
+        var (protectedSet, closedAssignmentQuestionIds) = await LoadProtectedQuestionsAsync(centerId, DateTime.UtcNow, ct);
+        var practiceQuestions = await _dbContext.Questions
+            .AsNoTracking()
+            .Where(q => q.CenterId == centerId && q.SubjectId == subjectId
+                && q.Status == QuestionStatus.Active
+                && q.QuestionType != QuestionType.Essay
+                && q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual
+                && !q.IsDeleted)
+            .Select(q => new { q.QuestionId, q.PrimaryTopicNodeId, q.GradeLevel })
+            .ToListAsync(ct);
+
+        int CountPractice(ulong topicId)
+        {
+            var isDiagnostic = !twins.TryGetValue(topicId, out var topicTwin) || topicTwin.EvidenceCount == 0;
+            return practiceQuestions.Count(q => q.PrimaryTopicNodeId == topicId
+                && scope.IncludesQuestion(topicId, q.GradeLevel)
+                && (!protectedSet.Contains(q.QuestionId) || (isDiagnostic && closedAssignmentQuestionIds.Contains(q.QuestionId))));
+        }
+
+        var allTopics = scopedTopics
+            .Where(t => scope.Includes(t.NodeId) && CountPractice(t.NodeId) > 0)
+            .OrderBy(t => scope.OrderByNodeId.GetValueOrDefault(t.NodeId, uint.MaxValue))
+            .ThenBy(t => t.NodeId)
+            .ToList();
+
+        if (allTopics.Count == 0)
+        {
+            return Unavailable("Các chuyên đề của lớp đang xem tạm chưa có câu hỏi luyện tập. Câu hỏi đang nằm trong bài tập chưa hết hạn sẽ được mở sau khi bài tập đóng.");
+        }
 
         var topicOptions = allTopics.Select(t => new AdaptivePracticeTopicOptionDto
         {
@@ -80,6 +128,25 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             var m = twins.TryGetValue(selectedTopic.NodeId, out var tw) ? tw.MasteryPercentage : 0m;
             selectionReason = $"Học sinh chủ động chọn luyện tập chủ đề '{selectedTopic.Name}' (năng lực hiện tại: {m:F0}%).";
             isDiagnostic = !twins.ContainsKey(selectedTopic.NodeId) || twins[selectedTopic.NodeId].EvidenceCount == 0;
+        }
+        else if (mode == AdaptivePracticeMode.SpacedReview)
+        {
+            var review = SpacedReviewPolicy.Choose(
+                allTopics
+                    .Select(t => twins.TryGetValue(t.NodeId, out var studied) ? studied : null)
+                    .Where(studied => studied is { EvidenceCount: > 0, LastEvidenceAt: not null })
+                    .Select(studied => new SpacedReviewPolicy.Candidate(studied!.TopicNodeId, studied.MasteryPercentage, studied.LastEvidenceAt!.Value)),
+                DateTime.UtcNow);
+            if (review is null)
+            {
+                return Unavailable("Bạn chưa học chủ đề nào trong lớp này nên chưa có gì để ôn. Hãy luyện theo điểm yếu trước, chủ đề đã học sẽ được đưa vào lịch ôn.");
+            }
+
+            selectedTopic = allTopics.First(t => t.NodeId == review.TopicId);
+            var studiedWhen = review.DaysSinceEvidence == 0 ? "hôm nay" : $"cách đây {review.DaysSinceEvidence} ngày";
+            selectionReason = review.IsDue
+                ? $"Bạn học '{selectedTopic.Name}' lần cuối {studiedWhen}. Với mức năng lực này, chủ đề cần được ôn sau {review.IntervalDays} ngày nên đã đến hạn."
+                : $"Chưa có chủ đề nào đến hạn ôn. '{selectedTopic.Name}' là chủ đề sắp đến hạn nhất (còn {review.DaysUntilDue} ngày), bạn vẫn có thể ôn sớm.";
         }
         else if (mode == AdaptivePracticeMode.LearningPath)
         {
@@ -129,7 +196,13 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         }
 
         var currentMastery = twins.TryGetValue(selectedTopic.NodeId, out var selectedTwin) ? selectedTwin.MasteryPercentage : 0m;
-        var targetMastery = isDiagnostic ? 60m : Math.Min(100m, Math.Max(60m, currentMastery + 15m));
+        // Review consolidates what is already known: a small step from where the
+        // student is, without the 60% floor of a session that teaches the topic.
+        var targetMastery = isDiagnostic
+            ? 60m
+            : mode == AdaptivePracticeMode.SpacedReview && !customTopicId.HasValue
+                ? Math.Min(100m, currentMastery + 5m)
+                : Math.Min(100m, Math.Max(60m, currentMastery + 15m));
 
         return new AdaptivePracticeProposalDto
         {
@@ -143,6 +216,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             SelectionReason = selectionReason,
             RecommendedTimeMinutes = 15,
             IsDiagnosticRecommended = isDiagnostic,
+            AvailableQuestionCount = CountPractice(selectedTopic.NodeId),
             DefaultMode = mode,
             AvailableTopics = topicOptions
         };
@@ -170,6 +244,12 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
                 && kn.NodeId == request.TopicNodeId && kn.IsActive && !kn.IsDeleted, ct)
             ?? throw new InvalidOperationException("Chủ đề không khả dụng trong môn học đã chọn.");
 
+        var scope = await StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, request.SubjectId, request.ClassId, false, ct);
+        if (!scope.Includes(request.TopicNodeId))
+        {
+            throw new InvalidOperationException("Chủ đề này không thuộc giáo trình lớp bạn đang học.");
+        }
+
         // BR-04: Check if student has an existing active or paused session for this subject
         var existingSession = await _dbContext.AdaptivePracticeSessions
             .Include(s => s.Subject)
@@ -185,8 +265,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             // Resume if paused, and return
             if (existingSession.Status == AdaptivePracticeSessionStatus.Paused)
             {
-                existingSession.Status = AdaptivePracticeSessionStatus.InProgress;
-                existingSession.UpdatedAt = utcNow;
+                ResumeFromPause(existingSession, utcNow);
                 await _dbContext.SaveChangesAsync(ct);
             }
             return MapToSessionDto(existingSession, utcNow);
@@ -214,6 +293,26 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             <= 15 => 12,
             _ => 15
         };
+
+        // Never promise more questions than the bank can serve this student.
+        var (heldQuestions, closedQuestions) = await LoadProtectedQuestionsAsync(centerId, utcNow, ct);
+        var availableQuestions = (await _dbContext.Questions
+                .AsNoTracking()
+                .Where(q => q.CenterId == centerId && q.SubjectId == request.SubjectId
+                    && q.PrimaryTopicNodeId == request.TopicNodeId
+                    && q.Status == QuestionStatus.Active
+                    && q.QuestionType != QuestionType.Essay
+                    && q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual
+                    && !q.IsDeleted)
+                .Select(q => new { q.QuestionId, q.GradeLevel })
+                .ToListAsync(ct))
+            .Count(q => scope.IncludesQuestion(request.TopicNodeId, q.GradeLevel)
+                && (!heldQuestions.Contains(q.QuestionId) || (isDiagnostic && closedQuestions.Contains(q.QuestionId))));
+        if (availableQuestions > 0)
+        {
+            maxQuestions = Math.Min(maxQuestions, availableQuestions);
+            minQuestions = Math.Min(minQuestions, availableQuestions);
+        }
 
         byte initialDifficulty = isDiagnostic ? (byte)3 : (byte)Math.Clamp((int)(startMastery / 20m) + 1, 1, 5);
 
@@ -324,8 +423,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
 
         if (session.Status == AdaptivePracticeSessionStatus.Paused)
         {
-            session.Status = AdaptivePracticeSessionStatus.InProgress;
-            session.UpdatedAt = utcNow;
+            ResumeFromPause(session, utcNow);
             await _dbContext.SaveChangesAsync(ct);
         }
 
@@ -376,6 +474,14 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
                 && !s.IsDeleted, ct)
             ?? throw new InvalidOperationException("Session not found.");
 
+        // The server closes a session by itself when questions run out, while
+        // the student's screen may still offer "stop": a summary exists once.
+        if (session.Status == AdaptivePracticeSessionStatus.Closed
+            && await GetSummaryAsync(centerId, studentId, sessionId, ct) is { } existingSummary)
+        {
+            return existingSummary;
+        }
+
         session.Status = AdaptivePracticeSessionStatus.Closed;
         session.CloseReason = closeReason;
         session.CompletedAt = utcNow;
@@ -384,7 +490,17 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         var summary = await GenerateAndPersistSummaryAsync(session, utcNow, ct);
         await EvaluateLearningPathCompletionAsync(session, utcNow, ct);
 
-        await _dbContext.SaveChangesAsync(ct);
+        try
+        {
+            await _dbContext.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // A concurrent close won the insert; its summary is the result.
+            _dbContext.ChangeTracker.Clear();
+            return await GetSummaryAsync(centerId, studentId, sessionId, ct) ?? throw new InvalidOperationException("Session summary could not be saved.");
+        }
+
         return summary;
     }
 
@@ -424,17 +540,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
 
         // Multi-Stage Question Selector (UC-04)
         // Stage 1: Filter eligible questions (active, not deleted, same center & subject)
-        var protectedAssignmentQuestions = await _dbContext.AssignmentQuestions
-            .Where(aq => aq.Assignment != null && aq.Assignment.CenterId == centerId
-                && (aq.Assignment.Status == AssignmentStatus.Published || aq.Assignment.Status == AssignmentStatus.Draft)
-                && !aq.Assignment.IsDeleted)
-            .Select(aq => new { aq.QuestionId, aq.Assignment!.Status })
-            .Distinct()
-            .ToListAsync(ct);
-
-        var protectedSet = new HashSet<ulong>(protectedAssignmentQuestions.Select(x => x.QuestionId));
-        var publishedProtectedSet = new HashSet<ulong>(protectedAssignmentQuestions
-            .Where(x => x.Status == AssignmentStatus.Published).Select(x => x.QuestionId));
+        var (protectedSet, closedAssignmentQuestionIds) = await LoadProtectedQuestionsAsync(centerId, utcNow, ct);
         var sessionPresentedQuestionIds = new HashSet<ulong>(session.Items.Select(i => i.QuestionId));
 
         ulong targetNodeId = session.PrerequisiteTestedNodeId ?? session.TopicNodeId;
@@ -481,14 +587,22 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             selectionReasonText = "Luyện tập củng cố kỹ năng trọng tâm của chủ đề mục tiêu.";
         }
 
-        // Fetch candidate questions for the node
-        var candidateQuestions = await _dbContext.Questions
+        // Fetch candidate questions for the node. Adaptation needs an immediate
+        // right/wrong result, so questions that need a teacher are left out.
+        var questionScope = await StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, session.SubjectId, null, false, ct);
+        async Task<List<Question>> LoadCandidatesAsync(ulong nodeId) => (await _dbContext.Questions
             .Where(q => q.CenterId == centerId
                 && q.SubjectId == session.SubjectId
-                && q.PrimaryTopicNodeId == targetNodeId
+                && q.PrimaryTopicNodeId == nodeId
                 && q.Status == QuestionStatus.Active
+                && q.QuestionType != QuestionType.Essay
+                && q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual
                 && !q.IsDeleted)
-            .ToListAsync(ct);
+            .ToListAsync(ct))
+            .Where(q => questionScope.IncludesQuestion(nodeId, q.GradeLevel))
+            .ToList();
+
+        var candidateQuestions = await LoadCandidatesAsync(targetNodeId);
 
         // Exclude protected and already used in current session
         var availablePool = candidateQuestions
@@ -501,13 +615,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         {
             targetNodeId = session.TopicNodeId;
             session.PrerequisiteTestedNodeId = null;
-            candidateQuestions = await _dbContext.Questions
-                .Where(q => q.CenterId == centerId
-                    && q.SubjectId == session.SubjectId
-                    && q.PrimaryTopicNodeId == targetNodeId
-                    && q.Status == QuestionStatus.Active
-                    && !q.IsDeleted)
-                .ToListAsync(ct);
+            candidateQuestions = await LoadCandidatesAsync(targetNodeId);
             availablePool = candidateQuestions
                 .Where(q => !protectedSet.Contains(q.QuestionId) && !sessionPresentedQuestionIds.Contains(q.QuestionId))
                 .ToList();
@@ -515,12 +623,12 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
 
         // A diagnostic session (student with no evidence yet) must not die at
         // zero questions only because every question of the topic sits in an
-        // assignment: fall back to questions from PUBLISHED assignments.
-        // Draft-assignment questions stay protected — they are not public yet.
+        // assignment: fall back to questions of assignments that have closed.
+        // The feedback reveals the answer, so open assignments stay protected.
         if (availablePool.Count == 0 && session.IsDiagnosticMode)
         {
             availablePool = candidateQuestions
-                .Where(q => q.PrimaryTopicNodeId == targetNodeId && publishedProtectedSet.Contains(q.QuestionId) && !sessionPresentedQuestionIds.Contains(q.QuestionId))
+                .Where(q => q.PrimaryTopicNodeId == targetNodeId && closedAssignmentQuestionIds.Contains(q.QuestionId) && !sessionPresentedQuestionIds.Contains(q.QuestionId))
                 .ToList();
         }
 
@@ -548,6 +656,16 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             .ThenBy(q => lastAttemptTime.GetValueOrDefault(q.QuestionId, DateTime.MinValue)) // least recently attempted
             .ThenBy(q => q.QuestionId)                                      // deterministic tie break
             .First();
+
+        // Only claim a difficulty change the question bank could actually deliver.
+        if (selectionReasonCode == AdaptivePracticeSelectionReasonCode.DifficultyAdvancement && chosenQuestion.Difficulty <= session.CurrentDifficulty)
+        {
+            selectionReasonText = "Chủ đề chưa có câu khó hơn, tiếp tục củng cố ở mức hiện tại.";
+        }
+        else if (selectionReasonCode == AdaptivePracticeSelectionReasonCode.RetryWithScaffolding && chosenQuestion.Difficulty >= session.CurrentDifficulty)
+        {
+            selectionReasonText = "Chủ đề chưa có câu dễ hơn, hãy làm chậm lại và kiểm tra từng bước.";
+        }
 
         // Update session difficulty state
         session.CurrentDifficulty = chosenQuestion.Difficulty;
@@ -598,8 +716,18 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             .SingleOrDefaultAsync(i => i.CenterId == centerId && i.SessionId == sessionId && i.SessionItemId == sessionItemId, ct)
             ?? throw new InvalidOperationException("Session item not found.");
 
-        item.HintsUsedCount = Math.Max(item.HintsUsedCount, requestedLevel);
-        await _dbContext.SaveChangesAsync(ct);
+        var ownsSession = await _dbContext.AdaptivePracticeSessions
+            .AnyAsync(s => s.CenterId == centerId && s.StudentId == studentId && s.SessionId == sessionId && !s.IsDeleted, ct);
+        if (!ownsSession)
+        {
+            throw new InvalidOperationException("Session item not found.");
+        }
+
+        if (item.Status == AdaptiveSessionItemStatus.Presented)
+        {
+            item.HintsUsedCount = Math.Max(item.HintsUsedCount, Math.Clamp(requestedLevel, 1, 3));
+            await _dbContext.SaveChangesAsync(ct);
+        }
 
         return AdaptivePracticeHintGenerator.GenerateHint(item.Question, item.KnowledgeNode, requestedLevel);
     }
@@ -618,37 +746,57 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             .SingleOrDefaultAsync(s => s.CenterId == centerId && s.StudentId == studentId && s.SessionId == sessionId && !s.IsDeleted, ct)
             ?? throw new InvalidOperationException("Adaptive practice session not found.");
 
+        var item = session.Items.FirstOrDefault(i => i.SessionItemId == request.SessionItemId)
+            ?? throw new InvalidOperationException("Session question item not found.");
+
+        // The feedback reveals the answer and solution, so only the question
+        // actually issued for this item can ever be graded here.
+        if (item.QuestionId != request.QuestionId)
+        {
+            throw new InvalidOperationException("Question does not belong to this session item.");
+        }
+
+        // Idempotency: a retry (same submission id) or a second submit of an
+        // answered item replays the stored result instead of counting twice.
+        // This runs before the status check: the first submit may have closed the session.
+        var existingAttempt = await _dbContext.Attempts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.CenterId == centerId && a.StudentId == studentId
+                && (a.ClientSubmissionId == request.ClientSubmissionId
+                    || (item.LastAttemptId != null && a.AttemptId == item.LastAttemptId)), ct);
+
+        if (existingAttempt != null)
+        {
+            var answeredQuestion = await _dbContext.Questions
+                .AsNoTracking()
+                .SingleAsync(q => q.CenterId == centerId && q.QuestionId == item.QuestionId, ct);
+            var replaySummary = session.Status == AdaptivePracticeSessionStatus.Closed
+                ? await GetSummaryAsync(centerId, studentId, sessionId, ct)
+                : null;
+            return BuildFeedbackDto(existingAttempt.IsCorrect ?? false, existingAttempt.AwardedScore ?? 0m, answeredQuestion, item.HintsUsedCount, session, replaySummary);
+        }
+
         if (session.Status != AdaptivePracticeSessionStatus.InProgress)
         {
             throw new InvalidOperationException("Cannot submit answer to a session that is not in progress.");
         }
 
-        var item = session.Items.FirstOrDefault(i => i.SessionItemId == request.SessionItemId)
-            ?? throw new InvalidOperationException("Session question item not found.");
-
-        // Idempotency: check if an attempt with ClientSubmissionId was already saved
-        var existingAttempt = await _dbContext.Attempts
-            .AsNoTracking()
-            .SingleOrDefaultAsync(a => a.CenterId == centerId && a.StudentId == studentId && a.ClientSubmissionId == request.ClientSubmissionId, ct);
-
-        if (existingAttempt != null)
-        {
-            // Replay existing result
-            return BuildFeedbackDto(existingAttempt.IsCorrect ?? false, existingAttempt.AwardedScore ?? 0m, item.Question, item.HintsUsedCount, session, null);
-        }
-
         var question = await _dbContext.Questions
-            .SingleOrDefaultAsync(q => q.CenterId == centerId && q.QuestionId == request.QuestionId && !q.IsDeleted, ct)
+            .SingleOrDefaultAsync(q => q.CenterId == centerId && q.QuestionId == item.QuestionId && !q.IsDeleted, ct)
             ?? throw new InvalidOperationException("Question not found.");
 
+        var options = await _dbContext.QuestionOptions
+            .AsNoTracking()
+            .Where(o => o.CenterId == centerId && o.QuestionId == question.QuestionId && !o.IsDeleted)
+            .ToListAsync(ct);
+
         // Grade the answer
-        bool isCorrect = EvaluateAnswer(question, request.FinalAnswer);
+        bool isCorrect = EvaluateAnswer(question, request.FinalAnswer, options);
         decimal awardedScore = isCorrect ? question.MaxScore : 0m;
 
         // Persist Attempt (BR-15, Section VII.3)
         var attempt = new Attempt
         {
-            AttemptId = AdaptivePracticeIdGenerator.NewId(),
             CenterId = centerId,
             StudentId = studentId,
             QuestionId = question.QuestionId,
@@ -659,7 +807,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             AwardedScore = awardedScore,
             PreliminaryGradingReasonCode = isCorrect ? "CORRECT_MATCH" : "INCORRECT_MATCH",
             TimeSpentSeconds = request.TimeSpentSeconds,
-            Confidence = request.StudentConfidence ?? 0.8m,
+            Confidence = request.StudentConfidence,
             AnswerChanges = 0,
             Skipped = false,
             ReasoningLanguage = "vi",
@@ -671,12 +819,49 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             RowVersion = 1ul
         };
 
+        // attempt_id is AUTO_INCREMENT and shared with assignment attempts: an
+        // explicit random value would push every later attempt to that range.
+        // The insert comes first because the item and twin reference the new id.
+        await using var transaction = _dbContext.Database.IsRelational()
+            ? await _dbContext.Database.BeginTransactionAsync(ct)
+            : null;
         _dbContext.Attempts.Add(attempt);
+        try
+        {
+            await _dbContext.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Two submits of the same answer can both pass the check above; the
+            // loser hits the unique index and replays the winner's stored result.
+            if (transaction is not null)
+            {
+                await transaction.RollbackAsync(ct);
+            }
+
+            _dbContext.ChangeTracker.Clear();
+            var duplicateSubmission = await _dbContext.Attempts.AsNoTracking()
+                .AnyAsync(a => a.CenterId == centerId && a.StudentId == studentId && a.ClientSubmissionId == request.ClientSubmissionId, ct);
+            if (!duplicateSubmission)
+            {
+                throw;
+            }
+
+            return await SubmitAnswerAsync(centerId, studentId, sessionId, request, utcNow, ct);
+        }
 
         // Update SessionItem
         item.AnsweredAt = utcNow;
         item.Status = AdaptiveSessionItemStatus.Answered;
         item.LastAttemptId = attempt.AttemptId;
+
+        // A prerequisite probe is evidence about the prerequisite, not the session's topic.
+        var creditedTopicId = item.KnowledgeNodeId;
+        var creditsSessionTopic = creditedTopicId == session.TopicNodeId;
+        var answeredCorrectlyBefore = isCorrect && await _dbContext.Attempts.AsNoTracking()
+            .AnyAsync(a => a.CenterId == centerId && a.StudentId == studentId && a.QuestionId == question.QuestionId
+                && a.AttemptId != attempt.AttemptId && a.IsCorrect == true, ct);
+        decimal masteryDelta;
 
         // Update Session counters & adaptation logic (UC-06)
         session.QuestionCount++;
@@ -710,7 +895,8 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
                 _ => 1.0m                                 // Level 2 or 3 hint (scaffolded)
             };
 
-            session.CurrentMastery = Math.Min(100m, session.CurrentMastery + masteryGain);
+            // A question already solved proves little the second time.
+            masteryDelta = answeredCorrectlyBefore ? Math.Min(masteryGain, 1.0m) : masteryGain;
         }
         else
         {
@@ -718,12 +904,14 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             session.ConsecutiveCorrect = 0;
 
             // Controlled drop (BR-21: do not drop mastery heavily on 1 wrong answer)
-            session.CurrentMastery = Math.Max(0m, session.CurrentMastery - 2.0m);
+            masteryDelta = -2.0m;
 
             // If consecutive errors >= 2, check for prerequisite to probe (AP-16, BR-23)
             if (session.ConsecutiveIncorrect >= 2 && !session.PrerequisiteTestedNodeId.HasValue)
             {
-                var prereqEdge = await _dbContext.KnowledgeEdges
+                // A prerequisite outside the student's curriculum has no questions for them.
+                var scope = await StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, session.SubjectId, null, false, ct);
+                var prereqEdge = (await _dbContext.KnowledgeEdges
                     .AsNoTracking()
                     .Where(e => e.CenterId == centerId
                         && e.SubjectId == session.SubjectId
@@ -731,7 +919,8 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
                         && e.RelationType == RelationType.PrerequisiteOf
                         && !e.IsDeleted)
                     .OrderBy(e => e.Weight)
-                    .FirstOrDefaultAsync(ct);
+                    .ToListAsync(ct))
+                    .FirstOrDefault(e => scope.Includes(e.SourceNodeId));
 
                 if (prereqEdge != null)
                 {
@@ -744,8 +933,15 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         var twin = await _dbContext.KnowledgeTwins
             .SingleOrDefaultAsync(kt => kt.CenterId == centerId
                 && kt.StudentId == studentId
-                && kt.TopicNodeId == session.TopicNodeId
+                && kt.TopicNodeId == creditedTopicId
                 && !kt.IsDeleted, ct);
+
+        var previousMastery = creditsSessionTopic ? session.CurrentMastery : twin?.MasteryPercentage ?? 0m;
+        var newMastery = Math.Clamp(previousMastery + masteryDelta, 0m, 100m);
+        if (creditsSessionTopic)
+        {
+            session.CurrentMastery = newMastery;
+        }
 
         if (twin == null)
         {
@@ -755,8 +951,8 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
                 CenterId = centerId,
                 StudentId = studentId,
                 SubjectId = session.SubjectId,
-                TopicNodeId = session.TopicNodeId,
-                MasteryPercentage = session.CurrentMastery,
+                TopicNodeId = creditedTopicId,
+                MasteryPercentage = newMastery,
                 EvidenceCount = 1,
                 LastAttemptId = attempt.AttemptId,
                 LastEvidenceAt = utcNow,
@@ -767,12 +963,36 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         }
         else
         {
-            twin.MasteryPercentage = session.CurrentMastery;
+            twin.MasteryPercentage = newMastery;
             twin.EvidenceCount++;
             twin.LastAttemptId = attempt.AttemptId;
             twin.LastEvidenceAt = utcNow;
             twin.UpdatedAt = utcNow;
         }
+
+        _dbContext.TwinUpdateHistories.Add(new TwinUpdateHistory
+        {
+            CenterId = centerId,
+            StudentId = studentId,
+            SubjectId = session.SubjectId,
+            TopicNodeId = creditedTopicId,
+            AttemptId = attempt.AttemptId,
+            EventSource = TwinEventSource.RuleFallback,
+            PreviousMastery = previousMastery,
+            NewMastery = newMastery,
+            MasteryDelta = newMastery - previousMastery,
+            CalculationVersion = "adaptive-v1",
+            CalculationBreakdown = JsonSerializer.SerializeToDocument(new { isCorrect, hintsUsed = item.HintsUsedCount, answeredCorrectlyBefore }),
+            Explanation = isCorrect
+                ? answeredCorrectlyBefore
+                    ? "Làm đúng một câu đã từng làm đúng trước đó nên năng lực chỉ tăng ít."
+                    : item.HintsUsedCount > 0
+                        ? $"Làm đúng sau khi dùng {item.HintsUsedCount} mức gợi ý trong luyện tập."
+                        : "Làm đúng trong luyện tập, không dùng gợi ý."
+                : "Làm sai trong luyện tập.",
+            CreatedAt = utcNow,
+            CreatedBy = studentId
+        });
 
         // Check Close Conditions (UC-08)
         bool shouldClose = false;
@@ -796,6 +1016,12 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             shouldClose = true;
             closeReason = AdaptivePracticeCloseReason.RemediationNeeded;
         }
+        // END03: The time the student planned has run out; the answer just given still counts.
+        else if (utcNow - (session.StartedAt ?? session.CreatedAt) >= TimeSpan.FromMinutes(session.TimeBudgetMinutes))
+        {
+            shouldClose = true;
+            closeReason = AdaptivePracticeCloseReason.TimeBudgetReached;
+        }
 
         AdaptivePracticeSummaryDto? summaryDto = null;
         if (shouldClose && closeReason.HasValue)
@@ -808,6 +1034,10 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         }
 
         await _dbContext.SaveChangesAsync(ct);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(ct);
+        }
 
         return BuildFeedbackDto(isCorrect, awardedScore, question, item.HintsUsedCount, session, summaryDto);
     }
@@ -986,9 +1216,45 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
 
     // --- Private Helpers ---
 
+    // Questions in an open assignment must not appear in practice, whose feedback
+    // reveals the answer. A question is reusable only when every assignment
+    // holding it is published and past due; draft and undated ones stay protected.
+    private async Task<(HashSet<ulong> Protected, HashSet<ulong> Closed)> LoadProtectedQuestionsAsync(
+        Guid centerId, DateTime utcNow, CancellationToken ct)
+    {
+        var held = await _dbContext.AssignmentQuestions
+            .Where(aq => aq.Assignment != null && aq.Assignment.CenterId == centerId
+                && (aq.Assignment.Status == AssignmentStatus.Published || aq.Assignment.Status == AssignmentStatus.Draft)
+                && !aq.Assignment.IsDeleted)
+            .Select(aq => new { aq.QuestionId, aq.Assignment!.Status, aq.Assignment.DueAt })
+            .Distinct()
+            .ToListAsync(ct);
+
+        var closed = held
+            .GroupBy(x => x.QuestionId)
+            .Where(g => g.All(x => x.Status == AssignmentStatus.Published && x.DueAt.HasValue && x.DueAt.Value < utcNow))
+            .Select(g => g.Key)
+            .ToHashSet();
+        return (held.Select(x => x.QuestionId).ToHashSet(), closed);
+    }
+
+    // Moving the start forward by the pause keeps elapsed time equal to working time.
+    private static void ResumeFromPause(AdaptivePracticeSession session, DateTime utcNow)
+    {
+        if (session.PausedAt.HasValue && session.StartedAt.HasValue)
+        {
+            session.StartedAt = session.StartedAt.Value + (utcNow - session.PausedAt.Value);
+        }
+
+        session.PausedAt = null;
+        session.Status = AdaptivePracticeSessionStatus.InProgress;
+        session.UpdatedAt = utcNow;
+    }
+
     private static AdaptivePracticeSessionDto MapToSessionDto(AdaptivePracticeSession s, DateTime utcNow)
     {
-        int elapsed = (int)((s.CompletedAt ?? utcNow) - (s.StartedAt ?? s.CreatedAt)).TotalSeconds;
+        var end = s.CompletedAt ?? (s.Status == AdaptivePracticeSessionStatus.Paused ? s.PausedAt : null) ?? utcNow;
+        int elapsed = (int)(end - (s.StartedAt ?? s.CreatedAt)).TotalSeconds;
         return new AdaptivePracticeSessionDto
         {
             SessionId = s.SessionId,
@@ -1052,6 +1318,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             Difficulty = question.Difficulty,
             QuestionText = question.QuestionText,
             QuestionType = question.QuestionType,
+            AnswerEvaluationMode = question.AnswerEvaluationMode,
             Options = options,
             HasImage = question.HasImage,
             MaxScore = question.MaxScore,
@@ -1067,27 +1334,18 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         };
     }
 
-    private static bool EvaluateAnswer(Question question, string submittedAnswer)
-    {
-        if (string.IsNullOrWhiteSpace(submittedAnswer)) return false;
-        var cleanSubmitted = submittedAnswer.Trim();
-        var cleanCorrect = question.CorrectAnswer.Trim();
-
-        // Exact match
-        if (string.Equals(cleanSubmitted, cleanCorrect, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        // Numeric equivalence check (e.g. "3.0" vs "3", "0.5" vs "1/2")
-        if (double.TryParse(cleanSubmitted, NumberStyles.Float, CultureInfo.InvariantCulture, out var subVal) &&
-            double.TryParse(cleanCorrect, NumberStyles.Float, CultureInfo.InvariantCulture, out var corVal))
-        {
-            return Math.Abs(subVal - corVal) < 0.001;
-        }
-
-        return false;
-    }
+    // Same graders as assignments, so a question's evaluation mode means the
+    // same thing in practice as it does in a graded submission.
+    private static bool EvaluateAnswer(Question question, string submittedAnswer, IEnumerable<QuestionOption> options)
+        => Graders.GetGrader(question.QuestionType)
+            .Grade(submittedAnswer, question.CorrectAnswer, new QuestionGradingContext
+            {
+                EvaluationMode = question.AnswerEvaluationMode,
+                MaxScore = question.MaxScore,
+                Criteria = question.GradingCriteria,
+                Options = options
+            })
+            .IsCorrect == true;
 
     private static AdaptivePracticeAnswerFeedbackDto BuildFeedbackDto(
         bool isCorrect,
@@ -1101,7 +1359,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             ? "Tuyệt vời! Bạn đã hoàn thành câu hỏi này một cách chính xác."
             : (!string.IsNullOrWhiteSpace(question.Solution)
                 ? $"Lời giải tham khảo:\n{question.Solution}"
-                : "Hãy kiểm tra lại từng bước biến đổi đại số và quy tắc dấu.");
+                : "Hãy đọc lại đề và kiểm tra từng bước làm của bạn.");
 
         string nextAction = session.Status == AdaptivePracticeSessionStatus.Closed
             ? "Phiên luyện tập đã kết thúc. Xem tổng kết năng lực để tiếp tục lộ trình học."
@@ -1117,7 +1375,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             SolutionExplanation = question.Solution,
             StepGuidance = stepGuidance,
             HintsUsed = hintsUsed,
-            MisconceptionHypothesis = !isCorrect && hintsUsed == 0 ? "Có thể bạn còn nhầm lẫn trong quy tắc biến đổi vế hoặc dấu âm." : null,
+            MisconceptionHypothesis = null,
             NextActionRecommendation = nextAction,
             IsSessionClosed = session.Status == AdaptivePracticeSessionStatus.Closed,
             CloseReason = session.CloseReason,
@@ -1143,7 +1401,8 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
 
         var attemptMap = attempts.ToDictionary(a => a.AttemptId);
 
-        int total = items.Count;
+        // A question shown but never answered is not part of the result.
+        int total = items.Count(i => i.LastAttemptId.HasValue);
         int correct = 0;
         int incorrect = 0;
         int partial = 0;
@@ -1184,6 +1443,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         {
             "Achieved" => $"Chúc mừng! Bạn đã hoàn thành xuất sắc phiên luyện tập và đạt mục tiêu năng lực {session.CurrentMastery:F0}%. Bằng chứng học tập đã được cập nhật vào hồ sơ Digital Twin.",
             "RemediationRecommended" => $"Bạn đã rất nỗ lực, tuy nhiên một số kiến thức nền liên quan cần được ôn tập lại để tránh lặp lại lỗi sai. EduTwin đề xuất bạn xem lại bài giảng bổ trợ.",
+            _ when total == 0 => "Phiên kết thúc trước khi có câu trả lời nên năng lực của bạn chưa thay đổi.",
             _ => $"Phiên luyện tập đã kết thúc với {correct}/{total} câu đúng. Năng lực hiện tại đạt {session.CurrentMastery:F0}%."
         };
 

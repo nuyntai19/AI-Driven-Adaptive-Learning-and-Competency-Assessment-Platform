@@ -1,5 +1,6 @@
 using System.Text.Json;
 using EduTwin.BLL.Recommendations.Services;
+using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.Recommendations;
 using EduTwin.DAL.Persistence;
 using EduTwin.DAL.Recommendations;
@@ -33,7 +34,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         request.Schedule.SourceGoalVersion = currentGoal?.RowVersion.ToString();
         // Legacy clients may still send Placement; preserve their intent without storing an assessment as the learning objective.
         var startWithPlacement = request.StartWithPlacement || request.GoalType == "Placement";
-        if (request.AvailableMinutesPerDay is < 5 or > 300 || request.AvailableDaysPerWeek is < 1 or > 7 ||
+        if (request.AvailableMinutesPerDay is < LearningPathPacing.MinGoalDailyMinutes or > LearningPathPacing.MaxDailyMinutes || request.AvailableDaysPerWeek is < 1 or > 7 ||
             request.Title.Length > 200 || request.Description?.Length > 2000 || request.TargetSkillIds.Count > 200 || request.SelfReportedPrerequisiteSkillIds is null || request.SelfReportedPrerequisiteSkillIds.Count > 200 || request.SelfAssessedSkillIds is not { Count: <= 200 } ||
             !new[] { "Foundation", "KeepUp", "Catchup", "ImproveGrade", "ExamPrep", "Advanced", "Diagnostic", "Placement" }.Contains(request.GoalType))
             throw new ArgumentException("Mục tiêu, phạm vi hoặc thời lượng học không hợp lệ.");
@@ -484,7 +485,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         await RefreshScheduleAsync(centerId, studentId, subjectId, classId, cancellationToken);
         var path = await db.LearningPaths.AsNoTracking().Include(p => p.Sessions).Where(p => p.CenterId == centerId && p.StudentId == studentId &&
             p.SubjectId == subjectId && p.PlanSchemaVersion == "4.0" && p.Status == LearningPathStatus.Active).OrderByDescending(p => p.Version).FirstOrDefaultAsync(cancellationToken);
-        var result = new LearningAgendaDto { Date = Now, AvailableMinutes = LearningPathPacing.ClampMinutes(availableMinutes), LearningPathId = path?.LearningPathId,
+        var result = new LearningAgendaDto { Date = Now, AvailableMinutes = availableMinutes == 0 ? 15 : LearningPathPacing.ClampMinutes(availableMinutes), LearningPathId = path?.LearningPathId,
             AgendaMessage = path == null ? "Chọn phần muốn học và kiểm tra đầu vào, hoặc bắt đầu từ nền tảng. EduTwin sẽ đề xuất tuyến từ kết quả của em." : "Kế hoạch hôm nay được xếp theo thời gian bạn chọn: phần yếu được ưu tiên và nhận nhiều câu hơn." };
         result.Insights = await LearningPathInsights.ReadAsync(db, centerId, studentId, subjectId, classId, Now, cancellationToken);
         result.PathHistory = await PathHistoryAsync(centerId, studentId, subjectId, path?.LearningPathId, cancellationToken);
@@ -529,6 +530,9 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             ? plan.RequestedSkillIds.Count > 0 ? plan.RequestedSkillIds : plan.Milestones.SelectMany(m => m.SkillIds).Distinct().ToList()
             : LearningGoalScope.Read(activeGoal.TargetSkillIds).TargetSkillIds;
         result.AvailableMinutesPerDay = activeGoal?.AvailableMinutesPerDay ?? plan.AvailableMinutesPerDay;
+        // No explicit choice (the overview page): today follows the student's own goal.
+        if (availableMinutes == 0 && result.AvailableMinutesPerDay > 0)
+            result.AvailableMinutes = LearningPathPacing.ClampMinutes(result.AvailableMinutesPerDay);
         result.AvailableDaysPerWeek = activeGoal?.AvailableDaysPerWeek ?? plan.AvailableDaysPerWeek;
         result.PreferredPace = activeGoal?.PreferredPace ?? "Moderate";
         await PopulateForecastAsync(result, centerId, studentId, subjectId, classId, cancellationToken);
@@ -596,6 +600,16 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 item.RecommendationReason = item.CanStart
                     ? $"Ôn lại nội dung và ví dụ có lời giải của {node.NodeName}; những câu đã làm có thể dùng lại để học mà không lộ câu tự kiểm tra mới."
                     : StudyMaterial.MissingMessage;
+            }
+            // A lesson opened before can still be reviewed, but cannot be restarted once its material is gone.
+            if (m.Purpose == "Study" && !m.ContentVersionId.HasValue && active == null && latest != null)
+            {
+                var node = await db.KnowledgeNodes.AsNoTracking().SingleAsync(n => n.CenterId == centerId && n.NodeId == ulong.Parse(m.SkillId), cancellationToken);
+                if (!StudyMaterial.Available(node.Description, subjectQuestions.Where(q => q.PrimaryTopicNodeId == node.NodeId).ToList(), usedIds))
+                {
+                    item.CanRetry = false;
+                    item.RetryBlockedReason = StudyMaterial.MissingMessage;
+                }
             }
             if (m.Purpose == "IndependentCheck" && active == null)
             {
@@ -716,9 +730,16 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         }
         BuildTodayPlan(result, options, weaknessBySkill, setsToday);
         // Capacity: what the largest budget would plan today. Sets are created one after another, so more time adds nothing beyond it.
-        var capacity = new LearningAgendaDto { AvailableMinutes = remainingToday, OngoingRuns = result.OngoingRuns, PreferredPace = result.PreferredPace };
+        var usedToday = result.StudiedMinutesToday + examMinutesToday;
+        var largestBudget = LearningPathPacing.MaxDailyMinutes > usedToday ? LearningPathPacing.MaxDailyMinutes - usedToday : 0;
+        var capacity = new LearningAgendaDto { AvailableMinutes = largestBudget, OngoingRuns = result.OngoingRuns, PreferredPace = result.PreferredPace };
         BuildTodayPlan(capacity, options, weaknessBySkill, setsToday);
         result.AvailableTodayMinutes = capacity.PlannedMinutes;
+        if (!plan.IsPlacement)
+        {
+            result.ExtraOptions = await ExtraTimeOptionsAsync(centerId, studentId, classId, map, subjectQuestions, weaknessBySkill,
+                result.AvailableMinutes > result.PlannedMinutes ? result.AvailableMinutes - result.PlannedMinutes : 0, cancellationToken);
+        }
         var first = result.TodayPlan.FirstOrDefault();
         if (first != null && !plan.IsPlacement)
             result.PrimaryReason = first.ActiveRunId != null ? "Đang làm dở: hoàn thành trước để giữ tiến độ."
@@ -761,6 +782,55 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
     }
 
     /// <summary>
+    /// What spare minutes can buy once the plan is full: adaptive practice on the weakest skills, sized by
+    /// the teacher's own estimate per question, and homework still open. Empty when nothing would fit.
+    /// </summary>
+    private async Task<List<ExtraTimeOptionDto>> ExtraTimeOptionsAsync(Guid centerId, Guid studentId, Guid? classId, CapabilityMapDto map,
+        List<EduTwin.DAL.CurriculumAndQuestions.Question> subjectQuestions, Dictionary<string, decimal> weaknessBySkill, uint spareMinutes, CancellationToken ct)
+    {
+        var options = new List<ExtraTimeOptionDto>();
+        if (spareMinutes < LearningPathPacing.MinDailyMinutes) return options;
+
+        var inOpenAssignments = (await db.AssignmentQuestions.AsNoTracking()
+            .Where(q => q.CenterId == centerId && q.Assignment != null && !q.Assignment.IsDeleted &&
+                (q.Assignment.Status == AssignmentStatus.Draft || q.Assignment.Status == AssignmentStatus.Published && (!q.Assignment.DueAt.HasValue || q.Assignment.DueAt > Now)))
+            .Select(q => q.QuestionId).Distinct().ToListAsync(ct)).ToHashSet();
+
+        var minutesLeft = spareMinutes;
+        foreach (var (skillId, _) in weaknessBySkill.OrderByDescending(w => w.Value))
+        {
+            if (options.Count == 2 || minutesLeft == 0) break;
+            var bank = subjectQuestions.Where(q => q.PrimaryTopicNodeId.ToString() == skillId && !inOpenAssignments.Contains(q.QuestionId)).ToList();
+            var skill = map.Skills.FirstOrDefault(s => s.SkillId == skillId);
+            if (bank.Count == 0 || skill == null) continue;
+            var seconds = LearningPathPacing.AverageSecondsPerQuestion(bank.Select(q => q.EstimatedTimeSeconds));
+            var perQuestion = seconds > 0 ? seconds : LearningPathPacing.MinutesPerQuestion * 60d;
+            var count = (uint)Math.Min(bank.Count, Math.Max(1, (int)Math.Floor(minutesLeft * 60 / perQuestion)));
+            var minutes = LearningPathPacing.EstimatedMinutes(count, seconds);
+            options.Add(new ExtraTimeOptionDto { Kind = "Practice", SkillId = skillId, Title = skill.SkillName, QuestionCount = count, EstimatedMinutes = minutes });
+            minutesLeft = minutes >= minutesLeft ? 0 : minutesLeft - minutes;
+        }
+
+        var open = await db.StudentAssignmentProgresses.AsNoTracking()
+            .Where(p => p.CenterId == centerId && p.StudentId == studentId && !p.IsDeleted && p.Status != ProgressStatus.Completed &&
+                p.Assignment != null && !p.Assignment.IsDeleted && p.Assignment.Status == AssignmentStatus.Published &&
+                p.Assignment.Kind == AssignmentKind.Regular && p.Assignment.ClassId == classId && (!p.Assignment.DueAt.HasValue || p.Assignment.DueAt > Now))
+            .OrderBy(p => p.Assignment!.DueAt == null).ThenBy(p => p.Assignment!.DueAt)
+            .Select(p => new { p.AssignmentId, p.Assignment!.Title, p.Assignment.TimeLimitMinutes, p.TotalQuestionCount, p.CompletedQuestionCount })
+            .Take(5).ToListAsync(ct);
+        foreach (var assignment in open)
+        {
+            var remaining = assignment.TotalQuestionCount > assignment.CompletedQuestionCount ? assignment.TotalQuestionCount - assignment.CompletedQuestionCount : 0;
+            var minutes = (uint)(assignment.TimeLimitMinutes ?? (int)(remaining * LearningPathPacing.MinutesPerQuestion));
+            if (remaining == 0 || minutes > spareMinutes) continue;
+            options.Add(new ExtraTimeOptionDto { Kind = "Assignment", AssignmentId = assignment.AssignmentId, Title = assignment.Title, QuestionCount = remaining, EstimatedMinutes = minutes });
+            if (options.Count(o => o.Kind == "Assignment") == 2) break;
+        }
+
+        return options;
+    }
+
+    /// <summary>
     /// Fills today's budget in priority order (in-progress work, due reviews, then the route). Practice sets keep a fixed size;
     /// spare time adds more sets for the weakest skills (at most three per skill a day). Never pads with filler.
     /// </summary>
@@ -792,7 +862,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             if (item.Purpose == "Review" && reviewUsed + cost > reviewLimit)
             {
                 item.QuestionCount = Math.Min(item.QuestionCount, FitsIn(reviewLimit - Math.Min(reviewUsed, reviewLimit), item));
-                cost = Minutes(item); if (cost == 0) continue;
+                if (item.QuestionCount == 0) continue;
+                cost = Minutes(item);
             }
             if (item.Purpose is not ("Practice" or "Review") && !item.IsMilestoneExam && used + cost >= budget && budget > used &&
                 options.Any(o => o.Purpose is "Practice" or "Review"))

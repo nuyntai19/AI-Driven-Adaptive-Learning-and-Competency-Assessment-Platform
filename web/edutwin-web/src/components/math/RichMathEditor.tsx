@@ -936,6 +936,7 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
                   left: `${popoverPos.left}px`,
                   maxHeight: "calc(100vh - 32px)",
                   overflowY: "auto",
+                  overflowX: "hidden",
                 }}
                 className={`fixed z-50 w-[390px] max-w-[92vw] rounded-2xl border p-4 space-y-3 backdrop-blur-md transition-all animate-scale-in shadow-2xl rich-math-popover ${
                   popoverTheme.isDark

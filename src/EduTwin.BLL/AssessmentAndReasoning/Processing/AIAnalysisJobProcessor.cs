@@ -328,7 +328,8 @@ public sealed class AIAnalysisJobProcessor : IAIAnalysisJobProcessor
                 initialAttempt.IsCorrect,
                 initialAttempt.ReasoningLanguage);
             // Absence is not a zero-quality assessment. Null also keeps it out of mastery evidence.
-            if (!ReasoningEvidencePolicy.HasEvidence(request)) analysis.ReasoningQuality = null;
+            if (!ReasoningEvidencePolicy.HasEvidence(request) || ReasoningEvidencePolicy.ProviderFoundNoMethod(response))
+                analysis.ReasoningQuality = null;
             if (response.SuggestedScore.HasValue && requestContext.Question.GradingCriteria.Criteria.Count > 0
                 && EduTwin.BLL.AssessmentAndReasoning.Override.RubricGrading.TryGrade(requestContext.Question.GradingCriteria,
                     requestContext.Question.MaxScore, response.SuggestedRubricScores, out var grade, out _) && grade is not null)

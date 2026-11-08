@@ -6,5 +6,5 @@ namespace EduTwin.BLL.DigitalTwin;
 
 public interface IGetStudentTwinUseCase
 {
-    Task<StudentTwinResult> ExecuteAsync(Guid subjectId, CancellationToken cancellationToken);
+    Task<StudentTwinResult> ExecuteAsync(Guid subjectId, Guid? classId, bool history, CancellationToken cancellationToken);
 }

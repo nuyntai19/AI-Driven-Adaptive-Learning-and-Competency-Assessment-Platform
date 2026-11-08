@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using EduTwin.BLL.Dashboards;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.DigitalTwin;
 using EduTwin.DAL.Persistence;
@@ -29,6 +30,8 @@ public sealed class GetStudentTwinHistoryUseCase : IGetStudentTwinHistoryUseCase
         ulong? topicId,
         DateTime? from,
         DateTime? to,
+        Guid? classId,
+        bool history,
         CancellationToken cancellationToken)
     {
         if (!_tenantContext.IsResolved ||
@@ -71,7 +74,15 @@ public sealed class GetStudentTwinHistoryUseCase : IGetStudentTwinHistoryUseCase
 
         if (subjectId.HasValue)
         {
-            query = query.Where(h => h.SubjectId == subjectId.Value);
+            var scope = await new StudentAcademicScopeReader(_dbContext)
+                .ReadAsync(centerId, studentId, subjectId.Value, classId, history, cancellationToken);
+            if (scope is null)
+            {
+                return TwinHistoryResult.NotFound("Lớp không thuộc phạm vi học tập của bạn.");
+            }
+
+            var topicIds = scope.TopicIds.ToList();
+            query = query.Where(h => h.SubjectId == subjectId.Value && topicIds.Contains(h.TopicNodeId));
         }
 
         if (topicId.HasValue)

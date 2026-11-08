@@ -29,27 +29,22 @@ const radarChartSource = readFileSync(new URL("../src/components/student/Student
 const dashboardAndRadarSource = dashboardSource + "\n" + radarChartSource;
 
 test("Phase 11: StudentDashboardPage layout, stat cards, radar and progress responsiveness", () => {
-  assert.match(dashboardSource, /w-full max-w-\[1800px\] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0/);
-  // Bento KPI cards must use responsive grid with min-w-0
-  assert.match(dashboardSource, /grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5/);
+  assert.match(dashboardSource, /w-full max-w-\[1800px\] mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4 min-w-0/);
   // Radar + Progress section must stack properly on tablet/mobile and 2 cols on xl
-  assert.match(dashboardSource, /grid-cols-1 xl:grid-cols-2 gap-6/);
+  assert.match(dashboardSource, /grid-cols-1 xl:grid-cols-\[minmax\(0,3fr\)_minmax\(0,2fr\)\] gap-4/);
   // Chart wrappers must have min-w-0
-  assert.match(dashboardAndRadarSource, /h-72 w-full min-w-0 mt-4 relative/);
+  assert.match(dashboardAndRadarSource, /h-72 w-full min-w-0 relative/);
   // ResponsiveContainer must specify minWidth={0}
   assert.match(dashboardAndRadarSource, /<ResponsiveContainer width="100%" height="100%" minWidth=\{0\}>/);
   // RadarChart must have appropriate outerRadius so labels do not overflow
   assert.match(dashboardAndRadarSource, /outerRadius="60%"/);
-  assert.match(radarChartSource, /groups.length >= 3 && groups.length <= 8/);
+  assert.match(radarChartSource, /assessedGroups\.length >= 3 && assessedGroups\.length <= 8/);
 });
 
-test("Phase 12: Subject filter defaults to 'Toàn bộ' and does not auto-select first subject", () => {
-  // Does not force subjects[0] in useEffect
-  assert.doesNotMatch(layoutSource, /newParams\.set\("subjectId", subjects\[0\]\.subjectId\)/);
-  // Desktop and mobile dropdowns must have 'Toàn bộ' as first option with value=""
-  assert.match(layoutSource, /<option value="">Toàn bộ<\/option>/);
-  // When empty, deletes subjectId query param
-  assert.match(layoutSource, /newParams\.delete\("subjectId"\)/);
+test("Phase 12: Subject filter only offers the student's subjects and has no 'Toàn bộ'", () => {
+  assert.doesNotMatch(layoutSource, /Toàn bộ<\/option>/);
+  assert.match(layoutSource, /useStudentSubjects\(isHistory\)/);
+  assert.match(layoutSource, /resolveStudentSubjectId\(subjects, activeSubjectId/);
 });
 
 test("Phase 12: StudentDashboardPage supports 'Toàn bộ' and Option A subject-level radar", () => {
@@ -59,16 +54,14 @@ test("Phase 12: StudentDashboardPage supports 'Toàn bộ' and Option A subject-
   assert.match(dashboardSource, /queryKey:\s*\["studentDashboard",\s*selectedSubjectId\s*\|\|\s*"all", selectedClassId, isHistory\]/);
   assert.match(dashboardSource, /getStudentDashboard\(selectedSubjectId\s*\|\|\s*undefined, selectedClassId \|\| undefined, isHistory\)/);
   // Radar title switches dynamically
-  assert.match(dashboardSource, /isAllSubjects \? "Radar Năng Lực Theo Môn Học" : "Radar Năng Lực Theo Chuyên Đề"/);
-  // Hero scope pill switches dynamically
-  assert.match(dashboardSource, /isAllSubjects \? "Phạm vi: Toàn bộ môn học" : `Môn: \$\{subject\.subjectName\}`/);
+  assert.match(dashboardSource, /isAllSubjects \? "Radar Năng Lực Theo Môn Học" : "Năng lực theo chuyên đề"/);
 });
 
 test("Phase 12: dashboardsApi passes subjectId only when present", () => {
   assert.match(apiSource, /if \(subjectId\) \{\s*params\.subjectId = subjectId;\s*\}/);
 });
 
-test("Phase 13: StudentLayout tab navigation preserves subjectId when set and clean when Toàn bộ", () => {
+test("Phase 13: StudentLayout tab navigation preserves subjectId when set", () => {
   assert.match(layoutSource, /for \(const key of \["subjectId", "classId", "history"\]\)/);
   assert.match(layoutSource, /return p.size \? `\$\{path\}\?\$\{p\}` : path/);
 });

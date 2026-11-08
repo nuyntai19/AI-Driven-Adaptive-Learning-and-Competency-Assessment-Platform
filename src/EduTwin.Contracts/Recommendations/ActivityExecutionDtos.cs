@@ -120,6 +120,7 @@ public class ActivitySubmissionResponseDto
 {
     public QuestionLearningFeedbackDto? LearningFeedback { get; set; }
     public ulong ActivityRunId { get; set; }
+    [System.Text.Json.Serialization.JsonNumberHandling(System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString | System.Text.Json.Serialization.JsonNumberHandling.WriteAsString)]
     public ulong? AttemptId { get; set; }
     public bool? IsCorrect { get; set; }
     public decimal? AwardedScore { get; set; }

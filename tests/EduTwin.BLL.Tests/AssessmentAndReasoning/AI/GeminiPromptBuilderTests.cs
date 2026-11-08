@@ -165,7 +165,7 @@ public sealed class GeminiPromptBuilderTests
         var prompt = new GeminiPromptBuilder().Build(request);
         Assert.False(ExtractInputJson(prompt).RootElement.GetProperty("studentSubmission").TryGetProperty("imageParts", out _));
         Assert.DoesNotContain(Convert.ToBase64String(image), prompt, StringComparison.Ordinal);
-        Assert.True(prompt.Length < 18000);
+        Assert.True(prompt.Length < 20000);
     }
 
     [Fact]

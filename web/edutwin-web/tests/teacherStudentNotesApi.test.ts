@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { teacherNotesApi } from "../src/api/teacherNotesApi.ts";
 
 test("teacher pedagogical notes have migrated away from localStorage to MySQL backend API", () => {
   const viewCode = readFileSync(
@@ -40,12 +39,10 @@ test("teacher pedagogical notes have migrated away from localStorage to MySQL ba
 });
 
 test("teacherNotesApi provides complete CRUD operations against /teacher-student-notes", () => {
-  assert.equal(typeof teacherNotesApi.listNotes, "function");
-  assert.equal(typeof teacherNotesApi.getMyNotes, "function");
-  assert.equal(typeof teacherNotesApi.getNote, "function");
-  assert.equal(typeof teacherNotesApi.getNoteForStudent, "function");
-  assert.equal(typeof teacherNotesApi.createNote, "function");
-  assert.equal(typeof teacherNotesApi.updateNote, "function");
-  assert.equal(typeof teacherNotesApi.upsertNoteForStudent, "function");
-  assert.equal(typeof teacherNotesApi.deleteNote, "function");
+  // Read as text: the module's extensionless imports do not resolve under node --test.
+  const apiCode = readFileSync(new URL("../src/api/teacherNotesApi.ts", import.meta.url), "utf8");
+  for (const method of ["listNotes", "getMyNotes", "getNote", "getNoteForStudent", "createNote", "updateNote", "upsertNoteForStudent", "deleteNote"]) {
+    assert.match(apiCode, new RegExp(`\\b${method}: async`), `teacherNotesApi must expose ${method}`);
+  }
+  assert.match(apiCode, /"\/teacher-student-notes"/);
 });

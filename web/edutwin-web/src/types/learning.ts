@@ -7,7 +7,6 @@ export interface SubmitAttemptRequest {
   finalAnswer: string;
   reasoningText?: string | null;
   timeSpentSeconds: number;
-  confidence: number | null;
   answerChanges: number;
   skipped: boolean;
   clientSubmissionId: string;

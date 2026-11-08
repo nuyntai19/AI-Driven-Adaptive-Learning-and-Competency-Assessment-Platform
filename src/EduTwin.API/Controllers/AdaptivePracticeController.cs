@@ -41,6 +41,7 @@ public sealed class AdaptivePracticeController : ControllerBase
         [FromQuery] Guid subjectId,
         [FromQuery] ulong? customTopicId = null,
         [FromQuery] AdaptivePracticeMode mode = AdaptivePracticeMode.Weakness,
+        [FromQuery] Guid? classId = null,
         CancellationToken ct = default)
     {
         if (!_tenantContext.IsResolved || _tenantContext.CenterId is null || _tenantContext.UserId is null)
@@ -55,7 +56,7 @@ public sealed class AdaptivePracticeController : ControllerBase
 
         try
         {
-            var proposal = await _engine.GetProposalAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, subjectId, customTopicId, mode, ct);
+            var proposal = await _engine.GetProposalAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, subjectId, customTopicId, mode, classId, ct);
             return Ok(proposal);
         }
         catch (InvalidOperationException ex)
@@ -171,7 +172,6 @@ public sealed class AdaptivePracticeController : ControllerBase
     [ProducesResponseType(typeof(AdaptivePracticeSummaryDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> CloseSession(
         [FromRoute] Guid sessionId,
-        [FromQuery] AdaptivePracticeCloseReason closeReason = AdaptivePracticeCloseReason.StudentStopped,
         CancellationToken ct = default)
     {
         if (!_tenantContext.IsResolved || _tenantContext.CenterId is null || _tenantContext.UserId is null)
@@ -180,7 +180,7 @@ public sealed class AdaptivePracticeController : ControllerBase
         }
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
-        var summary = await _engine.CloseSessionAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, sessionId, closeReason, now, ct);
+        var summary = await _engine.CloseSessionAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, sessionId, AdaptivePracticeCloseReason.StudentStopped, now, ct);
         return Ok(summary);
     }
 

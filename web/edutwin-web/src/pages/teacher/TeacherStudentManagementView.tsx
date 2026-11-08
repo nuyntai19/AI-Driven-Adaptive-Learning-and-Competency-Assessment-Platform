@@ -1,11 +1,12 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { teacherNotesApi } from "../../api/teacherNotesApi";
 import { organizationApi } from "../../api/organizationApi";
 import { httpClient } from "../../api/httpClient";
 import { getTeacherStudentTwin } from "../../api/digitalTwinApi";
 import { useAuthStore } from "../../stores/authStore";
-import { teacherNotesKey, readTeacherNotes } from "../../utils/teacherNotesStorage";
+import { legacyTeacherNotes } from "../../utils/teacherNotesStorage";
 import { permissions } from "../../auth/permissions";
 import {
   TeacherPageHeader,
@@ -63,20 +64,42 @@ export function TeacherStudentManagementView() {
   const [isExportingExcel, setIsExportingExcel] = useState<boolean>(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  // Never assign legacy shared notes to an unknown author.
-  const notesKey = teacherNotesKey(actor?.centerId, actor?.userId);
-  const [notesState, setNotesState] = useState(() => ({ key: notesKey, notes: readTeacherNotes(notesKey) }));
-  const teacherNotes = notesState.key === notesKey ? notesState.notes : readTeacherNotes(notesKey);
+  // Notes live on the server: edits show at once and save when typing pauses.
+  const queryClient = useQueryClient();
+  const notesQueryKey = ["teacherStudentNotes", actor?.centerId, actor?.userId];
+  const { data: savedNotes } = useQuery({
+    queryKey: notesQueryKey,
+    enabled: !!actor?.userId,
+    queryFn: async () => {
+      const notes = await teacherNotesApi.getMyNotes();
+      // One-time upload of notes this browser kept before the server had them.
+      const legacy = legacyTeacherNotes(actor?.centerId, actor?.userId);
+      const known = new Set(notes.map((item) => item.studentId));
+      const pending = Object.entries(legacy.notes).filter(([studentId, content]) => content.trim() && !known.has(studentId));
+      const moved = await Promise.allSettled(pending.map(([studentId, content]) => teacherNotesApi.upsertNoteForStudent(studentId, { content })));
+      if (moved.every((result) => result.status === "fulfilled")) legacy.clear();
+      return [...notes, ...moved.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))];
+    },
+  });
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [noteSaveFailed, setNoteSaveFailed] = useState(false);
+  const noteSaveTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const teacherNotes = useMemo<Record<string, string>>(
+    () => ({ ...Object.fromEntries((savedNotes ?? []).map((item) => [item.studentId, item.content])), ...noteDrafts }),
+    [savedNotes, noteDrafts]
+  );
 
   const handleSaveNote = (studentId: string, note: string) => {
-    const updated = { ...teacherNotes, [studentId]: note };
-    if (!notesKey) return;
-    setNotesState({ key: notesKey, notes: updated });
-    try {
-      localStorage.setItem(notesKey, JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
+    setNoteDrafts((previous) => ({ ...previous, [studentId]: note }));
+    clearTimeout(noteSaveTimers.current.get(studentId));
+    noteSaveTimers.current.set(studentId, setTimeout(() => {
+      teacherNotesApi.upsertNoteForStudent(studentId, { content: note })
+        .then(() => {
+          setNoteSaveFailed(false);
+          void queryClient.invalidateQueries({ queryKey: notesQueryKey });
+        })
+        .catch(() => setNoteSaveFailed(true));
+    }, 600));
   };
 
   // 1. Fetch Teacher Assigned Classes
@@ -1153,8 +1176,12 @@ export function TeacherStudentManagementView() {
                   onChange={(e) => handleSaveNote(selectedStudent.studentId, e.target.value)}
                   placeholder="Nhập ghi chú nhận xét học lực, thái độ học tập, phương pháp kèm cặp hoặc dặn dò cho học sinh này..."
                   rows={6}
+                  maxLength={4000}
                   className="th-input w-full text-xs p-3 leading-relaxed"
                 />
+                {noteSaveFailed && (
+                  <p role="alert" className="text-xs text-rose-600">Chưa lưu được ghi chú. Hãy kiểm tra kết nối rồi sửa lại ghi chú để lưu lại.</p>
+                )}
 
                 <div className="flex justify-between items-center text-[11px] text-[var(--th-text-muted)]">
                   <span>💾 Ghi chú được tự động lưu trên trình duyệt của bạn.</span>

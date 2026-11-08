@@ -1,9 +1,8 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Link, NavLink, useLocation, useNavigate, useSearchParams, Outlet } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../stores/authStore";
 import { logout } from "../auth/authApi";
-import { organizationApi } from "../api/organizationApi";
 import { getStudentWorkspaceSummary, getReconciledStudentAcademicContext } from "../api/dashboardsApi";
 import { studentWorkspaceLabels } from "../utils/studentWorkspaceSummary";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -17,6 +16,8 @@ import {
   formatStudentProfileSubtitle,
   resolveStudentActiveDisplayClass,
 } from "../utils/studentAcademicScope";
+import { readLastStudentSubject, rememberStudentSubject, resolveStudentSubjectId } from "../utils/studentSubjectScope";
+import { useStudentSubjects } from "../utils/useStudentSubjects";
 
 function getInitials(displayName?: string, username?: string): string {
   if (displayName) {
@@ -40,7 +41,6 @@ export const StudentLayout: React.FC = () => {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const activeSubjectId = searchParams.get("subjectId") || "";
-  const isLearningPathPage = location.pathname === "/hoc-tap/lo-trinh-hoc-tap";
   const activeClassId = searchParams.get("classId") || "";
   const isHistory = searchParams.get("history") === "true";
   const isAccountPage = ["/hoc-tap/thong-bao", "/hoc-tap/nhat-ky-hoat-dong"].includes(location.pathname);
@@ -76,24 +76,33 @@ export const StudentLayout: React.FC = () => {
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  // Fetch active subjects for the subject switcher dropdown
-  const subjectsQuery = useQuery({
-    queryKey: ["subjects", "student-workspace", "active"],
-    queryFn: () => organizationApi.listSubjects(true),
-    staleTime: 5 * 60 * 1000,
-  });
+  // The header is the only subject picker; every student page reads its choice from the URL.
+  const { subjects, isLoading: isSubjectsLoading } = useStudentSubjects(isHistory);
 
-  const subjects = subjectsQuery.data?.data || [];
+  // A detail page belongs to its own record, so opening one never changes the subject.
+  const isDetailPage = /^\/hoc-tap\/bai-tap\/[^/]+/.test(location.pathname) || searchParams.has("pathId");
+  const followsSubject = !isAccountPage && !isDetailPage;
+  const targetSubjectId = followsSubject && !isSubjectsLoading
+    ? resolveStudentSubjectId(subjects, activeSubjectId, readLastStudentSubject(user?.userId))
+    : null;
+  const isSubjectResolving = followsSubject &&
+    (isSubjectsLoading || (targetSubjectId !== null && targetSubjectId !== activeSubjectId));
+
+  useEffect(() => {
+    if (!targetSubjectId) return;
+    rememberStudentSubject(user?.userId, targetSubjectId);
+    if (targetSubjectId === activeSubjectId) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("classId");
+    next.set("subjectId", targetSubjectId);
+    navigate(`${location.pathname}?${next}`, { replace: true });
+  }, [targetSubjectId, activeSubjectId, searchParams, location.pathname, navigate, user?.userId]);
 
   const handleSubjectChange = (subjectId: string) => {
     if (subjectId === activeSubjectId) return;
     const newParams = new URLSearchParams(searchParams);
     newParams.delete("classId");
-    if (!subjectId) {
-      newParams.delete("subjectId");
-    } else {
-      newParams.set("subjectId", subjectId);
-    }
+    newParams.set("subjectId", subjectId);
     navigate(studentScopeChangeUrl(location.pathname, newParams));
   };
 
@@ -356,7 +365,7 @@ export const StudentLayout: React.FC = () => {
                   title="Chuyển đổi môn học đang theo dõi"
                   data-testid="student-subject-selector-sub"
                 >
-                  {isLearningPathPage ? <option value="" disabled>Chọn môn học</option> : <option value="">Toàn bộ</option>}
+                  {!activeSubjectId && <option value="" disabled hidden>{subjects.length > 0 ? "Chọn môn học" : "Chưa có môn học"}</option>}
                   {subjects.map((sub) => (
                     <option key={sub.subjectId} value={sub.subjectId}>
                       {sub.subjectName}
@@ -428,7 +437,7 @@ export const StudentLayout: React.FC = () => {
                     }}
                     className="w-full rounded-lg border border-[var(--student-border)] p-2 text-xs font-bold text-slate-800 dark:text-white bg-white dark:bg-[#172033]"
                   >
-                    {isLearningPathPage ? <option value="" disabled>Chọn môn học</option> : <option value="">Toàn bộ</option>}
+                    {!activeSubjectId && <option value="" disabled hidden>Chọn môn học</option>}
                     {subjects.map((sub) => (
                       <option key={sub.subjectId} value={sub.subjectId}>
                         {sub.subjectName}
@@ -490,7 +499,11 @@ export const StudentLayout: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 w-full min-w-0 pb-12">
-        <Outlet />
+        {isSubjectResolving ? (
+          <div role="status" className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">Đang tải môn học...</div>
+        ) : (
+          <Outlet />
+        )}
       </main>
 
       {/* Security Modal */}

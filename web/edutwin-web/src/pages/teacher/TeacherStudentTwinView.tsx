@@ -418,28 +418,6 @@ export const TeacherStudentTwinView: React.FC = () => {
                     </div>
                   </div>
 
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "4px" }}>
-                      <span style={{ color: "var(--th-text-secondary)" }}>Mức độ tự tin trung bình:</span>
-                      <span style={{ fontWeight: 700, color: "var(--th-text-primary)" }}>
-                        {Math.round(behavior.avgConfidence * 100)}%
-                      </span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "4px" }}>
-                      <span style={{ color: "var(--th-text-secondary)" }}>Chuẩn hóa độ tự tin (Calibration):</span>
-                      <span style={{ fontWeight: 700, color: behavior.confidenceCalibration >= 0.7 ? "var(--th-primary)" : "var(--at-secondary)" }}>
-                        {Math.round(behavior.confidenceCalibration * 100)}%
-                      </span>
-                    </div>
-                    <p style={{ fontSize: "0.75rem", color: "var(--th-text-muted)", margin: "4px 0 0 0" }}>
-                      {behavior.confidenceCalibration >= 0.7
-                        ? "Học sinh tự nhận thức chính xác năng lực bản thân khi làm bài."
-                        : "Học sinh thường tự tin quá mức hoặc lo lắng thái quá so với điểm thực tế."}
-                    </p>
-                  </div>
                 </div>
               ) : (
                 <div style={{ padding: "20px", textAlign: "center", color: "var(--th-text-muted)" }}>

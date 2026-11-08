@@ -574,7 +574,7 @@ export const VisualMathField = forwardRef<VisualMathFieldRef, VisualMathFieldPro
             ref={containerRef}
             className={`${
               compact ? "p-1.5 min-h-[46px]" : "p-3.5 min-h-[56px] rounded-b-2xl"
-            } text-inherit overflow-x-auto min-w-0 ${
+            } text-inherit overflow-clip min-w-0 ${
               disabled ? "cursor-default select-text" : "cursor-text bg-transparent"
             } ${inputMode === "text" ? "math-field-text-mode" : "math-field-math-mode"}`}
             onPointerDown={() => {

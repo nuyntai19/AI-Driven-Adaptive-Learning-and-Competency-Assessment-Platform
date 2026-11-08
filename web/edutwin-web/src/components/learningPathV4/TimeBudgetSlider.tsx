@@ -16,7 +16,7 @@ export function TimeBudgetSlider({ value, onChange, label = "Thời gian học",
   const id = useId();
   const step = 5;
   const percent = ((value - min) / (max - min)) * 100;
-  const cap = capacity && capacity >= min && capacity < max ? ((Math.min(capacity, max) - min) / (max - min)) * 100 : null;
+  const cap = capacity && capacity < max ? (Math.max(capacity - min, 0) / (max - min)) * 100 : null;
   const over = cap != null && value > capacity!;
   return <div className="w-full">
     <div className="flex items-end justify-between gap-3">

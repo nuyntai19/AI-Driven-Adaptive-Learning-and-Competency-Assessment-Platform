@@ -512,6 +512,7 @@ export interface LearningAgendaDto {
   scheduleSummary?: LearningScheduleSummary;
   exams?: ExamMilestone[];
   availableTodayMinutes?: number;
+  extraOptions?: ExtraTimeOption[];
   primaryReason?: string | null;
   selfReportedPrerequisiteSkillIds?: string[];
   selfAssessedSkillIds?: string[];
@@ -589,7 +590,7 @@ export interface ActivityRunDto {
   submittedResponse?: string | null;
   stage?: string;
   learningFeedback?: QuestionLearningFeedbackDto | null;
-  question?: { question: { questionId: string; questionText: string; questionType: string; reasoningRequired: boolean; hasImage?: boolean; options: { optionId: string; label: string; text: string }[] } } | null;
+  question?: { question: { questionId: string; questionText: string; questionType: string; answerEvaluationMode?: string; reasoningRequired: boolean; hasImage?: boolean; options: { optionId: string; label: string; text: string }[] } } | null;
   activityRunId: number;
   sessionRunId: number;
   activityOrder: number;
@@ -670,7 +671,7 @@ export interface MissionRunDto {
 export interface ActivitySubmissionResponseDto {
   learningFeedback?: QuestionLearningFeedbackDto | null;
   activityRunId: number;
-  attemptId?: number | null;
+  attemptId?: string | null;
   isCorrect?: boolean | null;
   awardedScore?: number | null;
   activityStatus: string;
@@ -708,3 +709,13 @@ export interface CustomizePathProposalRequest {
 
 export interface ExtendPathCheckRequest { subjectId: string; classId?: string; skillIds: string[] }
 export interface ExtendPathCheckResponse { missionIds: string[]; unavailableSkillIds: string[] }
+
+/** Something a student can do with the time left after today's plan. */
+export interface ExtraTimeOption {
+  kind: "Practice" | "Assignment";
+  title: string;
+  skillId?: string | null;
+  assignmentId?: string | null;
+  questionCount: number;
+  estimatedMinutes: number;
+}

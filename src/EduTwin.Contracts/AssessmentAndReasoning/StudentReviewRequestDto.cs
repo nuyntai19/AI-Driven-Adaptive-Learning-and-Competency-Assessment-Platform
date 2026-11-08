@@ -13,6 +13,7 @@ public sealed class StudentReviewRequestResponse
 public sealed class StudentReviewRequestDto
 {
     public ulong RequestId { get; set; }
+    [System.Text.Json.Serialization.JsonNumberHandling(System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString | System.Text.Json.Serialization.JsonNumberHandling.WriteAsString)]
     public ulong AttemptId { get; set; }
     public Guid StudentId { get; set; }
     public ulong QuestionId { get; set; }

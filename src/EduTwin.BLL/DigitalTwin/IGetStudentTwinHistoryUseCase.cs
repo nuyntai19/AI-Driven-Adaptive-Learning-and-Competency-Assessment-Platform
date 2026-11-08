@@ -14,6 +14,8 @@ public interface IGetStudentTwinHistoryUseCase
         ulong? topicId,
         DateTime? from,
         DateTime? to,
+        Guid? classId,
+        bool history,
         CancellationToken cancellationToken);
 }
 

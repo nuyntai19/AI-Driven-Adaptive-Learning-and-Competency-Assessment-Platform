@@ -49,7 +49,7 @@ export const RichMathText: React.FC<RichMathTextProps> = ({
 
     // 1. Check if the entire string is a pure LaTeX formula (e.g. starts with backslash commands)
     const isPureLatex = !hasDelimitedMath &&
-      /^\\(frac|sqrt|int|sum|prod|lim|vec|alpha|beta|gamma|theta|Delta|begin|left|mathbf|text|displaystyle)\b/.test(rawContent);
+      /^\\(frac|sqrt|int|sum|prod|lim|vec|alpha|beta|gamma|theta|Delta|begin|left|mathbf|text|displaystyle)(?![a-zA-Z])/.test(rawContent);
 
     if (isPureLatex) {
       const formulaOnly = rawContent;

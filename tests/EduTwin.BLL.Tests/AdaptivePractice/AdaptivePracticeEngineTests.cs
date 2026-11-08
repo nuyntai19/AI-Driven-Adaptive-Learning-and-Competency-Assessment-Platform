@@ -90,6 +90,7 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
 
         var prereqTopic = new KnowledgeNode
         {
+            NodeType = NodeType.Topic,
             CenterId = _centerId,
             SubjectId = _subjectId,
             NodeId = _prereqTopicId,
@@ -102,6 +103,7 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
 
         var mainTopic = new KnowledgeNode
         {
+            NodeType = NodeType.Topic,
             CenterId = _centerId,
             SubjectId = _subjectId,
             NodeId = _mainTopicId,
@@ -131,6 +133,7 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
         {
             _dbContext.Questions.Add(new Question
             {
+                GradeLevel = 10,
                 CenterId = _centerId,
                 SubjectId = _subjectId,
                 PrimaryTopicNodeId = _mainTopicId,
@@ -154,6 +157,7 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
         {
             _dbContext.Questions.Add(new Question
             {
+                GradeLevel = 10,
                 CenterId = _centerId,
                 SubjectId = _subjectId,
                 PrimaryTopicNodeId = _prereqTopicId,
@@ -177,13 +181,200 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
             if (entry.Entity is EduTwin.DAL.Persistence.Models.IMutableTenantAggregate aggregate)
                 aggregate.UpdatedAt = _utcNow;
         }
+        GraphScopeFixture.Approve(_dbContext, _centerId, _subjectId, 10, prereqTopic.NodeId, mainTopic.NodeId);
         _dbContext.SaveChanges();
+    }
+
+    [Fact]
+    public async Task GetProposal_OnlyOffersTopicsInTheStudentsGradeScope()
+    {
+        _dbContext.KnowledgeNodes.Add(new KnowledgeNode
+        {
+            NodeType = NodeType.Topic, CenterId = _centerId, SubjectId = _subjectId, NodeId = 777, NodeName = "Grade 12 topic",
+            NodeCode = "G12", IsActive = true, CreatedAt = _utcNow, UpdatedAt = _utcNow
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var proposal = await _engine.GetProposalAsync(_centerId, _studentId, _subjectId, null, AdaptivePracticeMode.Weakness, null, CancellationToken.None);
+
+        Assert.DoesNotContain(proposal.AvailableTopics, t => t.TopicNodeId == 777);
+        Assert.Null(proposal.UnavailableReason);
+    }
+
+    [Fact]
+    public async Task GetProposal_WithoutPracticeableQuestions_ExplainsInsteadOfProposing()
+    {
+        await _dbContext.Questions.ForEachAsync(q => q.Status = QuestionStatus.Draft);
+        await _dbContext.SaveChangesAsync();
+
+        var proposal = await _engine.GetProposalAsync(_centerId, _studentId, _subjectId, null, AdaptivePracticeMode.Weakness, null, CancellationToken.None);
+
+        Assert.NotNull(proposal.UnavailableReason);
+        Assert.Empty(proposal.AvailableTopics);
+    }
+
+    [Fact]
+    public async Task GetProposal_SpacedReview_NothingStudied_ExplainsThereIsNothingToReview()
+    {
+        var proposal = await _engine.GetProposalAsync(_centerId, _studentId, _subjectId, null, AdaptivePracticeMode.SpacedReview, null, CancellationToken.None);
+
+        Assert.NotNull(proposal.UnavailableReason);
+    }
+
+    [Fact]
+    public async Task GetProposal_SpacedReview_PicksTheOverdueStudiedTopic()
+    {
+        _dbContext.KnowledgeTwins.Add(new EduTwin.DAL.DigitalTwin.KnowledgeTwin
+        {
+            KnowledgeTwinId = 5001, CenterId = _centerId, StudentId = _studentId, SubjectId = _subjectId,
+            TopicNodeId = _mainTopicId, MasteryPercentage = 60m, EvidenceCount = 3,
+            LastEvidenceAt = DateTime.UtcNow.AddDays(-30), CreatedAt = _utcNow, UpdatedAt = _utcNow
+        });
+        await _dbContext.SaveChangesAsync();
+
+        var proposal = await _engine.GetProposalAsync(_centerId, _studentId, _subjectId, null, AdaptivePracticeMode.SpacedReview, null, CancellationToken.None);
+
+        Assert.Equal(_mainTopicId, proposal.TopicNodeId);
+        Assert.False(proposal.IsDiagnosticRecommended);
+        Assert.Contains("đã đến hạn", proposal.SelectionReason);
+        Assert.Equal(65m, proposal.TargetMastery);
+    }
+
+    [Fact]
+    public async Task CloseSession_Twice_ReturnsTheSameSummaryWithoutFailing()
+    {
+        var session = await StartSessionAsync();
+
+        var first = await _engine.CloseSessionAsync(_centerId, _studentId, session.SessionId, AdaptivePracticeCloseReason.OutOfQuestions, _utcNow, CancellationToken.None);
+        var second = await _engine.CloseSessionAsync(_centerId, _studentId, session.SessionId, AdaptivePracticeCloseReason.StudentStopped, _utcNow.AddMinutes(1), CancellationToken.None);
+
+        Assert.Equal(first.SessionId, second.SessionId);
+        Assert.Equal(1, await _dbContext.AdaptivePracticeSessionSummaries.CountAsync());
+        Assert.Equal(AdaptivePracticeCloseReason.OutOfQuestions, (await _dbContext.AdaptivePracticeSessions.SingleAsync()).CloseReason);
+    }
+
+    private async Task AddMainTopicQuestionsAsync(int count)
+    {
+        var template = await _dbContext.Questions.AsNoTracking().FirstAsync(q => q.PrimaryTopicNodeId == _mainTopicId);
+        for (ulong i = 0; i < (ulong)count; i++)
+        {
+            template.QuestionId = 90_000 + i;
+            _dbContext.Questions.Add(new EduTwin.DAL.CurriculumAndQuestions.Question
+            {
+                QuestionId = template.QuestionId, CenterId = template.CenterId, SubjectId = template.SubjectId,
+                PrimaryTopicNodeId = template.PrimaryTopicNodeId, GradeLevel = template.GradeLevel, Difficulty = template.Difficulty,
+                Status = template.Status, QuestionText = template.QuestionText, QuestionType = template.QuestionType,
+                CorrectAnswer = template.CorrectAnswer, Solution = template.Solution, ExpectedReasoning = template.ExpectedReasoning,
+                LanguageCode = template.LanguageCode, MaxScore = template.MaxScore, EstimatedTimeSeconds = template.EstimatedTimeSeconds,
+                CreatedAt = _utcNow, UpdatedAt = _utcNow
+            });
+        }
+
+        await _dbContext.SaveChangesAsync();
+    }
+
+    private async Task<AdaptivePracticeAnswerFeedbackDto> AnswerCurrentAsync(Guid sessionId, bool correctly, DateTime? at = null)
+    {
+        var q = await _engine.GetNextQuestionAsync(_centerId, _studentId, sessionId, _utcNow, CancellationToken.None);
+        var answer = correctly ? (await _dbContext.Questions.FindAsync(q!.QuestionId))!.CorrectAnswer : "khong-dung";
+        return await _engine.SubmitAnswerAsync(_centerId, _studentId, sessionId, new SubmitAdaptivePracticeAnswerRequest
+        {
+            ClientSubmissionId = Guid.NewGuid(), SessionItemId = q!.SessionItemId, QuestionId = q.QuestionId, FinalAnswer = answer, TimeSpentSeconds = 10
+        }, at ?? _utcNow, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task SubmitAnswer_OnPrerequisiteProbe_CreditsThePrerequisiteNotTheSessionTopic()
+    {
+        var session = await StartSessionAsync();
+        await AnswerCurrentAsync(session.SessionId, correctly: false);
+        await AnswerCurrentAsync(session.SessionId, correctly: false);
+        var masteryBeforeProbe = (await _dbContext.AdaptivePracticeSessions.SingleAsync()).CurrentMastery;
+
+        await AnswerCurrentAsync(session.SessionId, correctly: true);
+
+        var saved = await _dbContext.AdaptivePracticeSessions.SingleAsync();
+        var prerequisite = await _dbContext.KnowledgeTwins.SingleAsync(t => t.TopicNodeId == _prereqTopicId);
+        Assert.Equal(masteryBeforeProbe, saved.CurrentMastery);
+        Assert.True(prerequisite.MasteryPercentage > 0m);
+    }
+
+    [Fact]
+    public async Task SubmitAnswer_RecordsPracticeInTwinHistory()
+    {
+        var session = await StartSessionAsync();
+
+        await AnswerCurrentAsync(session.SessionId, correctly: true);
+
+        var history = await _dbContext.TwinUpdateHistories.SingleAsync();
+        var twin = await _dbContext.KnowledgeTwins.SingleAsync();
+        Assert.Equal(_mainTopicId, history.TopicNodeId);
+        Assert.Equal(twin.MasteryPercentage, history.NewMastery);
+        Assert.Equal(history.NewMastery - history.PreviousMastery, history.MasteryDelta);
+        Assert.NotNull(history.AttemptId);
+    }
+
+    [Fact]
+    public async Task SubmitAnswer_PastTimeBudget_ClosesSession()
+    {
+        var session = await StartSessionAsync();
+
+        var feedback = await AnswerCurrentAsync(session.SessionId, correctly: true, _utcNow.AddHours(2));
+
+        Assert.True(feedback.IsSessionClosed);
+        Assert.Equal(AdaptivePracticeCloseReason.TimeBudgetReached, feedback.CloseReason);
+    }
+
+    [Fact]
+    public async Task GetHint_OfAnotherStudentsSession_IsRejected()
+    {
+        var session = await StartSessionAsync();
+        var q = await _engine.GetNextQuestionAsync(_centerId, _studentId, session.SessionId, _utcNow, CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _engine.GetHintAsync(_centerId, Guid.NewGuid(), session.SessionId, q!.SessionItemId, 3, CancellationToken.None));
+
+        Assert.Equal(0, (await _dbContext.AdaptivePracticeSessionItems.SingleAsync()).HintsUsedCount);
+    }
+
+    [Fact]
+    public void Hints_DoNotRevealTheAnswerAtLevelOne()
+    {
+        var question = new EduTwin.DAL.CurriculumAndQuestions.Question
+        {
+            ExpectedReasoning = "Delta = 16 - 16 = 0. Vay phuong trinh co nghiem kep.",
+            Solution = "Tinh delta.\nDelta = 0.",
+            CorrectAnswer = "0"
+        };
+
+        var level1 = AdaptivePracticeHintGenerator.GenerateHint(question, null, 1).HintContent;
+        var level2 = AdaptivePracticeHintGenerator.GenerateHint(question, null, 2).HintContent;
+        var level3 = AdaptivePracticeHintGenerator.GenerateHint(question, null, 3).HintContent;
+
+        Assert.DoesNotContain("16", level1);
+        Assert.Contains("Tinh delta", level2);
+        Assert.Contains("[kết quả cần tìm]", level3);
+        Assert.DoesNotContain("= 0", level3);
+    }
+
+    [Fact]
+    public async Task CreateSession_NeverPromisesMoreQuestionsThanTheBankHas()
+    {
+        var keep = await _dbContext.Questions.Where(q => q.PrimaryTopicNodeId == _mainTopicId).OrderBy(q => q.QuestionId).FirstAsync();
+        await _dbContext.Questions.Where(q => q.PrimaryTopicNodeId == _mainTopicId && q.QuestionId != keep.QuestionId)
+            .ForEachAsync(q => q.Status = QuestionStatus.Draft);
+        await _dbContext.SaveChangesAsync();
+
+        var session = await StartSessionAsync();
+
+        Assert.Equal(1, session.MaximumQuestions);
+        Assert.Equal(1, session.MinimumQuestions);
     }
 
     [Fact]
     public async Task GetProposal_NoEvidence_ReturnsDiagnosticProposal()
     {
-        var proposal = await _engine.GetProposalAsync(_centerId, _studentId, _subjectId, null, AdaptivePracticeMode.Weakness, CancellationToken.None);
+        var proposal = await _engine.GetProposalAsync(_centerId, _studentId, _subjectId, null, AdaptivePracticeMode.Weakness, null, CancellationToken.None);
 
         Assert.NotNull(proposal);
         Assert.Equal(_subjectId, proposal.SubjectId);
@@ -195,6 +386,7 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
     [Fact]
     public async Task CreateSession_CreatesValidSession_WithConfiguredLimits()
     {
+        await AddMainTopicQuestionsAsync(15);
         var request = new CreateAdaptivePracticeSessionRequest
         {
             SubjectId = _subjectId,
@@ -219,6 +411,7 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
     [InlineData(20, 6, 15)]
     public async Task CreateSession_OfferedBudgets_RetainDesignedQuestionLimits(int minutes, int minimum, int maximum)
     {
+        await AddMainTopicQuestionsAsync(15);
         var request = new CreateAdaptivePracticeSessionRequest
         {
             SubjectId = _subjectId, TopicNodeId = _mainTopicId, TimeBudgetMinutes = minutes
@@ -297,6 +490,7 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
         var otherSubject = Guid.NewGuid();
         _dbContext.KnowledgeNodes.Add(new KnowledgeNode
         {
+            NodeType = NodeType.Topic,
             CenterId = _centerId, SubjectId = otherSubject, NodeId = 999, NodeName = "Other subject",
             NodeCode = "OTHER", IsActive = true, CreatedAt = _utcNow, UpdatedAt = _utcNow
         });
@@ -477,6 +671,158 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
         Assert.Equal(AdaptivePracticeSelectionReasonCode.PrerequisiteProbe, q3.SelectionReasonCode);
     }
 
+    private Task<AdaptivePracticeSessionDto> StartSessionAsync() => _engine.CreateSessionAsync(
+        _centerId, _studentId,
+        new CreateAdaptivePracticeSessionRequest { SubjectId = _subjectId, TopicNodeId = _mainTopicId, TimeBudgetMinutes = 15 },
+        _utcNow, CancellationToken.None);
+
+    private void AddAllMainTopicQuestionsToPublishedAssignment(DateTime? dueAt)
+    {
+        var assignment = new Assignment
+        {
+            AssignmentId = Guid.NewGuid(),
+            CenterId = _centerId,
+            Title = "Bài kiểm tra",
+            Status = AssignmentStatus.Published,
+            DueAt = dueAt,
+            CreatedAt = _utcNow,
+            UpdatedAt = _utcNow
+        };
+        _dbContext.Assignments.Add(assignment);
+        for (ulong id = 1; id <= 5; id++)
+        {
+            _dbContext.AssignmentQuestions.Add(new AssignmentQuestion
+            {
+                CenterId = _centerId,
+                AssignmentId = assignment.AssignmentId,
+                QuestionId = id,
+                OrderIndex = (uint)id,
+                CreatedAt = _utcNow
+            });
+        }
+        _dbContext.SaveChanges();
+    }
+
+    [Fact]
+    public async Task SubmitAnswer_QuestionNotIssuedForItem_IsRejected()
+    {
+        var session = await StartSessionAsync();
+        var q = await _engine.GetNextQuestionAsync(_centerId, _studentId, session.SessionId, _utcNow, CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _engine.SubmitAnswerAsync(_centerId, _studentId, session.SessionId,
+            new SubmitAdaptivePracticeAnswerRequest
+            {
+                ClientSubmissionId = Guid.NewGuid(),
+                SessionItemId = q!.SessionItemId,
+                QuestionId = q.QuestionId == 1 ? 2UL : 1UL,
+                FinalAnswer = "1",
+                TimeSpentSeconds = 10
+            }, _utcNow, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task SubmitAnswer_ResubmittedItem_ReplaysWithoutCountingTwice()
+    {
+        var session = await StartSessionAsync();
+        var q = await _engine.GetNextQuestionAsync(_centerId, _studentId, session.SessionId, _utcNow, CancellationToken.None);
+        var correct = (await _dbContext.Questions.FindAsync(q!.QuestionId))!.CorrectAnswer;
+        SubmitAdaptivePracticeAnswerRequest Request(Guid id) => new()
+        {
+            ClientSubmissionId = id,
+            SessionItemId = q.SessionItemId,
+            QuestionId = q.QuestionId,
+            FinalAnswer = correct,
+            TimeSpentSeconds = 10
+        };
+
+        var submissionId = Guid.NewGuid();
+        var first = await _engine.SubmitAnswerAsync(_centerId, _studentId, session.SessionId, Request(submissionId), _utcNow, CancellationToken.None);
+        _dbContext.ChangeTracker.Clear();
+        var sameId = await _engine.SubmitAnswerAsync(_centerId, _studentId, session.SessionId, Request(submissionId), _utcNow, CancellationToken.None);
+        var newId = await _engine.SubmitAnswerAsync(_centerId, _studentId, session.SessionId, Request(Guid.NewGuid()), _utcNow, CancellationToken.None);
+
+        Assert.True(first.IsCorrect);
+        Assert.True(sameId.IsCorrect);
+        Assert.True(newId.IsCorrect);
+        var sessionDb = await _dbContext.AdaptivePracticeSessions.FindAsync(session.SessionId);
+        Assert.Equal(1, sessionDb!.QuestionCount);
+        Assert.Equal(first.UpdatedEstimatedMastery, newId.UpdatedEstimatedMastery);
+    }
+
+    [Fact]
+    public async Task SubmitAnswer_LetsTheDatabaseAssignTheAttemptId()
+    {
+        var session = await StartSessionAsync();
+        var q = await _engine.GetNextQuestionAsync(_centerId, _studentId, session.SessionId, _utcNow, CancellationToken.None);
+        var correct = (await _dbContext.Questions.FindAsync(q!.QuestionId))!.CorrectAnswer;
+
+        await _engine.SubmitAnswerAsync(_centerId, _studentId, session.SessionId, new SubmitAdaptivePracticeAnswerRequest
+        {
+            ClientSubmissionId = Guid.NewGuid(),
+            SessionItemId = q.SessionItemId,
+            QuestionId = q.QuestionId,
+            FinalAnswer = correct,
+            TimeSpentSeconds = 10
+        }, _utcNow, CancellationToken.None);
+
+        var attempt = await _dbContext.Attempts.SingleAsync();
+        var item = await _dbContext.AdaptivePracticeSessionItems.SingleAsync(i => i.SessionItemId == q.SessionItemId);
+        Assert.InRange(attempt.AttemptId, 1ul, 1_000ul);
+        Assert.Equal(attempt.AttemptId, item.LastAttemptId);
+    }
+
+    [Fact]
+    public async Task SubmitAnswer_UsesQuestionEvaluationMode()
+    {
+        var session = await StartSessionAsync();
+        var q = await _engine.GetNextQuestionAsync(_centerId, _studentId, session.SessionId, _utcNow, CancellationToken.None);
+        var entity = (await _dbContext.Questions.FindAsync(q!.QuestionId))!;
+        entity.AnswerEvaluationMode = QuestionAnswerEvaluationMode.NumericRational;
+        entity.CorrectAnswer = "1/2";
+        await _dbContext.SaveChangesAsync();
+
+        var feedback = await _engine.SubmitAnswerAsync(_centerId, _studentId, session.SessionId, new SubmitAdaptivePracticeAnswerRequest
+        {
+            ClientSubmissionId = Guid.NewGuid(),
+            SessionItemId = q.SessionItemId,
+            QuestionId = q.QuestionId,
+            FinalAnswer = "0.5",
+            TimeSpentSeconds = 10
+        }, _utcNow, CancellationToken.None);
+
+        Assert.True(feedback.IsCorrect);
+    }
+
+    [Fact]
+    public async Task EssayQuestions_AreNotSelected()
+    {
+        foreach (var question in _dbContext.Questions.Where(q => q.PrimaryTopicNodeId == _mainTopicId))
+            question.QuestionType = QuestionType.Essay;
+        await _dbContext.SaveChangesAsync();
+
+        var session = await StartSessionAsync();
+
+        Assert.Null(await _engine.GetNextQuestionAsync(_centerId, _studentId, session.SessionId, _utcNow, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task DiagnosticFallback_DoesNotUseOpenAssignmentQuestions()
+    {
+        AddAllMainTopicQuestionsToPublishedAssignment(_utcNow.AddDays(1));
+        var session = await StartSessionAsync();
+
+        Assert.Null(await _engine.GetNextQuestionAsync(_centerId, _studentId, session.SessionId, _utcNow, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task DiagnosticFallback_UsesQuestionsOfClosedAssignments()
+    {
+        AddAllMainTopicQuestionsToPublishedAssignment(_utcNow.AddDays(-1));
+        var session = await StartSessionAsync();
+
+        Assert.NotNull(await _engine.GetNextQuestionAsync(_centerId, _studentId, session.SessionId, _utcNow, CancellationToken.None));
+    }
+
     [Fact]
     public async Task ProtectedQuestions_InPublishedAssignments_AreNotSelected()
     {
@@ -542,15 +888,5 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
 
     private sealed class AdaptivePracticeTestDbContext(
         DbContextOptions<EduTwinDbContext> options, TenantContext tenantContext)
-        : EduTwinDbContext(options, tenantContext)
-    {
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            base.OnModelCreating(modelBuilder);
-            // MySQL accepts the engine's explicit unsigned IDs. InMemory's auto-ID
-            // generator converts them to Int64 and can overflow before the test runs.
-            modelBuilder.Entity<EduTwin.DAL.AssessmentAndReasoning.Attempt>()
-                .Property(attempt => attempt.AttemptId).ValueGeneratedNever();
-        }
-    }
+        : EduTwinDbContext(options, tenantContext);
 }

@@ -19,11 +19,11 @@ public class CreateSubjectRequestValidationTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void InvalidSubjectCode_ReturnsValidationFailed(string? code)
+    public void MissingSubjectCode_IsAllowedBecauseTheServerGeneratesIt(string? code)
     {
-        var request = new CreateSubjectRequest { SubjectCode = code!, SubjectName = "Valid" };
+        var request = new CreateSubjectRequest { SubjectCode = code, SubjectName = "Valid" };
         var results = ValidateModel(request);
-        Assert.NotEmpty(results);
+        Assert.Empty(results);
     }
 
     [Fact]

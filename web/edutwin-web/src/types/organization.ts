@@ -135,7 +135,7 @@ export interface SubjectResponse {
 }
 
 export interface CreateSubjectRequest {
-  subjectCode: string;
+  subjectCode?: string;
   subjectName: string;
   description?: string | null;
 }

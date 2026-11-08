@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using EduTwin.API.AssessmentAndReasoning.AI;
 using EduTwin.BLL.IdentityAndTenancy;
@@ -17,7 +18,8 @@ namespace EduTwin.API.Controllers;
 [Authorize(Policy = AuthorizationPolicies.StudentOnly)]
 public sealed class HandwritingTranscriptionController(
     HandwritingTranscriptionService transcriptionService,
-    TimeProvider timeProvider) : ControllerBase
+    TimeProvider timeProvider,
+    ILogger<HandwritingTranscriptionController> logger) : ControllerBase
 {
     public sealed record TranscribeHandwritingRequest(string? ImageBase64);
 
@@ -26,6 +28,7 @@ public sealed class HandwritingTranscriptionController(
     public sealed record TranscribeHandwritingResponse(TranscribeHandwritingData Data, MetaDto Meta);
 
     [HttpPost("handwriting/transcribe")]
+    [Authorize(Policy = "learning.attempts.submit")]
     [ProducesResponseType(typeof(TranscribeHandwritingResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status502BadGateway)]
@@ -67,13 +70,14 @@ public sealed class HandwritingTranscriptionController(
         }
         catch (GeminiAdapterException ex)
         {
+            logger.LogWarning(ex, "Handwriting transcription failed with {ErrorCode}", ex.ErrorCode);
             return StatusCode(
                 StatusCodes.Status502BadGateway,
                 CreateProblemDetails(
                     StatusCodes.Status502BadGateway,
                     "https://edutwin.local/problems/bad-gateway",
                     "Không thể nhận dạng chữ viết",
-                    "Hệ thống AI không phản hồi. Hãy thử lại, hoặc gõ trực tiếp vào ô lập luận.",
+                    "Hệ thống AI không phản hồi. Hãy thử lại, hoặc gõ trực tiếp vào ô bài làm.",
                     traceId,
                     ex.ErrorCode));
         }

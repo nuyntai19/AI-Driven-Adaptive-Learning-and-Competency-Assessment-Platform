@@ -54,6 +54,19 @@ public class AcademicScopeTests
         Assert.Null(await new StudentAcademicScopeReader(db).ReadAsync(CenterId,StudentId,SubjectId,Guid.NewGuid(),false,default));
     }
     [Fact]
+    public async Task StudentTwin_ListsOnlyTopicsOfTheClassInView()
+    {
+        await using var db=NewDb(); await Seed(db);
+        var inScope=await db.KnowledgeNodes.SingleAsync(n=>n.NodeId==1);
+        db.KnowledgeNodes.Add(new KnowledgeNode {CenterId=CenterId,SubjectId=SubjectId,NodeId=2,NodeCode="Two",NodeName="Grade 11 topic",NodeType=inScope.NodeType,IsActive=true,CreatedAt=Now,UpdatedAt=Now});
+        await db.SaveChangesAsync();
+        var tenant=new Mock<EduTwin.BLL.IdentityAndTenancy.ITenantContext>();
+        tenant.Setup(t=>t.IsResolved).Returns(true);tenant.Setup(t=>t.CenterId).Returns(CenterId);tenant.Setup(t=>t.UserId).Returns(StudentId);
+        var result=await new EduTwin.BLL.DigitalTwin.GetStudentTwinUseCase(db,tenant.Object).ExecuteAsync(SubjectId,null,false,default);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(["1"],result.Data!.Topics.Select(t=>t.TopicNodeId));
+    }
+    [Fact]
     public async Task HistoryScope_WithOnlyCurrentClasses_IsEmpty_AndRejectsCurrentClassSelection()
     {
         await using var db=NewDb(); var ids=await Seed(db);

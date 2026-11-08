@@ -862,7 +862,7 @@ public sealed class RecommendationsController : ControllerBase
     [Authorize(Policy = "recommendations.student.read_own")]
     [V4LearningExceptionFilter]
     [ProducesResponseType(typeof(LearningAgendaDto), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetLearningAgenda([FromQuery] Guid subjectId, [FromQuery] uint availableMinutes = 15, CancellationToken cancellationToken = default, [FromQuery] Guid? classId = null)
+    public async Task<IActionResult> GetLearningAgenda([FromQuery] Guid subjectId, [FromQuery] uint availableMinutes = 0, CancellationToken cancellationToken = default, [FromQuery] Guid? classId = null)
     {
         var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
         if (_v4Planner is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)

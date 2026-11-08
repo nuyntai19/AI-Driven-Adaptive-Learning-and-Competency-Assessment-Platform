@@ -8,7 +8,7 @@ export function isLikelyProse(token: string): boolean {
   if (!trimmed) return true;
 
   // If it has standard LaTeX commands like \frac, \sqrt, \alpha, etc., it's definitely math
-  if (/\\(frac|sqrt|sum|int|prod|pm|times|div|vec|mathbf|alpha|beta|gamma|theta|pi|le|ge|ne|neq|approx|left|right|cdot)\b/.test(trimmed)) {
+  if (/\\(frac|sqrt|sum|int|prod|pm|times|div|vec|mathbf|alpha|beta|gamma|theta|pi|le|ge|ne|neq|approx|left|right|cdot)(?![a-zA-Z])/.test(trimmed)) {
     return false;
   }
 
@@ -125,7 +125,7 @@ export function isPureMathString(str: string): boolean {
     return false;
   }
 
-  if (/^\\(frac|sqrt|int|sum|prod|lim|vec|alpha|beta|gamma|theta|Delta|begin|left|mathbf|text|displaystyle)\b|^\$|\\\[|\\\(|^(?:[a-zA-Z]\s*=\s*)?R\s*\\\s*\{/.test(s)) return true;
+  if (/^\\(frac|sqrt|int|sum|prod|lim|vec|alpha|beta|gamma|theta|Delta|begin|left|mathbf|text|displaystyle)(?![a-zA-Z])|^\$|\\\[|\\\(|^(?:[a-zA-Z]\s*=\s*)?R\s*\\\s*\{/.test(s)) return true;
   if (/^[-+]?\d+(\.\d+)?$/.test(s)) return true;
   if (/^[[()]\s*[-+]?(?:\d+|vô cùng|\+vô cùng|-vô cùng|\\infty|\+\\infty|-\\infty)\s*[;,]\s*[-+]?(?:\d+|vô cùng|\+vô cùng|-vô cùng|\\infty|\+\\infty|-\\infty)\s*[\])]$/.test(s)) return true;
   if (/^(?:[A-Z]\s*)?\(\s*[-+]?\d+(?:\.\d+)?\s*,\s*[-+]?\d+(?:\.\d+)?\s*\)$/.test(s)) return true;
@@ -176,8 +176,10 @@ export interface TokenPart {
 /**
  * Tokenizes plain natural text and identifies math expressions embedded within it.
  */
-export function tokenizePlainText(text: string): TokenPart[] {
-  if (!text) return [];
+export function tokenizePlainText(rawText: string): TokenPart[] {
+  if (!rawText) return [];
+  // "x² - 5x + 6 = 0" is one expression; the Unicode digit must not split it.
+  const text = rawText.replace(/([A-Za-z0-9)])([²³])/g, (_, base: string, power: string) => `${base}^${power === "²" ? 2 : 3}`);
 
   if (isPureMathString(text)) {
     const { latex } = normalizeMathExpression(text);

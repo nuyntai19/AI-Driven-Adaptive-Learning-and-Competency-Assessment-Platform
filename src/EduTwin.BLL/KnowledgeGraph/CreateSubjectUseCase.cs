@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -47,7 +48,7 @@ public class CreateSubjectUseCase : ICreateSubjectUseCase
         if (_tenantContext.Role != nameof(UserRole.Teacher) && _tenantContext.Role != nameof(UserRole.CenterManager))
             return CreateSubjectResult.Failure(ErrorCodes.ResourceNotFound);
 
-        if (string.IsNullOrWhiteSpace(request.SubjectCode) || request.SubjectCode.Length > 32)
+        if (request.SubjectCode?.Length > 32)
             return CreateSubjectResult.Failure(ErrorCodes.ValidationFailed);
 
         if (string.IsNullOrWhiteSpace(request.SubjectName) || request.SubjectName.Length > 100)
@@ -56,7 +57,6 @@ public class CreateSubjectUseCase : ICreateSubjectUseCase
         if (request.Description?.Length > 500)
             return CreateSubjectResult.Failure(ErrorCodes.ValidationFailed);
 
-        var trimmedCode = request.SubjectCode.Trim();
         var trimmedName = request.SubjectName.Trim();
         var trimmedDesc = request.Description?.Trim();
         if (string.IsNullOrWhiteSpace(trimmedDesc)) trimmedDesc = null;
@@ -67,6 +67,17 @@ public class CreateSubjectUseCase : ICreateSubjectUseCase
 
         if (center == null || center.Status != EduTwin.Contracts.Organization.CenterStatus.Active || center.IsDeleted)
             return CreateSubjectResult.Failure(ErrorCodes.ResourceNotFound);
+
+        var trimmedCode = request.SubjectCode?.Trim();
+        if (string.IsNullOrEmpty(trimmedCode))
+        {
+            var baseCode = SubjectCodeGenerator.BaseCode(trimmedName);
+            var takenCodes = await _dbContext.Subjects.IgnoreQueryFilters()
+                .Where(s => s.CenterId == _tenantContext.CenterId && s.SubjectCode.StartsWith(baseCode))
+                .Select(s => s.SubjectCode)
+                .ToListAsync(cancellationToken);
+            trimmedCode = SubjectCodeGenerator.FirstFree(baseCode, takenCodes);
+        }
 
         var exists = await _dbContext.Subjects
             .AnyAsync(s => s.CenterId == _tenantContext.CenterId && s.SubjectCode == trimmedCode, cancellationToken);

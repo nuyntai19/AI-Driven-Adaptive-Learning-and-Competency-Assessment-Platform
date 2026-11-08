@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using EduTwin.BLL.AssessmentAndReasoning.AI;
 using EduTwin.Contracts.CurriculumAndQuestions;
 
@@ -33,7 +34,27 @@ public static class ReasoningEvidencePolicy
 
     public static bool HasEvidence(string? reasoning, bool hasStudentImage,
         QuestionType questionType = QuestionType.ShortAnswer, string? finalAnswer = null) =>
-        hasStudentImage || HasText(reasoning) || (questionType == QuestionType.Essay && HasText(finalAnswer));
+        hasStudentImage || (HasText(reasoning) && !RestatesAnswer(reasoning!, finalAnswer))
+        || (questionType == QuestionType.Essay && HasText(finalAnswer));
+
+    /// <summary>
+    /// One work box feeds both fields, so a student who writes only the result
+    /// submits it as answer and as reasoning; that shows no method. "x = 7"
+    /// restates 7, while "2x + 1 = 7" has an expression on the left and does not.
+    /// </summary>
+    private static bool RestatesAnswer(string reasoning, string? finalAnswer) =>
+        !string.IsNullOrWhiteSpace(finalAnswer)
+        && string.Equals(CompactAnswer(reasoning), CompactAnswer(finalAnswer), StringComparison.OrdinalIgnoreCase);
+
+    private static string CompactAnswer(string value)
+    {
+        var compact = string.Concat(value.Where(c => c != '$' && !char.IsWhiteSpace(c)));
+        return Regex.Replace(compact, @"^[A-Za-z]\w?=", "", RegexOptions.CultureInvariant);
+    }
+
+    /// <summary>The provider's way of saying the text gave nothing to assess (see the prompt's off-topic rule).</summary>
+    public static bool ProviderFoundNoMethod(AnalyzeReasoningResponse response) =>
+        response is { ReasoningVerdict: "Uncertain", ReasoningQuality: 0, MethodDetected: null };
 
     public static bool HasEvidence(AnalyzeReasoningRequest request) => HasEvidence(
         request.StudentSubmission.ReasoningText, request.StudentSubmission.ImageParts.Count > 0,
