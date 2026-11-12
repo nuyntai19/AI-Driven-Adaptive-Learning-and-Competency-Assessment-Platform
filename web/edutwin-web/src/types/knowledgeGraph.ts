@@ -144,6 +144,9 @@ export interface UpdateKnowledgeNodeRequest {
   graphVersionId?: string;
   parentNodeId?: string | null;
   nodeName: string;
+  /** Omit to keep the current level/code. */
+  nodeType?: KnowledgeNodeType;
+  nodeCode?: string;
   description?: string | null;
   orderIndex: number;
   examImportance: number;

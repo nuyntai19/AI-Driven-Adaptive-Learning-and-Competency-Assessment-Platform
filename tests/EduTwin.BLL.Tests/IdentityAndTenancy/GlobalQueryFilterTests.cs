@@ -257,6 +257,8 @@ public class GlobalQueryFilterTests
             // Reads codes only, with an explicit CenterId + SubjectId filter: soft-deleted codes must be
             // counted so a suggested code never restores a deleted node through CreateKnowledgeNodeUseCase.
             "src/EduTwin.BLL/KnowledgeGraph/SuggestKnowledgeNodeCodeUseCase.cs",
+            // Code uniqueness check only (center + subject explicit), counting soft-deleted codes like create does.
+            "src/EduTwin.BLL/KnowledgeGraph/UpdateKnowledgeNodeUseCase.cs",
             // Explicit sender/recipient relay policy; own-message aggregate receipts only.
             "src/EduTwin.BLL/Notifications/NotificationAudiencePolicy.cs",
             "src/EduTwin.BLL/Notifications/NotificationManualService.cs",

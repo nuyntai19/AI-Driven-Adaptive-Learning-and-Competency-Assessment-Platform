@@ -186,6 +186,28 @@ public class DeleteKnowledgeNodeUseCase : IDeleteKnowledgeNodeUseCase
         }
 
         var now = _timeProvider.GetUtcNow().UtcDateTime;
+
+        // A deleted topic cannot stay selected in a Draft framework: Draft validation requires active,
+        // non-deleted nodes and the editor no longer lists the topic, so the draft could not be saved.
+        // Published/archived frameworks never reach this point (frozen guard above). Touched drafts are
+        // marked modified, so SaveChanges gives them a new RowVersion and open editors reload instead of
+        // re-saving the stale selection.
+        var draftMappings = await (from mapping in _context.KnowledgeNodeGrades
+            join version in _context.KnowledgeGraphVersions on new { mapping.CenterId, mapping.GraphVersionId } equals new { version.CenterId, version.GraphVersionId }
+            where mapping.CenterId == tenantContext.CenterId && version.Status == "Draft" &&
+                (mapping.NodeId == node.NodeId || mapping.ParentNodeId == node.NodeId)
+            select new { mapping, version }).ToListAsync(cancellationToken);
+        foreach (var item in draftMappings)
+        {
+            if (item.mapping.NodeId == node.NodeId) _context.KnowledgeNodeGrades.Remove(item.mapping);
+            else item.mapping.ParentNodeId = null;
+        }
+        foreach (var version in draftMappings.Select(item => item.version).DistinctBy(v => v.GraphVersionId))
+        {
+            version.UpdatedAt = now;
+            version.UpdatedBy = tenantContext.UserId;
+        }
+
         node.IsDeleted = true;
         node.DeletedAt = now;
         node.DeletedBy = tenantContext.UserId;

@@ -20,7 +20,7 @@ import { permissions } from "../../auth/permissions";
 import { mapSafeOperationalError, extractProblemDetails } from "../../utils/problemDetails";
 import { academicLifecycleError } from "../../utils/academicLifecycleError";
 import { KnowledgeGraphCanvas } from "../../components/teacher/KnowledgeGraphCanvas";
-import { KnowledgeVersionPanel } from "../../components/teacher/KnowledgeVersionPanel";
+import { KnowledgeVersionPanel, type DraftIncludeRequest } from "../../components/teacher/KnowledgeVersionPanel";
 import { curriculumApi } from "../../api/curriculumApi";
 import { graphOccurrences, knowledgeKeys, knowledgeScopeSearch, readKnowledgeScope } from "../../utils/knowledgeScope";
 import { sameSubject, topicQuickActionSearch } from "../../utils/knowledgeTopicContext";
@@ -148,6 +148,8 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   // Modals state
   const [isAddNodeOpen, setIsAddNodeOpen] = useState(false);
   const [isAddEdgeOpen, setIsAddEdgeOpen] = useState(false);
+  /** Topic/relation created here that the open Draft panel should tick and scroll to. */
+  const [draftInclude, setDraftInclude] = useState<DraftIncludeRequest | null>(null);
   const [deletingNode, setDeletingNode] = useState<KnowledgeGraphNodeDto | null>(null);
   const [deletingEdge, setDeletingEdge] = useState<KnowledgeGraphEdgeDto | null>(null);
 
@@ -273,6 +275,16 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   const canonicalNodes = useMemo(() => [...new Map(nodes.map(node => [node.canonicalNodeId || node.nodeId, node])).values()], [nodes]);
   const edgeAuthoringTargets = canonicalNodes.map(node => ({ ...node, nodeId: node.canonicalNodeId || node.nodeId }));
   const edgeAuthoringSources = edgeAuthoringTargets;
+  const canOpenAddEdge = edgeAuthoringSources.length >= 2 && edgeAuthoringTargets.length >= 1;
+  const addEdgeBlockedReason = edgeAuthoringTargets.length < 1 ? "Thêm chủ đề vào bản Draft trước khi tạo liên kết." :
+    edgeAuthoringSources.length < 2 ? "Cần ít nhất hai chủ đề để tạo liên kết." : undefined;
+  const openAddEdge = () => {
+    const target = edgeAuthoringTargets[0]?.nodeId || "";
+    setEdgeTargetId(target);
+    setEdgeSourceId(edgeAuthoringSources.find(n => n.nodeId !== target)?.nodeId || "");
+    setIsAddEdgeOpen(true);
+  };
+  const jumpTo = (id: string) => document.getElementById(id)?.scrollIntoView({ block: "start", behavior: "smooth" });
 
   const inactiveNodesCount = useMemo(() => nodes.filter((n) => !n.isActive).length, [nodes]);
 
@@ -390,11 +402,16 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
 
   const createNodeMutation = useMutation({
     mutationFn: (req: CreateKnowledgeNodeRequest) => knowledgeGraphApi.createNode(req),
-    onSuccess: async () => {
+    onSuccess: async (created) => {
       await invalidateGraph();
       setIsAddNodeOpen(false);
       resetNodeForm();
-      setFeedbackMsg({ type: "success", text: "Đã tạo chủ đề. Chọn chủ đề vừa tạo trong phiên bản Draft bên dưới rồi lưu cấu trúc nháp." });
+      if (draftAuthoring) {
+        setDraftInclude({ kind: "node", id: created.nodeId, nonce: Date.now() });
+        setFeedbackMsg({ type: "success", text: `Đã tạo chủ đề ${created.nodeCode} và tích chọn vào bản nháp. Bấm “Lưu cấu trúc nháp” để ghi.` });
+      } else {
+        setFeedbackMsg({ type: "success", text: "Đã tạo chủ đề. Chọn chủ đề vừa tạo trong phiên bản Draft bên dưới rồi lưu cấu trúc nháp." });
+      }
     },
     onError: async (err: any, req) => {
       const details = extractProblemDetails(err);
@@ -468,10 +485,15 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
 
   const createEdgeMutation = useMutation({
     mutationFn: (req: CreateKnowledgeEdgeRequest) => knowledgeGraphApi.createEdge(req),
-    onSuccess: async () => {
+    onSuccess: async (created) => {
       await invalidateGraph();
       setIsAddEdgeOpen(false);
-      setFeedbackMsg({ type: "success", text: "Đã tạo liên kết. Chọn liên kết vừa tạo trong phiên bản Draft bên dưới rồi lưu cấu trúc nháp." });
+      if (draftAuthoring) {
+        setDraftInclude({ kind: "edge", id: created.edgeId, relationType: created.relationType, weight: created.weight, nonce: Date.now() });
+        setFeedbackMsg({ type: "success", text: "Đã tạo liên kết và tích chọn vào bản nháp. Bấm “Lưu cấu trúc nháp” để ghi." });
+      } else {
+        setFeedbackMsg({ type: "success", text: "Đã tạo liên kết. Chọn liên kết vừa tạo trong phiên bản Draft bên dưới rồi lưu cấu trúc nháp." });
+      }
     },
     onError: (err: any) => {
       const details = extractProblemDetails(err);
@@ -699,15 +721,9 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
               <button
                 type="button"
                 className="th-secondary-button"
-                disabled={edgeAuthoringSources.length < 2 || edgeAuthoringTargets.length < 1}
-                title={edgeAuthoringTargets.length < 1 ? "Thêm chủ đề vào bản Draft trước khi tạo liên kết." :
-                  edgeAuthoringSources.length < 2 ? "Cần ít nhất hai chủ đề để tạo liên kết." : undefined}
-                onClick={() => {
-                  const target = edgeAuthoringTargets[0]?.nodeId || "";
-                  setEdgeTargetId(target);
-                  setEdgeSourceId(edgeAuthoringSources.find(n => n.nodeId !== target)?.nodeId || "");
-                  setIsAddEdgeOpen(true);
-                }}
+                disabled={!canOpenAddEdge}
+                title={addEdgeBlockedReason}
+                onClick={openAddEdge}
               >
                 + Thêm Liên Kết Tiên Quyết
               </button>
@@ -729,7 +745,29 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
         }
       />
 
-      {feedbackMsg && (
+      {/* While editing a Draft framework the main actions stay reachable at the top of the screen. */}
+      {draftAuthoring && selectedSubjectId && (
+        <div role="toolbar" aria-label="Thao tác soạn khung tri thức" data-testid="kg-draft-toolbar"
+          className="sticky top-0 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--th-border)] bg-[var(--th-surface-raised)] px-3 py-2 shadow-md">
+          <span className="mr-auto min-w-0 text-sm font-semibold" style={{ overflowWrap: "anywhere" }}>
+            Đang soạn: {authorVersion?.title || `Khung tri thức Khối ${scope.gradeLevel}`} · Bản nháp{versionDirty ? " · có thay đổi chưa lưu" : ""}
+          </span>
+          {canCreateNodes && <button type="button" className="th-primary-button" onClick={() => setIsAddNodeOpen(true)}>+ Chủ đề</button>}
+          {canCreateEdges && <button type="button" className="th-secondary-button" disabled={!canOpenAddEdge} title={addEdgeBlockedReason} onClick={openAddEdge}>+ Liên kết</button>}
+          <button type="button" className="th-secondary-button" onClick={() => jumpTo("kg-version-panel")}>Khung & chủ đề</button>
+          <button type="button" className="th-secondary-button" onClick={() => jumpTo("kg-graph-area")}>Đồ thị</button>
+          {feedbackMsg && (
+            <div className="flex basis-full items-start justify-between gap-2 text-sm font-semibold"
+              style={{ color: feedbackMsg.type === "success" ? "var(--th-primary)" : "var(--th-danger)" }}>
+              <span>{feedbackMsg.text}{feedbackMsg.traceId ? ` · Trace ID: ${feedbackMsg.traceId}` : ""}</span>
+              <button type="button" aria-label="Đóng thông báo" onClick={() => setFeedbackMsg(null)}
+                style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontWeight: "bold" }}>✕</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {feedbackMsg && !(draftAuthoring && selectedSubjectId) && (
         <div
           style={{
             padding: "12px 16px",
@@ -953,6 +991,10 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       {scope.graphVersionId && scope.gradeLevel && !scope.classId && !scope.curriculumId && <KnowledgeVersionPanel key={`${selectedSubjectId}:${scope.gradeLevel ?? ""}:${scope.graphVersionId ?? ""}`} subjectId={selectedSubjectId} gradeLevel={scope.gradeLevel}
         versionId={scope.graphVersionId} canEdit={hasPermission(permissions.nodesUpdate) && hasPermission(permissions.edgesUpdate)}
         onDirtyChange={setVersionDirty}
+        subjectCode={nodeCodeSubject?.subjectCode} subjectName={nodeCodeSubject?.subjectName}
+        onAddTopic={canCreateNodes ? () => setIsAddNodeOpen(true) : undefined}
+        onAddRelation={canCreateEdges && canOpenAddEdge ? openAddEdge : undefined}
+        includeRequest={draftInclude}
         onSelect={(id, grade) => updateScope({ gradeLevel: grade, graphVersionId: id || undefined })} />}
       {graphData && nodes.length === 0 && <div role="status" className="th-surface rounded-xl p-5 my-4">{graphData.resolvedScope?.message || graphData.resolvedScope?.emptyReason || "Phạm vi này chưa có khung đã duyệt hoặc giáo trình đang áp dụng. Chọn phạm vi khác hoặc chuẩn bị khung tri thức cho khối."}</div>}
       {!!graphData?.externalPrerequisites?.length && <details className="th-surface rounded-xl p-4 my-4"><summary>Tiên quyết ngoài phạm vi ({graphData.externalPrerequisites.length})</summary><ul className="text-sm mt-2 space-y-1">{graphData.externalPrerequisites.map((e, index) => <li key={`${e.edgeId}-${index}`}>{e.sourceNodeName || `Điểm tri thức #${e.sourceNodeId}`}{e.sourceGradeLevel ? ` (Khối ${e.sourceGradeLevel})` : ""} → {graphData.nodes.find(n => n.nodeId === e.targetNodeId)?.nodeName || `#${e.targetNodeId}`}{e.gradeLevel ? ` · Khối đích ${e.gradeLevel}` : ""} · Chỉ là ngữ cảnh tiên quyết, không tính vào chủ đề của giáo trình.</li>)}</ul></details>}
@@ -973,7 +1015,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
           onRetry={() => refetchGraph()}
         />
       ) : (
-        <div className="grid grid-cols-1 min-w-0 gap-5 items-start 2xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div id="kg-graph-area" className="grid grid-cols-1 min-w-0 gap-5 items-start scroll-mt-24 2xl:grid-cols-[minmax(0,1fr)_340px]">
           {/* Main Visualizer or Table Area */}
           <div
             className="th-surface min-w-0"

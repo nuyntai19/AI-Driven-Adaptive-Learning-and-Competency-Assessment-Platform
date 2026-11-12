@@ -82,6 +82,23 @@ public class UpdateKnowledgeNodeUseCase : IUpdateKnowledgeNodeUseCase
         var trimmedDesc = request.Description?.Trim();
         if (string.IsNullOrWhiteSpace(trimmedDesc)) trimmedDesc = null;
 
+        NodeType? requestedType = null;
+        if (request.NodeType != null)
+        {
+            if (!Enum.TryParse<NodeType>(request.NodeType, ignoreCase: false, out var parsedType) || !Enum.IsDefined(typeof(NodeType), parsedType) ||
+                !string.Equals(request.NodeType, parsedType.ToString(), StringComparison.Ordinal))
+                return UpdateKnowledgeNodeResult.Failure(ErrorCodes.ValidationFailed);
+            requestedType = parsedType;
+        }
+
+        string? requestedCode = null;
+        if (request.NodeCode != null)
+        {
+            requestedCode = request.NodeCode.Trim();
+            if (requestedCode.Length == 0 || requestedCode.Length > 64)
+                return UpdateKnowledgeNodeResult.Failure(ErrorCodes.ValidationFailed);
+        }
+
         var center = await _dbContext.Centers
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.CenterId == _tenantContext.CenterId, cancellationToken);
@@ -123,7 +140,21 @@ public class UpdateKnowledgeNodeUseCase : IUpdateKnowledgeNodeUseCase
         if (_cycleDetector.HasCycle(parsedNodeId, parsedParentNodeId, parentMap))
             return UpdateKnowledgeNodeResult.Failure(ErrorCodes.DagCycleDetected);
 
-        if (targetNode.ParentNodeId != parsedParentNodeId || targetNode.NodeName != trimmedName || targetNode.Description != trimmedDesc)
+        var newType = requestedType ?? targetNode.NodeType;
+        var newCode = requestedCode ?? targetNode.NodeCode;
+        var codeChanged = !string.Equals(newCode, targetNode.NodeCode, StringComparison.Ordinal);
+        if (codeChanged)
+        {
+            // Unique per center + subject including soft-deleted nodes: reusing a deleted node's code
+            // would make a later create restore that node instead of creating a new one.
+            var taken = await _dbContext.KnowledgeNodes.IgnoreQueryFilters().AsNoTracking()
+                .AnyAsync(n => n.CenterId == targetNode.CenterId && n.SubjectId == targetNode.SubjectId &&
+                    n.NodeId != targetNode.NodeId && n.NodeCode == newCode, cancellationToken);
+            if (taken) return UpdateKnowledgeNodeResult.Failure(ErrorCodes.DuplicateResource);
+        }
+
+        if (targetNode.ParentNodeId != parsedParentNodeId || targetNode.NodeName != trimmedName || targetNode.Description != trimmedDesc ||
+            codeChanged || newType != targetNode.NodeType)
         {
             var blocked = await AcademicDependencyGuards.FrozenNodeMessageAsync(_dbContext, _tenantContext.CenterId.Value, parsedNodeId, cancellationToken);
             if (blocked is not null) return UpdateKnowledgeNodeResult.Failure(ErrorCodes.InvalidStateTransition, blocked);
@@ -139,10 +170,12 @@ public class UpdateKnowledgeNodeUseCase : IUpdateKnowledgeNodeUseCase
             var blocked = await AcademicDependencyGuards.DeactivationMessageAsync(_dbContext, _tenantContext.CenterId.Value, parsedNodeId, cancellationToken);
             if (blocked is not null) return UpdateKnowledgeNodeResult.Failure(ErrorCodes.InvalidStateTransition, blocked);
         }
-        var before = new { targetNode.ParentNodeId, targetNode.NodeName, targetNode.Description, targetNode.OrderIndex,
+        var before = new { targetNode.ParentNodeId, targetNode.NodeName, targetNode.NodeType, targetNode.NodeCode, targetNode.Description, targetNode.OrderIndex,
             targetNode.ExamImportance, targetNode.EstimatedLearningMinutes, targetNode.IsActive, targetNode.RowVersion };
         targetNode.ParentNodeId = parsedParentNodeId;
         targetNode.NodeName = trimmedName;
+        targetNode.NodeType = newType;
+        targetNode.NodeCode = newCode;
         targetNode.Description = trimmedDesc;
         targetNode.OrderIndex = request.OrderIndex;
         targetNode.ExamImportance = request.ExamImportance.Value;
@@ -155,7 +188,7 @@ public class UpdateKnowledgeNodeUseCase : IUpdateKnowledgeNodeUseCase
         _dbContext.Entry(targetNode).Property(x => x.RowVersion).OriginalValue = parsedRowVersion;
         AcademicDependencyGuards.Audit(_dbContext, _tenantContext.CenterId.Value, _tenantContext.UserId.Value,
             "KnowledgeNodeUpdated", "KnowledgeNode", nodeId, before,
-            new { targetNode.ParentNodeId, targetNode.NodeName, targetNode.Description, targetNode.OrderIndex,
+            new { targetNode.ParentNodeId, targetNode.NodeName, targetNode.NodeType, targetNode.NodeCode, targetNode.Description, targetNode.OrderIndex,
                 targetNode.ExamImportance, targetNode.EstimatedLearningMinutes, targetNode.IsActive, targetNode.RowVersion },
             targetNode.UpdatedAt, "Cập nhật điểm tri thức.");
 

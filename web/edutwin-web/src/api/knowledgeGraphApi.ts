@@ -63,6 +63,8 @@ const updateNode = async (
   const payload = {
     parentNodeId: request.parentNodeId?.trim() || null,
     nodeName: request.nodeName.trim(),
+    ...(request.nodeType ? { nodeType: request.nodeType } : {}),
+    ...(request.nodeCode ? { nodeCode: request.nodeCode.trim() } : {}),
     description: request.description?.trim() || null,
     orderIndex: request.orderIndex,
     examImportance: request.examImportance,

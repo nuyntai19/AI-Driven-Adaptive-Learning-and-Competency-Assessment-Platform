@@ -296,6 +296,23 @@ public class KnowledgeNodesController : ControllerBase
             });
         }
 
+        if (result.ErrorCode == ErrorCodes.DuplicateResource)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.8",
+                Title = "Mã điểm tri thức đã tồn tại",
+                Status = 409,
+                Detail = "Mã này đã được dùng trong môn (kể cả điểm tri thức đã xóa). Hãy dùng mã khác.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.DuplicateResource
+                }
+            });
+        }
+
         if (result.ErrorCode == ErrorCodes.ConcurrencyConflict || result.ErrorCode == ErrorCodes.DagCycleDetected)
         {
             return Conflict(new ProblemDetails

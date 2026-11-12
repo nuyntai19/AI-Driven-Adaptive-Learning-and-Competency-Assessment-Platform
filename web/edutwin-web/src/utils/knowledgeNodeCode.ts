@@ -108,6 +108,39 @@ export function formatNodeCode(prefix: string, sequence: number): string {
   return `${prefix}_${String(sequence).padStart(2, "0")}`;
 }
 
+/** True when `code` is PREFIX_<digits> for this exact prefix. */
+export function codeMatchesPrefix(code: string, prefix: string): boolean {
+  const upper = code.trim().toUpperCase();
+  return upper.startsWith(`${prefix}_`) && /^\d{2,}$/.test(upper.slice(prefix.length + 1));
+}
+
+/**
+ * Code of an edited topic.
+ *   follow   (default) keep the code until the name or level changes, then re-derive it
+ *   standard re-derive now (e.g. to replace a legacy code)
+ *   keep     keep the current code whatever changes
+ *   manual   the teacher typed it
+ * Re-deriving keeps the current sequence when the prefix is unchanged; otherwise the server's
+ * suggestion for the new prefix is needed (`pending` until it arrives).
+ */
+export type EditCodeMode = "follow" | "standard" | "keep" | "manual";
+
+export function resolveEditedNodeCode(input: {
+  currentCode: string;
+  prefix: string | null;
+  mode: EditCodeMode;
+  manualCode?: string;
+  nameOrTypeChanged: boolean;
+  suggestion?: { prefix: string; code: string } | null;
+}): { code: string | null; reason: "kept" | "sameSequence" | "suggested" | "manual" | "pending" } {
+  const { currentCode, prefix, mode } = input;
+  if (mode === "manual") return { code: (input.manualCode ?? "").trim().toUpperCase(), reason: "manual" };
+  if (mode === "keep" || (mode === "follow" && !input.nameOrTypeChanged) || !prefix) return { code: currentCode, reason: "kept" };
+  if (codeMatchesPrefix(currentCode, prefix)) return { code: currentCode.trim().toUpperCase(), reason: "sameSequence" };
+  if (input.suggestion?.prefix === prefix) return { code: input.suggestion.code, reason: "suggested" };
+  return { code: null, reason: "pending" };
+}
+
 export function isStandardNodeCode(code: string): boolean {
   return code.length <= maxNodeCodeLength && standardNodeCodePattern.test(code);
 }
