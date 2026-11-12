@@ -7,6 +7,7 @@ import { httpClient } from "../../api/httpClient";
 import { getTeacherStudentTwin } from "../../api/digitalTwinApi";
 import { useAuthStore } from "../../stores/authStore";
 import { legacyTeacherNotes } from "../../utils/teacherNotesStorage";
+import { isWeakTopic, twinPercent } from "../../utils/topicMastery";
 import { permissions } from "../../auth/permissions";
 import {
   TeacherPageHeader,
@@ -1091,7 +1092,7 @@ export function TeacherStudentManagementView() {
                 ) : (
                   <div className="space-y-4">
                     {/* Weak topics alert */}
-                    {studentTwinData.topics.some((t) => t.masteryPercentage < 0.6) && (
+                    {studentTwinData.topics.some((t) => isWeakTopic(t)) && (
                       <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start justify-between gap-3">
                         <div>
                           <p className="font-bold text-xs text-rose-700 dark:text-rose-300">
@@ -1101,7 +1102,7 @@ export function TeacherStudentManagementView() {
                             Học sinh đang gặp khó khăn ở các chuyên đề:{" "}
                             <strong>
                               {studentTwinData.topics
-                                .filter((t) => t.masteryPercentage < 0.6)
+                                .filter((t) => isWeakTopic(t))
                                 .map((t) => t.topicName)
                                 .join(", ")}
                             </strong>
@@ -1111,7 +1112,7 @@ export function TeacherStudentManagementView() {
                           <button
                             type="button"
                             onClick={() => {
-                              const weak = studentTwinData.topics.filter((t) => t.masteryPercentage < 0.6);
+                              const weak = studentTwinData.topics.filter((t) => isWeakTopic(t));
                               const weakTopicId = weak.length > 0 ? weak[0].topicNodeId : "";
                               navigate(
                                 `/giao-vien/bai-tap/tao-moi?studentIds=${selectedStudent.studentId}&subjectId=${activeSubjectId}${
@@ -1130,7 +1131,7 @@ export function TeacherStudentManagementView() {
                     {/* Topics Mastery List */}
                     <div className="space-y-2.5">
                       {studentTwinData.topics.map((topic) => {
-                        const pct = Math.round(topic.masteryPercentage * 100);
+                        const pct = twinPercent(topic.masteryPercentage);
                         return (
                           <div
                             key={topic.topicNodeId}
@@ -1138,12 +1139,12 @@ export function TeacherStudentManagementView() {
                           >
                             <div className="flex items-center justify-between text-xs">
                               <span className="font-semibold text-[var(--th-text)]">{topic.topicName}</span>
-                              <span className="font-mono font-bold text-[var(--th-text)]">{pct}%</span>
+                              <span className="font-mono font-bold text-[var(--th-text)]">{topic.evidenceCount > 0 ? `${pct}%` : "Chưa có dữ liệu"}</span>
                             </div>
                             <div className="h-2 rounded-full bg-[var(--th-surface-muted)] overflow-hidden">
                               <div
                                 className={`h-full rounded-full ${
-                                  pct >= 80 ? "bg-emerald-500" : pct >= 60 ? "bg-sky-500" : "bg-rose-500"
+                                  topic.evidenceCount <= 0 ? "bg-transparent" : pct >= 80 ? "bg-emerald-500" : pct >= 60 ? "bg-sky-500" : "bg-rose-500"
                                 }`}
                                 style={{ width: `${pct}%` }}
                               />

@@ -124,7 +124,7 @@ export const AuthorizationManagementPage = () => {
           </header>
 
           {notice && (
-            <div role="status" className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-400 shadow-sm">
+            <div role="status" data-notify="toast" data-notify-tone="success" className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-400 shadow-sm">
               <span className="text-lg">✓</span>
               <div className="flex-1 font-medium">{notice}</div>
               <button type="button" onClick={() => setNotice("")} className="text-emerald-400 hover:text-emerald-300 text-xs font-bold">Đóng</button>
@@ -132,7 +132,7 @@ export const AuthorizationManagementPage = () => {
           )}
 
           {failure && (
-            <div role="alert" className="flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-400 shadow-sm">
+            <div role="alert" data-notify="toast" className="flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-400 shadow-sm">
               <span className="text-lg">⚠</span>
               <div className="flex-1">
                 <p className="font-semibold">{failure.message}</p>

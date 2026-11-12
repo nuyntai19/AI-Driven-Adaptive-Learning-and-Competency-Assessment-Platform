@@ -195,6 +195,8 @@ interface TeacherSafeErrorPanelProps {
   fallback?: string;
   onRetry?: () => void;
   title?: string;
+  /** Result of a user action (save, delete…): shown as a bottom-right toast instead of a banner. */
+  notify?: boolean;
 }
 
 export function TeacherSafeErrorPanel({
@@ -202,12 +204,13 @@ export function TeacherSafeErrorPanel({
   fallback = "Không thể tải dữ liệu.",
   onRetry,
   title = "Có lỗi xảy ra",
+  notify = false,
 }: TeacherSafeErrorPanelProps) {
   const problem = typeof error === "string" ? { traceId: null } : extractProblemDetails(error);
   const message = typeof error === "string" ? error : mapSafeOperationalError(error, fallback);
 
   return (
-    <section role="alert" className="rounded-xl border-2 border-rose-600 bg-rose-50 p-6 space-y-3 text-rose-950 shadow-sm">
+    <section role="alert" data-notify={notify ? "toast" : undefined} className="rounded-xl border-2 border-rose-600 bg-rose-50 p-6 space-y-3 text-rose-950 shadow-sm">
       <h2 className="text-base font-bold text-rose-900">{title}</h2>
       <p className="text-xs font-medium text-rose-800">{message}</p>
       {problem.traceId && (

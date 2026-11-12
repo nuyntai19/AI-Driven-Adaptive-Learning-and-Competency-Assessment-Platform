@@ -495,6 +495,7 @@ export function TeacherQuestionEditorView() {
 
       {formError && (
         <TeacherSafeErrorPanel
+          notify
           error={formError.message}
           title="Không thể lưu câu hỏi"
         />

@@ -416,6 +416,8 @@ const CenterManagerSubjectListView: React.FC = () => {
           {feedback && feedback.type !== "conflict" && (
             <div
               id="global-success-message"
+              data-notify="toast"
+              data-notify-tone={feedback.type === "success" ? "success" : "error"}
               role="alert"
               className={`flex items-start justify-between rounded-xl border p-4 text-sm ${
                 feedback.type === "success"

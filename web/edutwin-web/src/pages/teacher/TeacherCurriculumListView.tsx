@@ -179,6 +179,8 @@ export const TeacherCurriculumListView: React.FC = () => {
 
       {actionError && (
         <div
+          role="alert"
+          data-notify="toast"
           style={{
             padding: "12px 16px",
             borderRadius: "8px",

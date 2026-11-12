@@ -147,6 +147,7 @@ export function TeacherAssignmentProgressView() {
 
       {actionError && (
         <TeacherSafeErrorPanel
+          notify
           error={actionError.message}
           title="Không thể thực hiện thao tác"
         />

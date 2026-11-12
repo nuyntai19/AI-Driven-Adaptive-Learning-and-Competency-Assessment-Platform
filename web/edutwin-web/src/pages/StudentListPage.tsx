@@ -482,6 +482,8 @@ const CenterManagerStudentListView: React.FC = () => {
           {feedback && feedback.type !== "conflict" && (
             <div
               id="student-feedback-alert"
+              data-notify="toast"
+              data-notify-tone={feedback.type === "success" ? "success" : "error"}
               role="alert"
               className={`flex items-start justify-between rounded-xl border p-4 text-sm ${
                 feedback.type === "success"
@@ -1406,6 +1408,8 @@ const LegacyStudentListPage: React.FC = () => {
         {feedback && (
           <div
             id="student-feedback-alert"
+            data-notify="toast"
+            data-notify-tone={feedback.type === "success" ? "success" : "error"}
             role="alert"
             className={`mb-6 rounded-md p-4 flex items-start justify-between ${
               feedback.type === "success"

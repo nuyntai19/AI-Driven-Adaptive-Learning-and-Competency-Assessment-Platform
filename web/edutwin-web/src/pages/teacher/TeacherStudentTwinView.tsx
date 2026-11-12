@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { averageMeasuredMastery, formatMasteryDelta, isWeakTopic, twinPercent } from "../../utils/topicMastery";
 import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -65,18 +66,15 @@ export const TeacherStudentTwinView: React.FC = () => {
   const topics = twinData?.topics ?? [];
   const behavior = twinData?.behavior;
 
-  const averageMastery = useMemo(() => {
-    if (topics.length === 0) return 0;
-    const total = topics.reduce((acc, curr) => acc + curr.masteryPercentage, 0);
-    return Math.round((total / topics.length) * 100);
-  }, [topics]);
+  // Mastery is stored 0–100; average only topics that have evidence (unmeasured ≠ 0%).
+  const averageMastery = useMemo(() => averageMeasuredMastery(topics), [topics]);
 
   const weakTopics = useMemo(() => {
-    return topics.filter((t) => t.masteryPercentage < 0.6);
+    return topics.filter((t) => isWeakTopic(t));
   }, [topics]);
 
   const strongTopics = useMemo(() => {
-    return topics.filter((t) => t.masteryPercentage >= 0.8);
+    return topics.filter((t) => t.evidenceCount > 0 && twinPercent(t.masteryPercentage) >= 80);
   }, [topics]);
 
   const studentName = studentDetail?.fullName || `Học sinh #${studentId?.slice(0, 8)}`;
@@ -138,8 +136,8 @@ export const TeacherStudentTwinView: React.FC = () => {
       <div className="th-stats-grid" style={{ marginBottom: "20px" }}>
         <TeacherMetricCard
           label="Năng Lực Tổng Thể (Mastery)"
-          value={`${averageMastery}%`}
-          color={averageMastery >= 75 ? "emerald" : averageMastery >= 50 ? "cyan" : "amber"}
+          value={averageMastery === null ? "Chưa có" : `${averageMastery}%`}
+          color={averageMastery === null ? "cyan" : averageMastery >= 75 ? "emerald" : averageMastery >= 50 ? "cyan" : "amber"}
           icon={
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
@@ -221,12 +219,17 @@ export const TeacherStudentTwinView: React.FC = () => {
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                   {topics.map((t) => {
-                    const percentage = Math.round(t.masteryPercentage * 100);
+                    const percentage = twinPercent(t.masteryPercentage);
                     let color = "var(--th-primary)";
                     let statusLabel = "Thành thạo";
                     let statusType: "success" | "warning" | "danger" | "info" = "success";
 
-                    if (percentage < 50) {
+                    if (t.evidenceCount <= 0) {
+                      // Unmeasured is not "weak at 0%": no evidence yet for this topic.
+                      color = "var(--th-text-muted)";
+                      statusLabel = "Chưa có dữ liệu";
+                      statusType = "info";
+                    } else if (percentage < 50) {
                       color = "var(--th-danger)";
                       statusLabel = "Yếu - Cần bổ trợ";
                       statusType = "danger";
@@ -355,7 +358,7 @@ export const TeacherStudentTwinView: React.FC = () => {
                                 color: isPositive ? "var(--th-primary)" : "var(--th-danger)",
                               }}
                             >
-                              {isPositive ? `+${Math.round(h.delta * 100)}%` : `${Math.round(h.delta * 100)}%`}
+                              {`${isPositive ? "+" : ""}${formatMasteryDelta(h.delta)}%`}
                             </span>
                           </div>
                           <p style={{ margin: "2px 0 4px 0", fontSize: "0.8rem", color: "var(--th-text-secondary)" }}>
@@ -397,12 +400,12 @@ export const TeacherStudentTwinView: React.FC = () => {
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "4px" }}>
                       <span style={{ color: "var(--th-text-secondary)" }}>Tỷ lệ bỏ qua câu hỏi (Skip rate):</span>
-                      <span style={{ fontWeight: 700, color: behavior.skipRate > 0.3 ? "var(--th-danger)" : "var(--th-text-primary)" }}>
-                        {Math.round(behavior.skipRate * 100)}%
+                      <span style={{ fontWeight: 700, color: twinPercent(behavior.skipRate) > 30 ? "var(--th-danger)" : "var(--th-text-primary)" }}>
+                        {twinPercent(behavior.skipRate)}%
                       </span>
                     </div>
                     <div style={{ width: "100%", height: "6px", backgroundColor: "rgba(0,0,0,0.06)", borderRadius: "3px", overflow: "hidden" }}>
-                      <div style={{ width: `${Math.min(100, Math.round(behavior.skipRate * 100))}%`, height: "100%", backgroundColor: behavior.skipRate > 0.3 ? "var(--th-danger)" : "var(--th-info)", borderRadius: "3px" }} />
+                      <div style={{ width: `${twinPercent(behavior.skipRate)}%`, height: "100%", backgroundColor: twinPercent(behavior.skipRate) > 30 ? "var(--th-danger)" : "var(--th-info)", borderRadius: "3px" }} />
                     </div>
                   </div>
 
@@ -410,11 +413,11 @@ export const TeacherStudentTwinView: React.FC = () => {
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "4px" }}>
                       <span style={{ color: "var(--th-text-secondary)" }}>Tần suất đổi đáp án:</span>
                       <span style={{ fontWeight: 700, color: "var(--th-text-primary)" }}>
-                        {Math.round(behavior.changeAnswerRate * 100)}%
+                        {twinPercent(behavior.changeAnswerRate)}%
                       </span>
                     </div>
                     <div style={{ width: "100%", height: "6px", backgroundColor: "rgba(0,0,0,0.06)", borderRadius: "3px", overflow: "hidden" }}>
-                      <div style={{ width: `${Math.min(100, Math.round(behavior.changeAnswerRate * 100))}%`, height: "100%", backgroundColor: "var(--th-warning)", borderRadius: "3px" }} />
+                      <div style={{ width: `${twinPercent(behavior.changeAnswerRate)}%`, height: "100%", backgroundColor: "var(--th-warning)", borderRadius: "3px" }} />
                     </div>
                   </div>
 

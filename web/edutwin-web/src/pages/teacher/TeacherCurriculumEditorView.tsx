@@ -417,6 +417,9 @@ export const TeacherCurriculumEditorView: React.FC = () => {
       {feedbackMsg && (
         <div
           id="curriculum-feedback-banner"
+          role={feedbackMsg.type === "success" ? "status" : "alert"}
+          data-notify="toast"
+          data-notify-tone={feedbackMsg.type === "success" ? "success" : "error"}
           style={{
             padding: "12px 16px",
             borderRadius: "8px",

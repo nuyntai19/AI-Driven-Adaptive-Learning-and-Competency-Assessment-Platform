@@ -292,6 +292,9 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   const addEdgeBlockedReason = edgeAuthoringTargets.length < 1 ? "Thêm chủ đề vào bản Draft trước khi tạo liên kết." :
     edgeAuthoringSources.length < 2 ? "Cần ít nhất hai chủ đề để tạo liên kết." : undefined;
   const openAddNode = () => { setFeedbackMsg(null); setIsAddNodeOpen(true); };
+  // Errors of a cancelled dialog belong to that dialog; do not turn them into a page toast.
+  const closeAddNode = () => { setIsAddNodeOpen(false); setFeedbackMsg(m => (m?.type === "error" ? null : m)); };
+  const closeAddEdge = () => { setIsAddEdgeOpen(false); setFeedbackMsg(m => (m?.type === "error" ? null : m)); };
   const openAddEdge = () => {
     setFeedbackMsg(null);
     const target = edgeAuthoringTargets[0]?.nodeId || "";
@@ -757,47 +760,15 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
           <button type="button" className="th-secondary-button" disabled={versionDirty}
             title={versionDirty ? "Lưu hoặc hủy cấu trúc nháp trước khi thoát." : "Về chế độ xem khung tri thức hiện hành của khối"}
             onClick={() => updateScope({ gradeLevel: scope.gradeLevel })}>Thoát chế độ soạn</button>
-          {feedbackMsg && (
-            <div className="flex basis-full items-start justify-between gap-2 text-sm font-semibold"
-              style={{ color: feedbackMsg.type === "success" ? "var(--th-primary)" : "var(--th-danger)" }}>
-              <span>{feedbackMsg.text}{feedbackMsg.traceId ? ` · Trace ID: ${feedbackMsg.traceId}` : ""}</span>
-              <button type="button" aria-label="Đóng thông báo" onClick={() => setFeedbackMsg(null)}
-                style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontWeight: "bold" }}>✕</button>
-            </div>
-          )}
         </div>
       )}
 
-      {feedbackMsg && !(frameworkMode && selectedSubjectId) && (
-        <div
-          style={{
-            padding: "12px 16px",
-            borderRadius: "8px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            backgroundColor: feedbackMsg.type === "success" ? "rgba(16, 185, 129, 0.12)" : "rgba(239, 68, 68, 0.12)",
-            border: `1px solid ${feedbackMsg.type === "success" ? "var(--th-primary)" : "var(--th-danger)"}`,
-            color: feedbackMsg.type === "success" ? "var(--th-primary)" : "var(--th-danger)",
-            fontSize: "0.85rem",
-            fontWeight: 600,
-          }}
-        >
-          <div>
-            <span>{feedbackMsg.text}</span>
-            {feedbackMsg.traceId && (
-              <div style={{ fontSize: "0.75rem", fontFamily: "monospace", opacity: 0.8, marginTop: "2px" }}>
-                Trace ID: {feedbackMsg.traceId}
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => setFeedbackMsg(null)}
-            style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontWeight: "bold" }}
-          >
-            ✕
-          </button>
+      {/* Page notification → bottom-right toast (AlertToastHost). While a create dialog is open its
+          errors are shown inside the dialog instead, so they are not duplicated here. */}
+      {feedbackMsg && !isAddNodeOpen && !isAddEdgeOpen && (
+        <div role={feedbackMsg.type === "success" ? "status" : "alert"} data-notify="toast" data-notify-tone={feedbackMsg.type === "success" ? "success" : "error"}>
+          {feedbackMsg.text}{feedbackMsg.traceId ? ` · Trace ID: ${feedbackMsg.traceId}` : ""}
+          <button type="button" data-notify-dismiss onClick={() => setFeedbackMsg(null)}>Đóng</button>
         </div>
       )}
 
@@ -1533,7 +1504,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       {/* Modal: Add Node */}
       <TeacherModal
         isOpen={isAddNodeOpen}
-        onClose={() => setIsAddNodeOpen(false)}
+        onClose={closeAddNode}
         title="Thêm Điểm Tri Thức Mới"
         maxWidth="520px"
       >
@@ -1687,7 +1658,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
             <button
               type="button"
               className="th-secondary-button"
-              onClick={() => setIsAddNodeOpen(false)}
+              onClick={closeAddNode}
             >
               Hủy
             </button>
@@ -1705,7 +1676,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       {/* Modal: Add Edge */}
       <TeacherModal
         isOpen={isAddEdgeOpen}
-        onClose={() => setIsAddEdgeOpen(false)}
+        onClose={closeAddEdge}
         title="Thiết Lập Liên Kết Tiên Quyết (Prerequisite Edge)"
         maxWidth="500px"
       >
@@ -1795,7 +1766,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
             <button
               type="button"
               className="th-secondary-button"
-              onClick={() => setIsAddEdgeOpen(false)}
+              onClick={closeAddEdge}
             >
               Hủy
             </button>

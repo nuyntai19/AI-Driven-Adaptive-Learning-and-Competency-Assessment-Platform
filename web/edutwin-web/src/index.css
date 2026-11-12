@@ -105,3 +105,9 @@ math-field[data-input-mode="text"]::part(menu-toggle),
     animation: none;
   }
 }
+
+/* Page notifications are shown in the bottom-right corner by AlertToastHost (with their buttons
+   proxied); the in-page element only carries the state, so it never pushes content or needs a scroll. */
+[data-notify="toast"] {
+  display: none !important;
+}

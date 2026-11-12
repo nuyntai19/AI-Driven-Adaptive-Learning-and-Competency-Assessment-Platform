@@ -695,6 +695,8 @@ const CenterManagerClassListView: React.FC = () => {
           {feedback && feedback.type !== "conflict" && (
             <div
               id="class-feedback-alert"
+              data-notify="toast"
+              data-notify-tone={feedback.type === "success" ? "success" : "error"}
               role="alert"
               className={`flex items-start justify-between rounded-xl border p-4 text-sm ${
                 feedback.type === "success"

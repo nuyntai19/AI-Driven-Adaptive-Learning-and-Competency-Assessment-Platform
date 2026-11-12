@@ -809,6 +809,7 @@ export function TeacherAssignmentEditorView() {
 
       {formError && (
         <TeacherSafeErrorPanel
+          notify
           error={formError.message}
           title="Không thể lưu cấu hình bài tập"
         />

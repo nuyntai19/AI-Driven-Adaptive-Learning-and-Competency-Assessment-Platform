@@ -155,13 +155,14 @@ export function TeacherAssignmentListView() {
 
       {/* Operational Feedback */}
       {actionSuccess && (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs font-semibold text-emerald-300 flex items-center justify-between">
+        <div role="status" data-notify="toast" data-notify-tone="success" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs font-semibold text-emerald-300 flex items-center justify-between">
           <span>{actionSuccess}</span>
           <button onClick={() => setActionSuccess(null)} className="text-emerald-400 hover:text-emerald-200">✕</button>
         </div>
       )}
       {actionError && (
         <TeacherSafeErrorPanel
+          notify
           error={actionError.message}
           title="Không thể thực hiện thao tác"
           onRetry={() => refetch()}
