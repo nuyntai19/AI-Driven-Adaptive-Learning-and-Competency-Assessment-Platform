@@ -101,6 +101,19 @@ test("receipt shows recorded duration and submission, without a running/expired 
   assert.equal(formatReviewDuration(3661), "01:01:01");
 });
 
+test("untimed legacy homework shows recorded question work across a month away", () => {
+  const attempt = { attemptId: "41", status: "NeedsTeacherReview" as const, finalAnswer: "7", reasoningText: "",
+    confidence: 80, timeSpentSeconds: 42, answerChanges: 1, skipped: false, submittedAt };
+  const detail = assignment({ timeLimitMinutes: null, startedAt: "2026-09-05T08:00:00Z", isSubmitted: true, submittedAt,
+    questions: [42, 317, 10].map((seconds, index) => question({ questionId: String(index), latestAttempt: {
+      ...attempt, attemptId: String(41 + index), timeSpentSeconds: seconds,
+    } })) });
+  assert.equal(getAssignmentReviewTiming(detail).elapsedSeconds, 369);
+  assert.equal(formatReviewDuration(getAssignmentReviewTiming(detail).elapsedSeconds!), "00:06:09");
+  assert.equal(getAssignmentReviewTiming({ ...detail, timeLimitMinutes: 60 }).elapsedSeconds, 2679000);
+  assert.equal(getAssignmentReviewTiming({ ...detail, elapsedSeconds: 400 }).elapsedSeconds, 400);
+});
+
 const page = fs.readFileSync(new URL("../src/pages/LearningPlayerPage.tsx", import.meta.url), "utf8");
 const startEffect = page.slice(page.indexOf("  // Start only unsubmitted work"), page.indexOf("  // Initialize or update activeQuestionId"));
 function runStartEffect(detail: StudentAssignmentDetailDto, loading = false, gateConfirmed = true) {

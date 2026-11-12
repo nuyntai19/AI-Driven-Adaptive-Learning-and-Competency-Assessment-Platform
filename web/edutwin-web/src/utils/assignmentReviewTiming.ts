@@ -19,8 +19,12 @@ export function getAssignmentReviewTiming(assignment: StudentAssignmentDetailDto
   const submittedAt = valid(assignment.submittedAt) ?? attempts.sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
   const startedAt = valid(assignment.startedAt);
   const recorded = assignment.elapsedSeconds;
+  const questionTimes = assignment.questions.map(q => q.latestAttempt?.timeSpentSeconds)
+    .filter((v): v is number => v != null && Number.isFinite(v) && v >= 0);
   const elapsedSeconds = recorded != null && Number.isFinite(recorded) && recorded >= 0
     ? Math.floor(recorded)
+    : !(assignment.timeLimitMinutes != null && assignment.timeLimitMinutes > 0) && questionTimes.length > 0
+      ? Math.floor(questionTimes.reduce((sum, value) => sum + value, 0))
     : submittedAt && startedAt ? Math.max(0, Math.floor((Date.parse(submittedAt) - Date.parse(startedAt)) / 1000)) : null;
   return { submittedAt, elapsedSeconds };
 }

@@ -24,6 +24,28 @@ namespace EduTwin.BLL.Tests.Assignments;
 
 public class GetStudentAssignmentUseCaseTests
 {
+    [Theory]
+    [InlineData(null, 369)]
+    [InlineData(0, 369)]
+    [InlineData(60, 2679000)]
+    public async Task ExecuteAsync_ReopenedHomework_UsesRecordedWorkWithoutChangingTimedAssessmentClock(int? timeLimit, int expectedSeconds)
+    {
+        var fixture = await CreateTimingFixture(ProgressStatus.Completed, timeLimit, completedAt: true, attemptCount: 2);
+        await using var context = fixture.Context;
+        fixture.Progress.StartedAt = fixture.Progress.StartedAt!.Value.AddDays(-31);
+        var attempts = await context.Attempts.OrderBy(a => a.AttemptId).ToListAsync();
+        attempts[0].TimeSpentSeconds = 42;
+        attempts[1].TimeSpentSeconds = 327;
+        await context.SaveChangesAsync();
+
+        var result = await fixture.UseCase.ExecuteAsync(fixture.Progress.AssignmentId, default);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(expectedSeconds, result.Data!.Data.ElapsedSeconds);
+        Assert.Equal(fixture.Progress.CompletedAt, result.Data.Data.SubmittedAt);
+        Assert.False(context.ChangeTracker.HasChanges());
+    }
+
     [Fact]
     public async Task ExecuteAsync_BeforeStart_HidesQuestionBody_ThenRevealsAfterPersistedStart()
     {

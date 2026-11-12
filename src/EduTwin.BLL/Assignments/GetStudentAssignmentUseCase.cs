@@ -187,6 +187,12 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
         int? elapsedSeconds = isSubmitted && submittedAt.HasValue && progress.StartedAt.HasValue
             ? (int)Math.Clamp((submittedAt.Value - progress.StartedAt.Value).TotalSeconds, 0, int.MaxValue)
             : null;
+        // Untimed homework can be reopened days after it was first started.
+        // Its wall-clock span includes time away; display recorded question work instead.
+        // Timed assessments retain the authoritative server-clock duration.
+        var submittedQuestions = latestAttemptsByQuestion.Values.Where(a => questionIds.Contains(a.QuestionId)).ToArray();
+        if (isSubmitted && progress.Assignment.TimeLimitMinutes is not > 0 && submittedQuestions.Length > 0)
+            elapsedSeconds = (int)Math.Min(submittedQuestions.Sum(a => (long)a.TimeSpentSeconds), int.MaxValue);
         var clockAt = isSubmitted ? submittedAt : utcNow;
 
         if (progress.Assignment.TimeLimitMinutes.HasValue && progress.Assignment.TimeLimitMinutes.Value > 0)
