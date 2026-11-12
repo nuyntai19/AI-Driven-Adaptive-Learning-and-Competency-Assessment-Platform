@@ -139,6 +139,11 @@ interface TeacherConfirmDialogProps {
   cancelLabel?: string;
   tone?: "default" | "danger";
   isConfirming?: boolean;
+  /** Replaces the default audit note; e.g. what blocks the action. */
+  children?: ReactNode;
+  /** Shown inside the dialog (the dialog stays open) so a refused action is never silent. */
+  error?: string | null;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onClose: () => void;
 }
@@ -151,6 +156,9 @@ export function TeacherConfirmDialog({
   cancelLabel = "Hủy bỏ",
   tone = "default",
   isConfirming = false,
+  children,
+  error,
+  confirmDisabled = false,
   onConfirm,
   onClose,
 }: TeacherConfirmDialogProps) {
@@ -173,7 +181,7 @@ export function TeacherConfirmDialog({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={isConfirming}
+            disabled={isConfirming || confirmDisabled}
             className={tone === "danger" ? "th-danger-button text-xs" : "th-primary-button text-xs"}
           >
             {isConfirming ? "Đang xử lý..." : confirmLabel}
@@ -181,9 +189,16 @@ export function TeacherConfirmDialog({
         </div>
       }
     >
-      <p className="text-sm text-[var(--th-text-secondary)]">
-        Hành động này sẽ được ghi nhận vào hệ thống học thuật của lớp.
-      </p>
+      {children ?? (
+        <p className="text-sm text-[var(--th-text-secondary)]">
+          Hành động này sẽ được ghi nhận vào hệ thống học thuật của lớp.
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="mt-3 rounded-lg border border-[var(--th-danger)] p-3 text-sm font-semibold text-[var(--th-danger)]">
+          {error}
+        </p>
+      )}
     </TeacherModal>
   );
 }

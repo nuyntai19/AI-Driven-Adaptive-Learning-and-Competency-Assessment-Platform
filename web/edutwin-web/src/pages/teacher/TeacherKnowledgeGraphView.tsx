@@ -56,6 +56,17 @@ const nodeTypeColors: Record<KnowledgeNodeType, string> = {
   Concept: "#f59e0b",
 };
 
+/** Error shown inside a create dialog (alert role: also repeated as a corner toast). */
+function ModalError({ message, traceId }: { message: string; traceId?: string | null }) {
+  return (
+    <p role="alert" style={{ margin: 0, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--th-danger)",
+      color: "var(--th-danger)", fontSize: "0.85rem", fontWeight: 600, overflowWrap: "anywhere" }}>
+      {message}
+      {traceId && <span style={{ display: "block", fontSize: "0.75rem", fontFamily: "monospace", opacity: 0.8, marginTop: 2 }}>Trace ID: {traceId}</span>}
+    </p>
+  );
+}
+
 const relationTypeColors: Record<KnowledgeRelationType, string> = {
   PrerequisiteOf: "#06b6d4",
   PartOf: "#8b5cf6",
@@ -280,7 +291,9 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   const canOpenAddEdge = edgeAuthoringSources.length >= 2 && edgeAuthoringTargets.length >= 1;
   const addEdgeBlockedReason = edgeAuthoringTargets.length < 1 ? "Thêm chủ đề vào bản Draft trước khi tạo liên kết." :
     edgeAuthoringSources.length < 2 ? "Cần ít nhất hai chủ đề để tạo liên kết." : undefined;
+  const openAddNode = () => { setFeedbackMsg(null); setIsAddNodeOpen(true); };
   const openAddEdge = () => {
+    setFeedbackMsg(null);
     const target = edgeAuthoringTargets[0]?.nodeId || "";
     setEdgeTargetId(target);
     setEdgeSourceId(edgeAuthoringSources.find(n => n.nodeId !== target)?.nodeId || "");
@@ -429,7 +442,9 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       }
       setFeedbackMsg({
         type: "error",
-        text: academicLifecycleError(err, "Không thể tạo điểm tri thức. Vui lòng thử lại."),
+        text: details.errorCode === "DUPLICATE_RESOURCE"
+          ? `Mã ${req.nodeCode} đã được dùng cho một điểm tri thức khác trong môn. Đổi mã khác hoặc bấm “Dùng mã tự sinh”.`
+          : academicLifecycleError(err, "Không thể tạo điểm tri thức. Vui lòng thử lại."),
         traceId: details.traceId,
       });
     },
@@ -584,6 +599,12 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       setFeedbackMsg({ type: "error", text: `Mã điểm tri thức phải theo cú pháp ${nodeCodeSyntax}, ví dụ MATH10_T_PTBH_01.` });
       return;
     }
+    // Fast feedback for codes already on screen; the server (which also sees other grades) stays authoritative.
+    const sameCode = nodes.find(n => n.nodeCode.toUpperCase() === trimmedCode);
+    if (sameCode) {
+      setFeedbackMsg({ type: "error", text: `Mã ${trimmedCode} đã được dùng cho “${sameCode.nodeName}”. Đổi mã khác hoặc bấm “Dùng mã tự sinh”.` });
+      return;
+    }
     if (newExamImportance < 0 || newExamImportance > 100) {
       setFeedbackMsg({ type: "error", text: "Trọng số thi phải nằm trong khoảng từ 0% đến 100%." });
       return;
@@ -729,7 +750,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
             {authorVersion ? ` · ${authorVersion.isLegacy ? "Dữ liệu chuyển tiếp" : authorVersion.status === "Draft" ? "Bản nháp" : authorVersion.status === "Published" ? "Đã duyệt" : "Lưu trữ"}` : ""}
             {versionDirty ? " · có thay đổi chưa lưu" : ""}
           </span>
-          {canCreateNodes && <button type="button" className="th-primary-button" onClick={() => setIsAddNodeOpen(true)}>+ Chủ đề</button>}
+          {canCreateNodes && <button type="button" className="th-primary-button" onClick={openAddNode}>+ Chủ đề</button>}
           {canCreateEdges && <button type="button" className="th-secondary-button" disabled={!canOpenAddEdge} title={addEdgeBlockedReason} onClick={openAddEdge}>+ Liên kết</button>}
           <button type="button" className="th-secondary-button" onClick={() => jumpTo("kg-version-panel")}>Khung & chủ đề</button>
           <button type="button" className="th-secondary-button" onClick={() => jumpTo("kg-graph-area")}>Đồ thị</button>
@@ -974,7 +995,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
         versionId={scope.graphVersionId} canEdit={hasPermission(permissions.nodesUpdate) && hasPermission(permissions.edgesUpdate)}
         onDirtyChange={setVersionDirty}
         subjectCode={nodeCodeSubject?.subjectCode} subjectName={nodeCodeSubject?.subjectName}
-        onAddTopic={canCreateNodes ? () => setIsAddNodeOpen(true) : undefined}
+        onAddTopic={canCreateNodes ? openAddNode : undefined}
         onAddRelation={canCreateEdges && canOpenAddEdge ? openAddEdge : undefined}
         includeRequest={draftInclude}
         onSelect={(id, grade) => updateScope({ gradeLevel: grade, graphVersionId: id || undefined })} />}
@@ -1659,6 +1680,9 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
             />
           </div>
 
+          {/* Errors belong inside the dialog: the page banner/toolbar sits behind the modal overlay. */}
+          {feedbackMsg?.type === "error" && <ModalError message={feedbackMsg.text} traceId={feedbackMsg.traceId} />}
+
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
             <button
               type="button"
@@ -1764,6 +1788,8 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
               required
             />
           </div>
+
+          {feedbackMsg?.type === "error" && <ModalError message={feedbackMsg.text} traceId={feedbackMsg.traceId} />}
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
             <button

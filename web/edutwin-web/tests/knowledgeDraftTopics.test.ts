@@ -113,3 +113,27 @@ test("framework mode: no duplicate header add buttons, scope box hidden, explici
   assert.match(view, /onClick=\{\(\) => updateScope\(\{ gradeLevel: scope\.gradeLevel \}\)\}>Thoát chế độ soạn<\/button>/);
   assert.match(view, /disabled=\{versionDirty\}\s*title=\{versionDirty \? "Lưu hoặc hủy cấu trúc nháp trước khi thoát\."/);
 });
+
+test("refused actions are never silent: delete reasons stay in the dialog, create errors show inside the modal", () => {
+  const panel = fs.readFileSync(new URL("../src/components/teacher/KnowledgeVersionPanel.tsx", import.meta.url), "utf8");
+  // 409 on DELETE /knowledge/nodes/{id}: the dialog stays open with the server's reason.
+  assert.match(panel, /onError: err => setDeleteError\(extractProblemDetails\(err\)\.detail/);
+  assert.doesNotMatch(panel, /onError: err => \{ setDeletingTopic\(null\); error\(err\); \}/);
+  assert.match(panel, /error=\{deleteError\}/);
+  // Relations/children already known to the library are listed up front and block the confirm button.
+  assert.match(panel, /relations: \(catalog\.data\?\.edges \?\? \[\]\)\.filter\(e => e\.sourceNodeId === deletingTopic\.nodeId \|\| e\.targetNodeId === deletingTopic\.nodeId\)/);
+  assert.match(panel, /confirmDisabled=\{!!deleteBlockers && \(deleteBlockers\.relations\.length > 0 \|\| deleteBlockers\.children\.length > 0\)\}/);
+  // Other panel errors are alerts (corner toast), not a status line at the bottom.
+  assert.match(panel, /<p role="alert" className="text-sm font-semibold text-\[var\(--th-danger\)\]">\{message\}<\/p>/);
+
+  const dialog = fs.readFileSync(new URL("../src/components/teacher/TeacherOverlays.tsx", import.meta.url), "utf8");
+  assert.match(dialog, /\{error && \(\s*<p role="alert"/);
+  assert.match(dialog, /disabled=\{isConfirming \|\| confirmDisabled\}/);
+
+  const view = fs.readFileSync(new URL("../src/pages/teacher/TeacherKnowledgeGraphView.tsx", import.meta.url), "utf8");
+  // 409 on POST /knowledge/nodes with a hand-typed code: specific message rendered inside both create modals.
+  assert.equal((view.match(/\{feedbackMsg\?\.type === "error" && <ModalError message=\{feedbackMsg\.text\}/g) ?? []).length, 2);
+  assert.match(view, /details\.errorCode === "DUPLICATE_RESOURCE"\s*\? `Mã \$\{req\.nodeCode\} đã được dùng cho một điểm tri thức khác trong môn\./);
+  assert.match(view, /const sameCode = nodes\.find\(n => n\.nodeCode\.toUpperCase\(\) === trimmedCode\);/);
+  assert.match(view, /const openAddNode = \(\) => \{ setFeedbackMsg\(null\); setIsAddNodeOpen\(true\); \};/, "stale errors are cleared when a dialog opens");
+});

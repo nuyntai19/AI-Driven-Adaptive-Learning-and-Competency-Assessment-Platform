@@ -42,6 +42,7 @@ export function KnowledgeVersionPanel({ subjectId, gradeLevel, versionId, canEdi
   const [dirty, setDirty] = useState(false);
   const [reviewed, setReviewed] = useState(false);
   const [message, setMessage] = useState("");
+  const [messageIsError, setMessageIsError] = useState(false);
   const versions = useQuery({ queryKey: knowledgeKeys.versions(user?.centerId, user?.userId, subjectId, gradeLevel),
     queryFn: () => knowledgeGraphApi.listVersions(subjectId, gradeLevel), enabled: !!subjectId && !!gradeLevel });
   const selected = versions.data?.find(v => v.graphVersionId === versionId);
@@ -74,7 +75,7 @@ export function KnowledgeVersionPanel({ subjectId, gradeLevel, versionId, canEdi
       setEdges(prev => prev.some(e => e.edgeId === includeRequest.id) ? prev
         : [...prev, { edgeId: includeRequest.id, relationType: includeRequest.relationType, weight: includeRequest.weight }]);
     }
-    setDirty(true); setReviewed(false);
+    setDirty(true); setReviewed(false); setMessageIsError(false);
     setMessage(includeRequest.kind === "node"
       ? "Đã tích chọn chủ đề vừa tạo vào bản nháp. Chọn nút cha nếu cần rồi bấm “Lưu cấu trúc nháp”."
       : "Đã tích chọn liên kết vừa tạo vào bản nháp. Bấm “Lưu cấu trúc nháp” để ghi.");
@@ -88,15 +89,17 @@ export function KnowledgeVersionPanel({ subjectId, gradeLevel, versionId, canEdi
   const editable = canEdit && selected?.status === "Draft" && !selected.isLegacy;
   const stale = dirty && !!selected && baseVersion !== selected.rowVersion;
   const refresh = async () => { await client.invalidateQueries({ queryKey: knowledgeKeys.all }); };
-  const error = (err: unknown) => setMessage(extractProblemDetails(err).detail || (err as Error).message);
+  // Errors are alerts (repeated as a corner toast), so a refused save/publish is visible wherever the teacher scrolled.
+  const error = (err: unknown) => { setMessage(extractProblemDetails(err).detail || (err as Error).message || "Thao tác không thành công."); setMessageIsError(true); };
+  const notify = (text: string) => { setMessage(text); setMessageIsError(false); };
   const create = useMutation({ mutationFn: (source?: string) => knowledgeGraphApi.createVersion({ subjectId,
     gradeLevel: gradeLevel!, title: title.trim() || undefined, sourceGraphVersionId: source }),
-    onSuccess: async version => { setDirty(false); setMessage("Đã tạo bản nháp. Rà soát chủ đề, nút cha và quan hệ trước khi duyệt.");
+    onSuccess: async version => { setDirty(false); notify("Đã tạo bản nháp. Rà soát chủ đề, nút cha và quan hệ trước khi duyệt.");
       await refresh(); onSelect(version.graphVersionId, version.gradeLevel); }, onError: error });
   const save = useMutation({ mutationFn: () => knowledgeGraphApi.saveVersion(versionId!, { rowVersion: baseVersion, nodeMappings: nodes, edgeMappings: edges }),
-    onSuccess: async version => { setBaseVersion(version.rowVersion); setDirty(false); setReviewed(false); setMessage("Đã lưu cấu trúc nháp."); await refresh(); }, onError: error });
+    onSuccess: async version => { setBaseVersion(version.rowVersion); setDirty(false); setReviewed(false); notify("Đã lưu cấu trúc nháp."); await refresh(); }, onError: error });
   const publish = useMutation({ mutationFn: () => knowledgeGraphApi.publishVersion(versionId!, baseVersion),
-    onSuccess: async () => { setMessage("Đã duyệt phiên bản khung tri thức cho khối đã chọn."); await refresh(); }, onError: error });
+    onSuccess: async () => { notify("Đã duyệt phiên bản khung tri thức cho khối đã chọn."); await refresh(); }, onError: error });
   const reverse = useMutation({ mutationFn: async (edge: KnowledgeGraphEdgeDto) => {
     const existing = findReversePrerequisite(catalog.data?.edges ?? [], edge);
     if (existing) return existing.edgeId;
@@ -118,14 +121,17 @@ export function KnowledgeVersionPanel({ subjectId, gradeLevel, versionId, canEdi
     setEdges(previous => replaceDraftPrerequisite(previous, edge.edgeId, reverseId,
       previous.find(mapping => mapping.edgeId === edge.edgeId)?.weight ?? edge.weight));
     setDirty(true); setReviewed(false);
-    setMessage("Đã đảo chiều trong bản nháp. Bấm “Lưu cấu trúc nháp” để ghi thay đổi; liên kết cũ trong thư viện và các bản đã duyệt không đổi.");
+    notify("Đã đảo chiều trong bản nháp. Bấm “Lưu cấu trúc nháp” để ghi thay đổi; liên kết cũ trong thư viện và các bản đã duyệt không đổi.");
     await refresh();
   }, onError: error });
   // Deleting a library topic: the server refuses topics used by approved frameworks, curricula,
   // questions, relations… and removes the topic from Draft frameworks it was ticked in.
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const removeTopic = useMutation({ mutationFn: (topic: KnowledgeGraphNodeDto) => knowledgeGraphApi.deleteNode(topic.nodeId),
-    onSuccess: async (_, topic) => { setDeletingTopic(null); setMessage(`Đã xóa chủ đề “${topic.nodeName}” khỏi thư viện môn và các bản nháp.`); await refresh(); },
-    onError: err => { setDeletingTopic(null); error(err); } });
+    onMutate: () => setDeleteError(null),
+    onSuccess: async (_, topic) => { setDeletingTopic(null); notify(`Đã xóa chủ đề “${topic.nodeName}” khỏi thư viện môn và các bản nháp.`); await refresh(); },
+    // Keep the dialog open and show the server's reason there: a refused delete must never look like nothing happened.
+    onError: err => setDeleteError(extractProblemDetails(err).detail || "Không thể xóa chủ đề. Vui lòng thử lại.") });
   const busy = create.isPending || save.isPending || publish.isPending || reverse.isPending || removeTopic.isPending;
   useEffect(() => { onDirtyChange?.(dirty || busy); return () => onDirtyChange?.(false); }, [dirty, busy, onDirtyChange]);
   // Validate only against a loaded library; while it loads (or failed) validity is unknown, not invalid.
@@ -138,6 +144,12 @@ export function KnowledgeVersionPanel({ subjectId, gradeLevel, versionId, canEdi
     curricula: curricula.data, filter: topicFilter, search: topicSearch });
   const knownTopicIds = new Set(allTopics.map(n => n.nodeId));
   const orphanSelections = catalogReady ? nodes.filter(n => !knownTopicIds.has(n.nodeId)) : [];
+  // What the library already shows would block deletion (the server checks everything else too).
+  const deleteBlockers = deletingTopic ? {
+    relations: (catalog.data?.edges ?? []).filter(e => e.sourceNodeId === deletingTopic.nodeId || e.targetNodeId === deletingTopic.nodeId),
+    children: allTopics.filter(n => n.parentNodeId === deletingTopic.nodeId),
+  } : null;
+  const topicName = (id: string) => allTopics.find(n => n.nodeId === id)?.nodeName ?? `#${id}`;
   const canEditTopics = hasPermission(permissions.nodesUpdate);
   const canDeleteTopics = hasPermission(permissions.nodesDelete);
   const catalogEdges = catalog.data?.edges ?? [];
@@ -245,14 +257,29 @@ export function KnowledgeVersionPanel({ subjectId, gradeLevel, versionId, canEdi
         <label className="flex gap-2 text-sm"><input type="checkbox" checked={reviewed} disabled={dirty || busy} onChange={e => setReviewed(e.target.checked)} />Tôi đã rà soát chủ đề, cây và quan hệ phù hợp Khối {gradeLevel}.</label>
         <button className="th-primary-button" disabled={busy || dirty || !reviewed || !nodes.length} onClick={() => publish.mutate()}>Duyệt và dùng làm khung hiện hành</button>
       </>}
-      {message && <p role="status" className="text-sm">{message}</p>}
+      {message && (messageIsError
+        ? <p role="alert" className="text-sm font-semibold text-[var(--th-danger)]">{message}</p>
+        : <p role="status" className="text-sm">{message}</p>)}
     </div>}
     {editingTopic && <KnowledgeNodeEditDialog node={editingTopic} subjectId={subjectId} subjectCode={subjectCode} subjectName={subjectName} gradeLevel={gradeLevel}
       onClose={() => setEditingTopic(null)}
-      onSaved={async saved => { setEditingTopic(null); setMessage(`Đã cập nhật chủ đề (mã ${saved.nodeCode}).`); setFlashId(saved.nodeId); await refresh(); }} />}
+      onSaved={async saved => { setEditingTopic(null); notify(`Đã cập nhật chủ đề (mã ${saved.nodeCode}).`); setFlashId(saved.nodeId); await refresh(); }} />}
     <TeacherConfirmDialog isOpen={!!deletingTopic} tone="danger" title="Xóa chủ đề nháp?"
-      description={deletingTopic ? `Xóa “${deletingTopic.nodeName}” (${deletingTopic.nodeCode}) khỏi thư viện môn và khỏi các bản nháp đang chọn nó. Không xóa được nếu chủ đề còn liên kết, nút con, câu hỏi, giáo trình hoặc dữ liệu học tập — hệ thống sẽ nêu lý do.` : ""}
+      description={deletingTopic ? `Xóa “${deletingTopic.nodeName}” (${deletingTopic.nodeCode}) khỏi thư viện môn và khỏi các bản nháp đang chọn nó.` : ""}
       confirmLabel="Xóa chủ đề" isConfirming={removeTopic.isPending}
-      onConfirm={() => deletingTopic && removeTopic.mutate(deletingTopic)} onClose={() => !removeTopic.isPending && setDeletingTopic(null)} />
+      confirmDisabled={!!deleteBlockers && (deleteBlockers.relations.length > 0 || deleteBlockers.children.length > 0)}
+      error={deleteError}
+      onConfirm={() => deletingTopic && removeTopic.mutate(deletingTopic)}
+      onClose={() => { if (!removeTopic.isPending) { setDeletingTopic(null); setDeleteError(null); } }}>
+      {deleteBlockers && (deleteBlockers.relations.length > 0 || deleteBlockers.children.length > 0) ? <div role="status" className="space-y-2 text-sm" data-testid="topic-delete-blockers">
+        <p className="m-0 font-semibold text-[var(--th-danger)]">Chưa xóa được: chủ đề còn dữ liệu phụ thuộc trong thư viện môn.</p>
+        {deleteBlockers.relations.length > 0 && <div>
+          <p className="m-0">{deleteBlockers.relations.length} liên kết tri thức:</p>
+          <ul className="my-1 pl-5">{deleteBlockers.relations.map(e => <li key={e.edgeId}>{topicName(e.sourceNodeId)} → {topicName(e.targetNodeId)} · {relationLabels[e.relationType]}</li>)}</ul>
+        </div>}
+        {deleteBlockers.children.length > 0 && <p className="m-0">{deleteBlockers.children.length} nút con: {deleteBlockers.children.map(n => n.nodeName).join(", ")}.</p>}
+        <p className="m-0 text-[var(--th-text-secondary)]">Xóa các liên kết trên đồ thị (bấm vào liên kết → Xóa) và đổi nút cha của các nút con, rồi thử lại. Chỉ bỏ chọn trong bản nháp là chưa đủ vì liên kết vẫn còn trong thư viện môn.</p>
+      </div> : <p className="text-sm text-[var(--th-text-secondary)]">Hệ thống vẫn kiểm tra câu hỏi, giáo trình và dữ liệu học tập trước khi xóa và sẽ nêu lý do nếu bị chặn.</p>}
+    </TeacherConfirmDialog>
   </details>;
 }
