@@ -275,6 +275,8 @@ public class GlobalQueryFilterTests
             "src/EduTwin.BLL/Seeding/ManifestEvaluator.cs",
             "src/EduTwin.BLL/Seeding/PlatformAdminProvisioner.cs",
             "src/EduTwin.BLL/Seeding/SeedQuestionGradeBackfill.cs",
+            // Development seed upgrade; touches only the seed-owned subject by deterministic ID and center.
+            "src/EduTwin.BLL/Seeding/SeedSubjectCodeBackfill.cs",
             "src/EduTwin.DAL/IdentityAndTenancy/RefreshTokenStore.cs"
         }.OrderBy(f => f).ToList();
 

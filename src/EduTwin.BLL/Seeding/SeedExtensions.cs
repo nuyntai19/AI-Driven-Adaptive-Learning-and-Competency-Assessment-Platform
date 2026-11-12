@@ -31,6 +31,7 @@ public static class SeedExtensions
         services.AddScoped<IManifestEvaluator, ManifestEvaluator>();
         services.AddScoped<EduTwinRuntimeSeeder>();
         services.AddScoped<SeedQuestionGradeBackfill>();
+        services.AddScoped<SeedSubjectCodeBackfill>();
         services.AddScoped<ExpandedDemoSeedBackfill>();
         services.AddScoped<AuthorizationBootstrapper>();
         services.AddScoped<DefaultSystemRolePermissionBackfill>();
@@ -66,6 +67,8 @@ public static class SeedExtensions
         }
 
         await scope.ServiceProvider.GetRequiredService<SeedQuestionGradeBackfill>().EnsureAsync();
+        // Must run before the manifest check: earlier seeds stored the English subject as ENGLISH.
+        await scope.ServiceProvider.GetRequiredService<SeedSubjectCodeBackfill>().EnsureAsync();
         var seeder = scope.ServiceProvider.GetRequiredService<EduTwinRuntimeSeeder>();
         await seeder.SeedAsync();
         await scope.ServiceProvider.GetRequiredService<ExpandedDemoSeedBackfill>().EnsureAsync();

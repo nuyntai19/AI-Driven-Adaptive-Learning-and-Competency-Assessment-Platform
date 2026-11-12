@@ -364,7 +364,7 @@ target_score và remaining_days không nằm ở students vì mục tiêu đư�
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
 | subject_id | VARCHAR(36) | No | PK |
-| subject_code | VARCHAR(32) | No | Ví dụ MATH, ENGLISH |
+| subject_code | VARCHAR(32) | No | Ví dụ MATH, PHYS, CHEM, ENG (mã chuẩn của 4 môn; xem SubjectCodeGenerator) |
 | subject_name | VARCHAR(100) | No | Tên hiển thị tiếng Việt |
 | description | VARCHAR(500) | Yes | Mô tả phạm vi/nội dung môn học |
 | is_active | TINYINT(1) | No | Default 1 |

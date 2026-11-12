@@ -359,7 +359,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   // sequence comes from the server, which sees every grade/version and deleted nodes of the subject.
   const nodeCodeSubject = subjects.find(s => s.subjectId === selectedSubjectId);
   const nodeCodePrefix = useMemo(() => nodeCodeSubject
-    ? buildNodeCodePrefix({ subjectCode: nodeCodeSubject.subjectCode, gradeLevel: scope.gradeLevel, nodeType: newNodeType, nodeName: newNodeName })
+    ? buildNodeCodePrefix({ subjectCode: nodeCodeSubject.subjectCode, subjectName: nodeCodeSubject.subjectName, gradeLevel: scope.gradeLevel, nodeType: newNodeType, nodeName: newNodeName })
     : null, [nodeCodeSubject, scope.gradeLevel, newNodeType, newNodeName]);
   const nodeCodeSuggestion = useQuery({
     queryKey: ["knowledge-node-code", user?.centerId, user?.userId, selectedSubjectId, nodeCodePrefix],

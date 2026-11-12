@@ -60,9 +60,34 @@ export function abbreviateNodeName(name: string): string {
   return used.map(w => (/^\d+$/.test(w) ? w : w[0])).join("");
 }
 
+/**
+ * Standard codes of the programme's four subjects (mirrors SubjectCodeGenerator on the server), so
+ * node codes stay uniform even for subjects stored with an older code (ENGLISH, VATLY, HOAHOC, TOAN12).
+ */
+const standardSubjects: [code: string, aliases: string[]][] = [
+  ["MATH", ["TOAN", "TOANHOC", "MATH", "MATHS", "MATHEMATICS"]],
+  ["PHYS", ["VATLY", "VATLI", "LY", "LI", "PHYS", "PHYSICS"]],
+  ["CHEM", ["HOAHOC", "HOA", "CHEM", "CHEMISTRY"]],
+  ["ENG", ["TIENGANH", "ANH", "ANHVAN", "ENG", "ENGLISH"]],
+];
+
+function standardCodeOf(text: string): string | null {
+  const ascii = codeWords(text).join("");
+  let letters = ascii.replace(/\d/g, "");
+  const digits = ascii.replace(/\D/g, "");
+  if (letters.startsWith("MON") && letters.length > 3) letters = letters.slice(3);
+  const match = standardSubjects.find(([, aliases]) => aliases.includes(letters));
+  return match ? match[0] + digits : null;
+}
+
+/** Subject part of node codes: the standard code (by name, then by stored code) or the stored code itself. */
+export function standardSubjectCode(subjectCode: string, subjectName?: string | null): string {
+  return (subjectName && standardCodeOf(subjectName)) || standardCodeOf(subjectCode) || codeWords(subjectCode).join("");
+}
+
 /** Subject code + grade ("MATH" + 10 → MATH10); a code that already ends with that grade is kept (TOAN12). */
-export function subjectGradeSegment(subjectCode: string, gradeLevel?: number | null): string {
-  const code = codeWords(subjectCode).join("");
+export function subjectGradeSegment(subjectCode: string, gradeLevel?: number | null, subjectName?: string | null): string {
+  const code = standardSubjectCode(subjectCode, subjectName);
   if (!code || !gradeLevel) return code;
   const grade = String(gradeLevel);
   const before = code.slice(0, code.length - grade.length);
@@ -70,8 +95,8 @@ export function subjectGradeSegment(subjectCode: string, gradeLevel?: number | n
 }
 
 /** Prefix without the sequence, or null while the name/subject does not yet give one. */
-export function buildNodeCodePrefix(input: { subjectCode: string; gradeLevel?: number | null; nodeType: KnowledgeNodeType; nodeName: string }): string | null {
-  const head = subjectGradeSegment(input.subjectCode, input.gradeLevel);
+export function buildNodeCodePrefix(input: { subjectCode: string; subjectName?: string | null; gradeLevel?: number | null; nodeType: KnowledgeNodeType; nodeName: string }): string | null {
+  const head = subjectGradeSegment(input.subjectCode, input.gradeLevel, input.subjectName);
   const abbreviation = abbreviateNodeName(input.nodeName);
   if (!head || !abbreviation) return null;
   // Room for "_NN": the server rejects prefixes longer than 47 characters.

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { abbreviateNodeName, buildNodeCodePrefix, formatNodeCode, isStandardNodeCode, nodeCodeSyntax, subjectGradeSegment } from "../src/utils/knowledgeNodeCode.ts";
+import { abbreviateNodeName, buildNodeCodePrefix, formatNodeCode, isStandardNodeCode, nodeCodeSyntax, standardSubjectCode, subjectGradeSegment } from "../src/utils/knowledgeNodeCode.ts";
 
 test("prefixes match the agreed examples: [Môn][Khối]_[Loại]_[Tên viết tắt]", () => {
   const cases: [string, number, Parameters<typeof buildNodeCodePrefix>[0]["nodeType"], string, string][] = [
@@ -34,11 +34,32 @@ test("abbreviation: stop words matched with accents, numbers kept, single words 
 
 test("subject + grade segment does not duplicate a grade already in the subject code", () => {
   assert.equal(subjectGradeSegment("MATH", 10), "MATH10");
-  assert.equal(subjectGradeSegment("TOAN12", 12), "TOAN12");
-  assert.equal(subjectGradeSegment("TOAN12", 10), "TOAN1210");
-  assert.equal(subjectGradeSegment("Tiếng Anh", 11), "TIENGANH11");
+  assert.equal(subjectGradeSegment("TOAN12", 12), "MATH12");
+  assert.equal(subjectGradeSegment("SINHHOC11", 11), "SINHHOC11");
+  assert.equal(subjectGradeSegment("SINHHOC", 10), "SINHHOC10");
   assert.equal(subjectGradeSegment("MATH", undefined), "MATH");
   assert.equal(subjectGradeSegment("", 10), "");
+});
+
+test("the four programme subjects always use MATH / PHYS / CHEM / ENG, whatever code they were stored with", () => {
+  const cases: [code: string, name: string, expected: string][] = [
+    ["MATH", "Toán", "MATH"], ["TOAN12", "Toán 12", "MATH12"], ["TOANHOC", "Toán học", "MATH"],
+    ["VATLY", "Vật lý", "PHYS"], ["VATLI10", "Vật lí 10", "PHYS10"], ["PHYS", "Physics", "PHYS"],
+    ["HOAHOC", "Hóa học", "CHEM"], ["HOAHOC11", "Hoá học 11", "CHEM11"],
+    ["ENGLISH", "Tiếng Anh", "ENG"], ["TIENGANH", "Tiếng Anh", "ENG"], ["ENG", "English", "ENG"],
+    ["X1", "Môn Vật lý", "PHYS"],
+  ];
+  for (const [code, name, expected] of cases) assert.equal(standardSubjectCode(code, name), expected, `${code} / ${name}`);
+  assert.equal(standardSubjectCode("ENGLISH"), "ENG", "stored code alone is enough");
+  assert.equal(standardSubjectCode("NGUVAN", "Ngữ văn"), "NGUVAN", "other subjects keep their own code");
+  assert.equal(standardSubjectCode("TOANNC", "Toán nâng cao"), "TOANNC", "no guessing for non-standard names");
+
+  const node = (subjectCode: string, subjectName: string, gradeLevel: number, nodeType: Parameters<typeof buildNodeCodePrefix>[0]["nodeType"], nodeName: string) =>
+    buildNodeCodePrefix({ subjectCode, subjectName, gradeLevel, nodeType, nodeName });
+  assert.equal(node("VATLY", "Vật lý", 11, "Topic", "Dao động điều hòa"), "PHYS11_T_DDDH");
+  assert.equal(node("HOAHOC", "Hóa học", 10, "Topic", "Cấu tạo nguyên tử"), "CHEM10_T_CTNT");
+  assert.equal(node("ENGLISH", "Tiếng Anh", 10, "Concept", "Mệnh đề quan hệ xác định"), "ENG10_K_MDQH");
+  assert.equal(node("TOAN12", "Toán 12", 12, "Skill", "Tìm cực trị của hàm số"), "MATH12_S_CTHS");
 });
 
 test("no prefix until name and subject give one; prefixes leave room for the sequence", () => {

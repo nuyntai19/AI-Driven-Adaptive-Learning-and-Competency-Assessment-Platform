@@ -172,7 +172,7 @@ public class EduTwinSeedFactoryTests
         var factory = new EduTwinSeedFactory(true);
         var data = factory.CreateData();
 
-        var engSubject = data.Subjects.First(s => s.SubjectCode == "ENGLISH");
+        var engSubject = data.Subjects.First(s => s.SubjectCode == "ENG");
         var mathSubject = data.Subjects.First(s => s.SubjectCode == "MATH");
 
         var engQuestions = data.Questions.Where(q => q.SubjectId == engSubject.SubjectId);

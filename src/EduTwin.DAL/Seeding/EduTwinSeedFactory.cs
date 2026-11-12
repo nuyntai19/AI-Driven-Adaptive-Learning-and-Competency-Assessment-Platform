@@ -93,7 +93,7 @@ public partial class EduTwinSeedFactory
         var mathSubId = _isCenterA ? DeterministicSeedIds.CenterAMathSubjectId : DeterministicSeedIds.CenterBMathSubjectId;
         var engSubId = _isCenterA ? DeterministicSeedIds.CenterAEnglishSubjectId : DeterministicSeedIds.CenterBEnglishSubjectId;
         container.Subjects.Add(new Subject { CenterId = _centerId, SubjectId = mathSubId, SubjectCode = "MATH", SubjectName = "Toán", IsActive = true, CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc });
-        container.Subjects.Add(new Subject { CenterId = _centerId, SubjectId = engSubId, SubjectCode = "ENGLISH", SubjectName = "Tiếng Anh", IsActive = true, CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc });
+        container.Subjects.Add(new Subject { CenterId = _centerId, SubjectId = engSubId, SubjectCode = "ENG", SubjectName = "Tiếng Anh", IsActive = true, CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc });
 
         // 4. Six grade-specific classes. Preserve legacy IDs above for existing
         // databases; fresh seed data never creates an unclassified mixed class.
