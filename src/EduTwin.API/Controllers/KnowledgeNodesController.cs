@@ -96,6 +96,58 @@ public class KnowledgeNodesController : ControllerBase
         throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
     }
 
+    /// <summary>Next standard code (PREFIX_NN) for the create form; counts soft-deleted nodes too.</summary>
+    [HttpGet("code-suggestion")]
+    [Authorize(Policy = "knowledge.nodes.create")]
+    [ProducesResponseType(typeof(KnowledgeNodeCodeSuggestionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> SuggestKnowledgeNodeCode(
+        [FromQuery] Guid subjectId,
+        [FromQuery] string? prefix,
+        [FromServices] ISuggestKnowledgeNodeCodeUseCase suggestKnowledgeNodeCodeUseCase,
+        CancellationToken cancellationToken)
+    {
+        var result = await suggestKnowledgeNodeCodeUseCase.ExecuteAsync(subjectId, prefix, cancellationToken);
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (result.IsSuccess)
+        {
+            return Ok(new KnowledgeNodeCodeSuggestionResponse
+            {
+                Data = result.Data!,
+                Meta = new EduTwin.Contracts.IdentityAndTenancy.MetaDto { TraceId = traceId, Timestamp = _timeProvider.GetUtcNow().UtcDateTime },
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ValidationFailed)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.1",
+                Title = "Dữ liệu không hợp lệ",
+                Status = 400,
+                Detail = "Tiền tố mã chỉ gồm chữ in hoa, chữ số và dấu gạch dưới, tối đa 47 ký tự.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.ValidationFailed },
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.ResourceNotFound)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Type = "https://datatracker.ietf.org/doc/html/rfc7231#section-6.5.4",
+                Title = "Không tìm thấy dữ liệu",
+                Status = 404,
+                Detail = "Dữ liệu không tồn tại hoặc bạn không có quyền truy cập.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["traceId"] = traceId, ["errorCode"] = ErrorCodes.ResourceNotFound },
+            });
+        }
+
+        throw new InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
+    }
+
     [HttpPost]
     [Authorize(Policy = "knowledge.nodes.create")]
     [ProducesResponseType(typeof(KnowledgeNodeResponse), StatusCodes.Status201Created)]

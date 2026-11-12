@@ -31,6 +31,7 @@ import {
   TeacherSafeErrorPanel,
 } from "../../components/teacher/TeacherPrimitives";
 import { TeacherModal, TeacherConfirmDialog } from "../../components/teacher/TeacherOverlays";
+import { buildNodeCodePrefix, isStandardNodeCode, maxNodeCodeLength, nodeCodeSyntax } from "../../utils/knowledgeNodeCode";
 
 const nodeTypeLabels: Record<KnowledgeNodeType, string> = {
   Subject: "Môn học",
@@ -153,6 +154,8 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   // New Node Form State
   const [newNodeName, setNewNodeName] = useState("");
   const [newNodeCode, setNewNodeCode] = useState("");
+  /** "auto": code follows name/type/subject/grade in real time; "manual": the teacher edited it. */
+  const [nodeCodeMode, setNodeCodeMode] = useState<"auto" | "manual">("auto");
   const [newNodeType, setNewNodeType] = useState<KnowledgeNodeType>("Topic");
   const [newParentNodeId, setNewParentNodeId] = useState<string>("");
   const [newExamImportance, setNewExamImportance] = useState<number>(3);
@@ -352,6 +355,39 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   };
 
   // Mutations
+  // Standard node code: [Môn][Khối]_[Loại]_[Tên viết tắt]_[STT]. The prefix is built here; the
+  // sequence comes from the server, which sees every grade/version and deleted nodes of the subject.
+  const nodeCodeSubject = subjects.find(s => s.subjectId === selectedSubjectId);
+  const nodeCodePrefix = useMemo(() => nodeCodeSubject
+    ? buildNodeCodePrefix({ subjectCode: nodeCodeSubject.subjectCode, gradeLevel: scope.gradeLevel, nodeType: newNodeType, nodeName: newNodeName })
+    : null, [nodeCodeSubject, scope.gradeLevel, newNodeType, newNodeName]);
+  const nodeCodeSuggestion = useQuery({
+    queryKey: ["knowledge-node-code", user?.centerId, user?.userId, selectedSubjectId, nodeCodePrefix],
+    queryFn: ({ signal }) => knowledgeGraphApi.suggestNodeCode(selectedSubjectId, nodeCodePrefix!, signal),
+    enabled: isAddNodeOpen && nodeCodeMode === "auto" && Boolean(nodeCodePrefix && selectedSubjectId),
+    staleTime: 0,
+    retry: false,
+  });
+  const serverNodeCode = nodeCodeSuggestion.data?.prefix === nodeCodePrefix ? nodeCodeSuggestion.data?.code : undefined;
+  // No local guess when the server cannot answer: a code equal to a deleted node's would restore that node.
+  const autoNodeCode = (nodeCodePrefix && serverNodeCode) || "";
+  const effectiveNodeCode = nodeCodeMode === "auto" ? autoNodeCode : newNodeCode.trim().toUpperCase();
+  const nodeCodeHint = (() => {
+    if (nodeCodeMode === "manual") {
+      return isStandardNodeCode(effectiveNodeCode)
+        ? { tone: "muted", text: "Đã sửa thủ công · mã đúng cú pháp." }
+        : { tone: "warning", text: `Đã sửa thủ công · mã cần đúng cú pháp ${nodeCodeSyntax}, ví dụ MATH10_T_PTBH_01.` };
+    }
+    if (!nodeCodeSubject) return { tone: "muted", text: "Chọn môn học để hệ thống sinh mã." };
+    if (!nodeCodePrefix) return { tone: "muted", text: `Nhập tên để tự sinh mã theo cú pháp ${nodeCodeSyntax}.` };
+    if (serverNodeCode && nodeCodeSuggestion.data) {
+      const [head, letter, abbreviation] = nodeCodePrefix.split("_");
+      return { tone: "muted", text: `${head} · ${nodeTypeLabels[newNodeType] ?? letter} · ${abbreviation} · #${String(nodeCodeSuggestion.data.sequence).padStart(2, "0")} — số thứ tự đã kiểm tra trên toàn môn, kể cả điểm đã xoá.` };
+    }
+    if (nodeCodeSuggestion.isError) return { tone: "warning", text: "Không lấy được số thứ tự từ máy chủ. Thử lại hoặc sửa mã thủ công." };
+    return { tone: "muted", text: "Đang kiểm tra số thứ tự trên toàn môn…" };
+  })();
+
   const createNodeMutation = useMutation({
     mutationFn: (req: CreateKnowledgeNodeRequest) => knowledgeGraphApi.createNode(req),
     onSuccess: async () => {
@@ -360,8 +396,18 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       resetNodeForm();
       setFeedbackMsg({ type: "success", text: "Đã tạo chủ đề. Chọn chủ đề vừa tạo trong phiên bản Draft bên dưới rồi lưu cấu trúc nháp." });
     },
-    onError: (err: any) => {
+    onError: async (err: any, req) => {
       const details = extractProblemDetails(err);
+      if (details.errorCode === "DUPLICATE_RESOURCE" && nodeCodeMode === "auto") {
+        // Another teacher took this sequence number meanwhile: fetch the next free one, never resubmit silently.
+        const next = await nodeCodeSuggestion.refetch();
+        setFeedbackMsg({
+          type: "error",
+          text: `Mã ${req.nodeCode} vừa được dùng cho điểm tri thức khác.${next.data?.code ? ` Đã cập nhật mã mới ${next.data.code}, bấm “Lưu Điểm Tri Thức” lần nữa.` : ""}`,
+          traceId: details.traceId,
+        });
+        return;
+      }
       setFeedbackMsg({
         type: "error",
         text: academicLifecycleError(err, "Không thể tạo điểm tri thức. Vui lòng thử lại."),
@@ -477,6 +523,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
   const resetNodeForm = () => {
     setNewNodeName("");
     setNewNodeCode("");
+    setNodeCodeMode("auto");
     setNewNodeType("Topic");
     setNewParentNodeId("");
     setNewExamImportance(3);
@@ -489,7 +536,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     setFeedbackMsg(null);
 
     const trimmedName = newNodeName.trim();
-    const trimmedCode = newNodeCode.trim().toUpperCase();
+    const trimmedCode = effectiveNodeCode;
 
     if (!trimmedName) {
       setFeedbackMsg({ type: "error", text: "Vui lòng nhập tên chủ đề / khái niệm." });
@@ -500,11 +547,17 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
       return;
     }
     if (!trimmedCode) {
-      setFeedbackMsg({ type: "error", text: "Vui lòng nhập mã điểm tri thức." });
+      setFeedbackMsg({ type: "error", text: nodeCodeMode === "auto" && nodeCodePrefix
+        ? "Đang lấy số thứ tự cho mã điểm tri thức, vui lòng thử lại sau giây lát."
+        : "Vui lòng nhập tên để hệ thống sinh mã điểm tri thức." });
       return;
     }
-    if (trimmedCode.length > 50) {
-      setFeedbackMsg({ type: "error", text: "Mã điểm tri thức không được vượt quá 50 ký tự." });
+    if (trimmedCode.length > maxNodeCodeLength) {
+      setFeedbackMsg({ type: "error", text: `Mã điểm tri thức không được vượt quá ${maxNodeCodeLength} ký tự.` });
+      return;
+    }
+    if (!isStandardNodeCode(trimmedCode)) {
+      setFeedbackMsg({ type: "error", text: `Mã điểm tri thức phải theo cú pháp ${nodeCodeSyntax}, ví dụ MATH10_T_PTBH_01.` });
       return;
     }
     if (newExamImportance < 0 || newExamImportance > 100) {
@@ -1459,30 +1512,13 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
             />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px" }}>
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)" }}>
-                  Mã điểm tri thức <span style={{ color: "var(--th-danger)" }}>*</span>
-                </label>
-                <span style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>{newNodeCode.length}/50</span>
-              </div>
-              <input
-                type="text"
-                maxLength={50}
-                className="th-input"
-                value={newNodeCode}
-                onChange={(e) => setNewNodeCode(e.target.value.toUpperCase())}
-                placeholder="Ví dụ: MATH10_PTBH"
-                required
-                style={{ width: "100%" }}
-              />
-            </div>
-            <div>
-              <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
+              <label htmlFor="new-node-type" style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
                 Cấp độ phân loại
               </label>
               <select
+                id="new-node-type"
                 className="th-select"
                 value={newNodeType}
                 onChange={(e) => setNewNodeType(e.target.value as KnowledgeNodeType)}
@@ -1494,9 +1530,6 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                 <option value="Concept">Khái niệm (Concept)</option>
               </select>
             </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
             <div>
               <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)", marginBottom: "6px" }}>
                 Trọng số thi (%)
@@ -1525,6 +1558,43 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
                 style={{ width: "100%" }}
               />
             </div>
+          </div>
+
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px", gap: "8px" }}>
+              <label htmlFor="new-node-code" style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--th-text-secondary)" }}>
+                Mã điểm tri thức <span style={{ color: "var(--th-danger)" }}>*</span>
+              </label>
+              <span style={{ fontSize: "0.75rem", color: "var(--th-text-muted)" }}>{effectiveNodeCode.length}/{maxNodeCodeLength}</span>
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <input
+                id="new-node-code"
+                type="text"
+                maxLength={maxNodeCodeLength}
+                className="th-input"
+                value={nodeCodeMode === "auto" ? autoNodeCode : newNodeCode}
+                onChange={(e) => { setNodeCodeMode("manual"); setNewNodeCode(e.target.value.toUpperCase()); }}
+                placeholder={`Cú pháp tự sinh: ${nodeCodeSyntax}`}
+                aria-describedby="new-node-code-hint"
+                spellCheck={false}
+                style={{ width: "100%", minWidth: 0, fontFamily: "monospace" }}
+              />
+              {nodeCodeMode === "manual" ? (
+                <button type="button" className="th-secondary-button" style={{ whiteSpace: "nowrap" }}
+                  onClick={() => { setNodeCodeMode("auto"); setNewNodeCode(""); }}>
+                  Dùng mã tự sinh
+                </button>
+              ) : nodeCodeSuggestion.isError ? (
+                <button type="button" className="th-secondary-button" style={{ whiteSpace: "nowrap" }} onClick={() => nodeCodeSuggestion.refetch()}>
+                  Thử lại
+                </button>
+              ) : null}
+            </div>
+            <p id="new-node-code-hint" role="status" style={{ margin: "6px 0 0", fontSize: "0.75rem", overflowWrap: "anywhere",
+              color: nodeCodeHint.tone === "warning" ? "var(--th-text-secondary)" : "var(--th-text-muted)", fontWeight: nodeCodeHint.tone === "warning" ? 600 : 400 }}>
+              {nodeCodeHint.tone === "warning" ? "⚠ " : ""}{nodeCodeHint.text}
+            </p>
           </div>
 
           <div>

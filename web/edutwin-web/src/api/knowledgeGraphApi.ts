@@ -15,6 +15,7 @@ import type {
   KnowledgeGraphVersion,
   KnowledgeVersionNodeMapping,
   KnowledgeVersionEdgeMapping,
+  KnowledgeNodeCodeSuggestion,
 } from "../types/knowledgeGraph";
 
 const getGraph = async (subjectId: string, scope: GraphScopeQuery = {}): Promise<KnowledgeGraphDto> => {
@@ -129,7 +130,17 @@ const listNodes = async (subjectId: string, scope: GraphScopeQuery = {}): Promis
   return response.data.data ?? [];
 };
 
+/** Next standard code PREFIX_NN for a subject (server counts every code, deleted nodes included). */
+const suggestNodeCode = async (subjectId: string, prefix: string, signal?: AbortSignal): Promise<KnowledgeNodeCodeSuggestion> => {
+  const response = await httpClient.get<{ data: KnowledgeNodeCodeSuggestion }>(
+    "/knowledge/nodes/code-suggestion",
+    { params: { subjectId: subjectId.trim(), prefix }, signal }
+  );
+  return response.data.data;
+};
+
 export const knowledgeGraphApi = {
+  suggestNodeCode,
   listVersions: async (subjectId: string, gradeLevel?: number) => (await httpClient.get<{ data: KnowledgeGraphVersion[] }>("/knowledge/graph/versions", { params: { subjectId, gradeLevel } })).data.data,
   createVersion: async (data: { subjectId: string; gradeLevel: number; title?: string; sourceGraphVersionId?: string }) =>
     (await httpClient.post<{ data: KnowledgeGraphVersion }>("/knowledge/graph/versions", data)).data.data,

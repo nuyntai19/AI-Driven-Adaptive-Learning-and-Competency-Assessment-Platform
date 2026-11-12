@@ -63,6 +63,12 @@ export interface KnowledgeGraphDto {
   edges: KnowledgeGraphEdgeDto[];
 }
 
+export interface KnowledgeNodeCodeSuggestion {
+  code: string;
+  prefix: string;
+  sequence: number;
+}
+
 export interface KnowledgeGraphResponse {
   data: KnowledgeGraphDto;
   meta: Meta;
