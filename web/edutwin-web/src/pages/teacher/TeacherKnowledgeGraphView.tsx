@@ -119,6 +119,8 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     enabled: !!urlSubjectId && !!scope.graphVersionId && hasPermission(permissions.nodesRead) });
   const authorVersion = authorVersions.data?.find(v => v.graphVersionId === scope.graphVersionId);
   const draftAuthoring = !scope.classId && !scope.curriculumId && authorVersion?.status === "Draft" && !authorVersion.isLegacy;
+  /** A framework version is open in the editor (from the URL, so the layout does not flicker while versions load). */
+  const frameworkMode = !!scope.graphVersionId && !!scope.gradeLevel && !scope.classId && !scope.curriculumId;
 
   const canReadSubjects = hasPermission(permissions.subjectsRead);
   const canReadNodes = hasPermission(permissions.nodesRead);
@@ -715,47 +717,25 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
           { label: "Không gian Giáo viên", href: "/giao-vien/lop-hoc" },
           { label: "Đồ thị tri thức" },
         ]}
-        actions={
-          <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-            {canCreateEdges && selectedSubjectId && (
-              <button
-                type="button"
-                className="th-secondary-button"
-                disabled={!canOpenAddEdge}
-                title={addEdgeBlockedReason}
-                onClick={openAddEdge}
-              >
-                + Thêm Liên Kết Tiên Quyết
-              </button>
-            )}
-
-            {canCreateNodes && selectedSubjectId && (
-              <button
-                type="button"
-                className="th-primary-button"
-                onClick={() => setIsAddNodeOpen(true)}
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-                Thêm Chủ Đề Mới
-              </button>
-            )}
-          </div>
-        }
       />
 
-      {/* While editing a Draft framework the main actions stay reachable at the top of the screen. */}
-      {draftAuthoring && selectedSubjectId && (
+      {/* Framework mode (a version opened from the editor): actions stay reachable at the top of the
+          screen; add buttons live only here, not in the page header. */}
+      {frameworkMode && selectedSubjectId && (
         <div role="toolbar" aria-label="Thao tác soạn khung tri thức" data-testid="kg-draft-toolbar"
           className="sticky top-0 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--th-border)] bg-[var(--th-surface-raised)] px-3 py-2 shadow-md">
           <span className="mr-auto min-w-0 text-sm font-semibold" style={{ overflowWrap: "anywhere" }}>
-            Đang soạn: {authorVersion?.title || `Khung tri thức Khối ${scope.gradeLevel}`} · Bản nháp{versionDirty ? " · có thay đổi chưa lưu" : ""}
+            {authorVersion?.status === "Draft" && !authorVersion.isLegacy ? "Đang soạn" : "Đang xem phiên bản"}: {authorVersion?.title || `Khung tri thức Khối ${scope.gradeLevel}`}
+            {authorVersion ? ` · ${authorVersion.isLegacy ? "Dữ liệu chuyển tiếp" : authorVersion.status === "Draft" ? "Bản nháp" : authorVersion.status === "Published" ? "Đã duyệt" : "Lưu trữ"}` : ""}
+            {versionDirty ? " · có thay đổi chưa lưu" : ""}
           </span>
           {canCreateNodes && <button type="button" className="th-primary-button" onClick={() => setIsAddNodeOpen(true)}>+ Chủ đề</button>}
           {canCreateEdges && <button type="button" className="th-secondary-button" disabled={!canOpenAddEdge} title={addEdgeBlockedReason} onClick={openAddEdge}>+ Liên kết</button>}
           <button type="button" className="th-secondary-button" onClick={() => jumpTo("kg-version-panel")}>Khung & chủ đề</button>
           <button type="button" className="th-secondary-button" onClick={() => jumpTo("kg-graph-area")}>Đồ thị</button>
+          <button type="button" className="th-secondary-button" disabled={versionDirty}
+            title={versionDirty ? "Lưu hoặc hủy cấu trúc nháp trước khi thoát." : "Về chế độ xem khung tri thức hiện hành của khối"}
+            onClick={() => updateScope({ gradeLevel: scope.gradeLevel })}>Thoát chế độ soạn</button>
           {feedbackMsg && (
             <div className="flex basis-full items-start justify-between gap-2 text-sm font-semibold"
               style={{ color: feedbackMsg.type === "success" ? "var(--th-primary)" : "var(--th-danger)" }}>
@@ -767,7 +747,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
         </div>
       )}
 
-      {feedbackMsg && !(draftAuthoring && selectedSubjectId) && (
+      {feedbackMsg && !(frameworkMode && selectedSubjectId) && (
         <div
           style={{
             padding: "12px 16px",
@@ -962,7 +942,9 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
         )}
       </div>
 
-      <div className="th-surface rounded-xl p-4 my-4 space-y-3" aria-label="Phạm vi đồ thị tri thức">
+      {/* Changing grade/year/class/curriculum leaves the framework editor, so the scope box is hidden
+          there; "Thoát chế độ soạn" in the toolbar returns to it. */}
+      {!frameworkMode && <div className="th-surface rounded-xl p-4 my-4 space-y-3" aria-label="Phạm vi đồ thị tri thức">
         <div className="flex flex-wrap gap-3 items-end">
           <label className="text-sm">Khối<select disabled={versionDirty} className="th-select block mt-1" value={scope.gradeLevel ?? ""} onChange={e => { setClassYearFilter(""); setSelectedClassContextId(""); updateScope({ gradeLevel: e.target.value ? Number(e.target.value) : undefined }, selectedSubjectId, ""); }}>
             <option value="">Chọn khối</option>{[10,11,12].map(g => <option key={g} value={g}>Khối {g}</option>)}
@@ -987,7 +969,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
         {graphData?.resolvedScope?.isLegacy && <p className="text-sm text-amber-500">Dữ liệu chuyển tiếp giữ nguyên cấu trúc trước khi phân khối. Chọn thư viện theo khối và rà soát bản nháp để soạn mới.</p>}
         {versionDirty && <p role="status" className="text-sm">Lưu hoặc hủy cấu trúc nháp trước khi đổi phạm vi.</p>}
         {scope.gradeLevel && <p className="text-sm">Muốn thêm chủ đề hoặc liên kết, mở giáo trình Draft rồi chọn “Chỉnh sửa khung tri thức Khối {scope.gradeLevel}”.</p>}
-      </div>
+      </div>}
       {scope.graphVersionId && scope.gradeLevel && !scope.classId && !scope.curriculumId && <KnowledgeVersionPanel key={`${selectedSubjectId}:${scope.gradeLevel ?? ""}:${scope.graphVersionId ?? ""}`} subjectId={selectedSubjectId} gradeLevel={scope.gradeLevel}
         versionId={scope.graphVersionId} canEdit={hasPermission(permissions.nodesUpdate) && hasPermission(permissions.edgesUpdate)}
         onDirtyChange={setVersionDirty}

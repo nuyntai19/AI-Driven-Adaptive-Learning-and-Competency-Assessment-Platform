@@ -102,3 +102,14 @@ test("framework editor wiring: filters, edit/delete per topic, add buttons in pl
   const api = fs.readFileSync(new URL("../src/api/knowledgeGraphApi.ts", import.meta.url), "utf8");
   assert.match(api, /\.\.\.\(request\.nodeCode \? \{ nodeCode: request\.nodeCode\.trim\(\) \} : \{\}\)/);
 });
+
+test("framework mode: no duplicate header add buttons, scope box hidden, explicit exit back to the grade view", () => {
+  const view = fs.readFileSync(new URL("../src/pages/teacher/TeacherKnowledgeGraphView.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(view, /Thêm Liên Kết Tiên Quyết|Thêm Chủ Đề Mới/, "add actions live only in the editor toolbar and lists");
+  assert.match(view, /const frameworkMode = !!scope\.graphVersionId && !!scope\.gradeLevel && !scope\.classId && !scope\.curriculumId;/);
+  assert.match(view, /\{!frameworkMode && <div className="th-surface rounded-xl p-4 my-4 space-y-3" aria-label="Phạm vi đồ thị tri thức">/,
+    "grade/year/class/curriculum pickers would leave the editor, so they are hidden there");
+  assert.match(view, /\{frameworkMode && selectedSubjectId && \(\s*<div role="toolbar"/);
+  assert.match(view, /onClick=\{\(\) => updateScope\(\{ gradeLevel: scope\.gradeLevel \}\)\}>Thoát chế độ soạn<\/button>/);
+  assert.match(view, /disabled=\{versionDirty\}\s*title=\{versionDirty \? "Lưu hoặc hủy cấu trúc nháp trước khi thoát\."/);
+});
