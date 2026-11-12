@@ -20,6 +20,13 @@ export interface DagLayoutOptions {
   paddingY?: number;
   minWidth?: number;
   minHeight?: number;
+  /**
+   * Reorders nodes inside each rank with bounded barycenter sweeps to reduce edge crossings.
+   * Ordering contract: siblings sharing a non-null parentNodeId keep their academic order
+   * (orderIndex → type → code → id) as a hard constraint and stay contiguous; sibling blocks
+   * and parentless nodes may be permuted. Ranks never change.
+   */
+  crossingMinimization?: boolean;
 }
 
 export interface DagLayoutResult {
@@ -166,41 +173,11 @@ export function computeDeterministicDagLayout(
     }
   }
 
-  // Group nodes by their topological rank
-  const rankGroups = new Map<number, KnowledgeGraphNodeDto[]>();
+  // Group nodes by topological rank and order each column deterministically:
+  // orderIndex → nodeType → nodeCode → nodeId, optionally followed by bounded crossing reduction.
+  const rankGroups = orderRankGroups(nodes, rankMap, edges, options?.crossingMinimization ?? false);
   let maxRank = 0;
-
-  for (const node of nodes) {
-    const r = rankMap.get(node.nodeId) ?? 0;
-    if (r > maxRank) maxRank = r;
-    if (!rankGroups.has(r)) {
-      rankGroups.set(r, []);
-    }
-    rankGroups.get(r)!.push(node);
-  }
-
-  // Deterministically sort nodes within each rank column
-  for (let r = 0; r <= maxRank; r++) {
-    const group = rankGroups.get(r);
-    if (!group) continue;
-    group.sort((a, b) => {
-      // 1. Primary: orderIndex
-      const orderDiff = (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
-      if (orderDiff !== 0) return orderDiff;
-
-      // 2. Secondary: nodeType hierarchy order
-      const typeA = nodeTypeLayerOrder[a.nodeType] ?? 2;
-      const typeB = nodeTypeLayerOrder[b.nodeType] ?? 2;
-      if (typeA !== typeB) return typeA - typeB;
-
-      // 3. Tertiary: nodeCode alphanumeric
-      const codeDiff = (a.nodeCode ?? "").localeCompare(b.nodeCode ?? "");
-      if (codeDiff !== 0) return codeDiff;
-
-      // 4. Stable tie-breaker: nodeId
-      return a.nodeId.localeCompare(b.nodeId);
-    });
-  }
+  for (const r of rankGroups.keys()) if (r > maxRank) maxRank = r;
 
   // Assign 2D coordinates (x, y)
   const positions = new Map<string, NodePosition>();
@@ -235,6 +212,122 @@ export function computeDeterministicDagLayout(
     height: Math.max(minHeight, computedHeight),
     rankCount,
   };
+}
+
+function academicCompare(a: KnowledgeGraphNodeDto, b: KnowledgeGraphNodeDto): number {
+  const orderDiff = (a.orderIndex ?? 0) - (b.orderIndex ?? 0);
+  if (orderDiff !== 0) return orderDiff;
+  const typeA = nodeTypeLayerOrder[a.nodeType] ?? 2;
+  const typeB = nodeTypeLayerOrder[b.nodeType] ?? 2;
+  if (typeA !== typeB) return typeA - typeB;
+  const codeDiff = (a.nodeCode ?? "").localeCompare(b.nodeCode ?? "");
+  if (codeDiff !== 0) return codeDiff;
+  return a.nodeId.localeCompare(b.nodeId);
+}
+
+const crossingSweeps = 6;
+
+/** Groups nodes by rank; optionally reorders sibling blocks with barycenter sweeps. */
+function orderRankGroups(
+  nodes: KnowledgeGraphNodeDto[],
+  rankMap: Map<string, number>,
+  edges: KnowledgeGraphEdgeDto[],
+  crossingMinimization: boolean
+): Map<number, KnowledgeGraphNodeDto[]> {
+  const rankGroups = new Map<number, KnowledgeGraphNodeDto[]>();
+  for (const node of nodes) {
+    const r = rankMap.get(node.nodeId) ?? 0;
+    let group = rankGroups.get(r);
+    if (!group) rankGroups.set(r, (group = []));
+    group.push(node);
+  }
+  for (const group of rankGroups.values()) group.sort(academicCompare);
+  if (!crossingMinimization || rankGroups.size < 2) return rankGroups;
+
+  // Undirected neighbours across different ranks; overlay relations count half.
+  const neighbours = new Map<string, { id: string; w: number }[]>();
+  for (const node of nodes) neighbours.set(node.nodeId, []);
+  for (const edge of edges) {
+    const a = neighbours.get(edge.sourceNodeId), b = neighbours.get(edge.targetNodeId);
+    if (!a || !b || edge.sourceNodeId === edge.targetNodeId) continue;
+    if (rankMap.get(edge.sourceNodeId) === rankMap.get(edge.targetNodeId)) continue;
+    const w = edge.relationType === "PrerequisiteOf" || edge.relationType === "PartOf" ? 1 : 0.5;
+    a.push({ id: edge.targetNodeId, w });
+    b.push({ id: edge.sourceNodeId, w });
+  }
+  const ranks = [...rankGroups.keys()].sort((a, b) => a - b);
+  const position = new Map<string, number>();
+  const refresh = (r: number) => rankGroups.get(r)!.forEach((n, i) => position.set(n.nodeId, i));
+  ranks.forEach(refresh);
+
+  const reorder = (r: number, includesRank: (other: number) => boolean) => {
+    const blocks = new Map<string, KnowledgeGraphNodeDto[]>();
+    for (const node of rankGroups.get(r)!) {
+      const key = node.parentNodeId ? `p:${node.parentNodeId}` : `n:${node.nodeId}`;
+      let block = blocks.get(key);
+      if (!block) blocks.set(key, (block = []));
+      block.push(node);
+    }
+    const scored = [...blocks.values()].map((block) => {
+      let sum = 0, weight = 0;
+      for (const node of block) for (const nb of neighbours.get(node.nodeId)!) {
+        if (!includesRank(rankMap.get(nb.id) ?? 0)) continue;
+        sum += (position.get(nb.id) ?? 0) * nb.w; weight += nb.w;
+      }
+      const current = position.get(block[0].nodeId) ?? 0;
+      // Blocks without neighbours on the reference side keep their current slot.
+      return { block, key: weight > 0 ? sum / weight : current, current };
+    });
+    scored.sort((a, b) => a.key - b.key || a.current - b.current);
+    rankGroups.set(r, scored.flatMap((s) => s.block));
+    refresh(r);
+  };
+
+  // Keep the best ordering seen (sweeps can oscillate); the academic order is the baseline.
+  const pairs = crossingPairs(edges, rankMap, neighbours);
+  const snapshot = () => new Map([...rankGroups].map(([r, g]) => [r, [...g]]));
+  let best = snapshot();
+  let bestCrossings = countOrderCrossings(pairs, position);
+  for (let sweep = 0; sweep < crossingSweeps && bestCrossings > 0; sweep++) {
+    if (sweep % 2 === 0) for (const r of ranks.slice(1)) reorder(r, (o) => o < r);
+    else for (const r of ranks.slice(0, -1).reverse()) reorder(r, (o) => o > r);
+    const crossings = countOrderCrossings(pairs, position);
+    if (crossings < bestCrossings) { bestCrossings = crossings; best = snapshot(); }
+  }
+  return best;
+}
+
+/** Edge endpoint pairs grouped by (lowRank, highRank); only same-span edges are compared. */
+function crossingPairs(edges: KnowledgeGraphEdgeDto[], rankMap: Map<string, number>, known: Map<string, unknown>) {
+  const groups = new Map<string, [string, string][]>();
+  for (const edge of edges) {
+    if (!known.has(edge.sourceNodeId) || !known.has(edge.targetNodeId)) continue;
+    const rs = rankMap.get(edge.sourceNodeId) ?? 0, rt = rankMap.get(edge.targetNodeId) ?? 0;
+    if (rs === rt) continue;
+    const [a, b] = rs < rt ? [edge.sourceNodeId, edge.targetNodeId] : [edge.targetNodeId, edge.sourceNodeId];
+    const key = `${Math.min(rs, rt)}:${Math.max(rs, rt)}`;
+    let group = groups.get(key);
+    if (!group) groups.set(key, (group = []));
+    group.push([a, b]);
+  }
+  return [...groups.values()];
+}
+
+const maxCrossingGroup = 1500;
+
+function countOrderCrossings(groups: [string, string][][], position: Map<string, number>): number {
+  let total = 0;
+  for (const group of groups) {
+    if (group.length > maxCrossingGroup) continue; // bounded work on very dense rank pairs
+    for (let i = 0; i < group.length; i++) {
+      const a1 = position.get(group[i][0])!, b1 = position.get(group[i][1])!;
+      for (let j = i + 1; j < group.length; j++) {
+        const a2 = position.get(group[j][0])!, b2 = position.get(group[j][1])!;
+        if ((a1 - a2) * (b1 - b2) < 0) total++;
+      }
+    }
+  }
+  return total;
 }
 
 /**

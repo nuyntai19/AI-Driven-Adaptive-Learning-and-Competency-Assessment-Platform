@@ -70,6 +70,7 @@ test("manager report has responsive gutters and graph inspector stacks on narrow
 test("chapter selector uses actual node types and parent IDs, never infers grade groups from node codes",()=>{
   const canvas=fs.readFileSync(new URL("../src/components/teacher/KnowledgeGraphCanvas.tsx",import.meta.url),"utf8");
   assert.match(canvas,/Chương hoặc nhóm tri thức đang xem/);
-  assert.match(canvas,/child.parentNodeId === n.nodeId/);
+  assert.match(canvas,/if \(child\.parentNodeId\) counts\.set\(child\.parentNodeId/);
+  assert.match(canvas,/childCountByParent\.get\(n\.nodeId\)/);
   assert.doesNotMatch(canvas,/nodeCode\.(startsWith|match)|MATH10|MATH11|MATH12/);
 });

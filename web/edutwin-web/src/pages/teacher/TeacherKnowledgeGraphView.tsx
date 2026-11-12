@@ -933,6 +933,7 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
           >
 {viewMode === "canvas" ? (
               <KnowledgeGraphCanvas key={scopeKey}
+                cacheScope={`${user?.centerId ?? ""}:${user?.userId ?? ""}:${scopeKey}`}
                 nodes={visibleNodes} edges={visibleEdges}
                 selectedNodeId={selectedNodeId} selectedEdgeId={selectedEdgeId}
                 onSelectNode={id => { setSelectedNodeId(id); setSelectedEdgeId(null); }}

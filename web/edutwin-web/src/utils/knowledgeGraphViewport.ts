@@ -10,6 +10,25 @@ export function fitGraphCamera(content: GraphSize, viewport: GraphSize): GraphCa
       Math.max(1, viewport.height) / Math.max(1, content.height), 1) };
 }
 
+/** Fits arbitrary content bounds (cards, routes, arrowheads, labels) with a pixel margin. */
+export function fitGraphBounds(bounds: { x: number; y: number; width: number; height: number }, viewport: GraphSize, marginPx = 16): GraphCamera {
+  const vw = Math.max(1, viewport.width - 2 * marginPx), vh = Math.max(1, viewport.height - 2 * marginPx);
+  return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2,
+    scale: Math.min(vw / Math.max(1, bounds.width), vh / Math.max(1, bounds.height), 1) };
+}
+
+export type GraphLod = "overview" | "explore" | "detail";
+
+/** Level of detail with ±hysteresis around 0.4 and 0.8 so labels/cards do not flicker while zooming. */
+export function nextGraphLod(previous: GraphLod, scale: number, hysteresis = 0.05): GraphLod {
+  const level = { overview: 0, explore: 1, detail: 2 }[previous];
+  const up = [0.4 + hysteresis, 0.8 + hysteresis], down = [0.4 - hysteresis, 0.8 - hysteresis];
+  let next = level;
+  while (next < 2 && scale >= up[next]) next++;
+  while (next > 0 && scale < down[next - 1]) next--;
+  return (["overview", "explore", "detail"] as const)[next];
+}
+
 export function cameraViewBox(camera: GraphCamera, viewport: GraphSize) {
   const width = viewport.width / camera.scale;
   const height = viewport.height / camera.scale;
