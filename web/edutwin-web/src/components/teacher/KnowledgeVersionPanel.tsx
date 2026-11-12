@@ -6,7 +6,7 @@ import { knowledgeKeys } from "../../utils/knowledgeScope";
 import type { KnowledgeGraphEdgeDto, KnowledgeVersionNodeMapping, KnowledgeVersionEdgeMapping, KnowledgeRelationType } from "../../types/knowledgeGraph";
 import { extractProblemDetails } from "../../utils/problemDetails";
 import { permissions } from "../../auth/permissions";
-import { findReversePrerequisite, replaceDraftPrerequisite } from "../../utils/knowledgeDraftEdges";
+import { findReversePrerequisite, invalidDraftEdges, replaceDraftPrerequisite } from "../../utils/knowledgeDraftEdges";
 
 interface Props { subjectId: string; gradeLevel?: number; versionId?: string; canEdit: boolean; onSelect: (id: string, grade: number) => void; onDirtyChange?: (dirty: boolean) => void }
 const relationLabels: Record<KnowledgeRelationType, string> = { PrerequisiteOf: "Tiên quyết", RelatedTo: "Liên quan", PartOf: "Thuộc về", CausesErrorIn: "Gây lỗi" };
@@ -77,9 +77,9 @@ export function KnowledgeVersionPanel({ subjectId, gradeLevel, versionId, canEdi
   const catalogNodes = (catalog.data?.nodes ?? []).filter(node => !gradeLevel || !node.gradeLevels?.length ||
     node.gradeLevels.includes(gradeLevel) || nodes.some(mapping => mapping.nodeId === node.nodeId));
   const catalogEdges = catalog.data?.edges ?? [];
-  const invalidEdges = edges.filter(mapping => { const edge = catalogEdges.find(e => e.edgeId === mapping.edgeId);
-    return !edge || !nodes.some(n => n.nodeId === edge.targetNodeId) || (!nodes.some(n => n.nodeId === edge.sourceNodeId) && !mapping.sourceGraphVersionId) ||
-      (!!mapping.sourceGraphVersionId && mapping.relationType !== "PrerequisiteOf"); });
+  // Validate only against a loaded library; while it loads (or failed) validity is unknown, not invalid.
+  const catalogReady = catalog.isSuccess;
+  const invalidEdges = invalidDraftEdges(edges, nodes, catalogReady ? catalog.data.edges : null, catalog.isFetching) ?? [];
   return <details className="th-surface rounded-xl p-4 my-4" open={!!versionId}>
     <summary className="font-semibold cursor-pointer">Phiên bản khung tri thức {gradeLevel ? `· Khối ${gradeLevel}` : "· Chọn khối để quản lý"}</summary>
     {gradeLevel && <div className="space-y-3 mt-3">
@@ -99,6 +99,7 @@ export function KnowledgeVersionPanel({ subjectId, gradeLevel, versionId, canEdi
       {selected?.isLegacy && <p className="text-sm text-amber-500">Phiên bản chuyển tiếp giữ nguyên dữ liệu cũ. Sao chép thành bản nháp để xác nhận phạm vi khối trước khi dùng cho giáo trình mới.</p>}
       {editable && <>
         {catalog.isError && <p role="alert">Không tải được thư viện gốc. <button onClick={() => catalog.refetch()}>Tải lại</button></p>}
+        {catalog.isPending && <p role="status" className="text-sm text-[var(--th-text-muted)]">Đang tải thư viện gốc để kiểm tra chủ đề và quan hệ…</p>}
         <p className="text-sm">Chọn những điểm tri thức thực sự áp dụng cho Khối {gradeLevel}. Một điểm có thể dùng nhiều khối; mỗi phiên bản có nút cha và trọng số riêng.</p>
         <fieldset disabled={busy || catalog.isPending || catalog.isError} className="space-y-2 max-h-80 overflow-y-auto">
           <legend className="font-semibold">Chủ đề và cây cấu trúc ({nodes.length})</legend>
@@ -132,7 +133,7 @@ export function KnowledgeVersionPanel({ subjectId, gradeLevel, versionId, canEdi
         </fieldset>
         {stale && <p role="alert">Phiên bản đã được thay đổi ở nơi khác. Hủy lựa chọn và tải lại trước khi lưu.</p>}
         {!!invalidEdges.length && <p role="alert">Có {invalidEdges.length} quan hệ thiếu điểm đích trong khung hoặc thiếu khung nguồn tiên quyết. Bổ sung điểm tri thức hoặc bỏ chọn quan hệ trước khi lưu.</p>}
-        <div className="flex flex-wrap gap-2"><button className="th-primary-button" disabled={busy || !dirty || stale || catalog.isError || invalidEdges.length > 0} onClick={() => save.mutate()}>Lưu cấu trúc nháp</button>
+        <div className="flex flex-wrap gap-2"><button className="th-primary-button" disabled={busy || !dirty || stale || !catalogReady || catalog.isFetching || invalidEdges.length > 0} onClick={() => save.mutate()}>Lưu cấu trúc nháp</button>
           {dirty && <button className="th-secondary-button" disabled={busy} onClick={() => { setDirty(false); setReviewed(false); }}>Hủy lựa chọn chưa lưu</button>}</div>
         <label className="flex gap-2 text-sm"><input type="checkbox" checked={reviewed} disabled={dirty || busy} onChange={e => setReviewed(e.target.checked)} />Tôi đã rà soát chủ đề, cây và quan hệ phù hợp Khối {gradeLevel}.</label>
         <button className="th-primary-button" disabled={busy || dirty || !reviewed || !nodes.length} onClick={() => publish.mutate()}>Duyệt và dùng làm khung hiện hành</button>
