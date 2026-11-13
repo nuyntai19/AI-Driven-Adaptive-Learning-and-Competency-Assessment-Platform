@@ -17,6 +17,8 @@ public sealed class StudentTwinDataDto
     public Guid SubjectId { get; set; }
     public List<TopicTwinNodeDto> Topics { get; set; } = new();
     public BehaviorTwinSummaryDto Behavior { get; set; } = null!;
+    /// <summary>Why no topics are shown (e.g. the class has no published curriculum applied).</summary>
+    public string? ScopeMessage { get; set; }
 }
 
 public sealed class TopicTwinNodeDto

@@ -21,6 +21,8 @@ export interface StudentTwinDataDto {
   subjectId: string;
   topics: TopicTwinNodeDto[];
   behavior: BehaviorTwinMetricsDto;
+  /** Why no topics are in scope (e.g. the class has no published curriculum applied). */
+  scopeMessage?: string | null;
 }
 
 export interface TwinUpdateHistoryItemDto {

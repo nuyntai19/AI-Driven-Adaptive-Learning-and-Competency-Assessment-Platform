@@ -146,6 +146,41 @@ public sealed class GradeScopedLearningTests : IDisposable
         Assert.Equal(5m, (await new StudentGoalRiskUpdater(db).UpdateAsync(center, student, subject, DateTime.UtcNow, default))!.CurrentPredictedScore);
     }
 
+    [Fact]
+    public async Task TeacherStudentTwin_ShowsOnlyAppliedCurriculumTopics_InCurriculumOrder()
+    {
+        var version = GraphScopeFixture.Approve(db, center, subject, 12, 1, 2, 3);
+        var cls = AddClass(); Apply(cls, AddCurriculum(version, 12, 2, 1), "Primary");
+        db.KnowledgeTwins.Add(Twin(3, 90));
+        await db.SaveChangesAsync();
+        var result = await TeacherTwin().ExecuteAsync(student, subject, default);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(new[] { "2", "1" }, result.Data!.Topics.Select(t => t.TopicNodeId));
+        Assert.Null(result.Data.ScopeMessage);
+    }
+
+    [Fact]
+    public async Task TeacherStudentTwin_ClassWithoutPublishedCurriculum_ShowsNoTopicsAndExplains()
+    {
+        GraphScopeFixture.Approve(db, center, subject, 12, 1, 2, 3);
+        AddClass();
+        await db.SaveChangesAsync();
+        var result = await TeacherTwin().ExecuteAsync(student, subject, default);
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Data!.Topics);
+        Assert.False(string.IsNullOrWhiteSpace(result.Data.ScopeMessage));
+    }
+
+    private GetTeacherStudentTwinUseCase TeacherTwin()
+    {
+        var tenant = new TenantContext(); tenant.Initialize(center, teacher, "Teacher", 1);
+        return new GetTeacherStudentTwinUseCase(db, tenant, new AllowStudentAccess());
+    }
+    private sealed class AllowStudentAccess : IStudentOwnershipGuard
+    {
+        public Task<OwnershipDecision> CheckStudentAccessAsync(Guid studentId, CancellationToken cancellationToken) => Task.FromResult(OwnershipDecision.Allowed);
+    }
+
     private Guid AddClass()
     {
         var id = Guid.NewGuid(); db.Classes.Add(new Class { CenterId = center, ClassId = id, TeacherId = teacher, SubjectId = subject,

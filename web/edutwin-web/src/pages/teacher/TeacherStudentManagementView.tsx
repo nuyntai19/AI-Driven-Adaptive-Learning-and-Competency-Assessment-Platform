@@ -1087,7 +1087,7 @@ export function TeacherStudentManagementView() {
                   <TeacherSkeleton className="h-48 rounded-xl" />
                 ) : !studentTwinData || !studentTwinData.topics || studentTwinData.topics.length === 0 ? (
                   <div className="p-8 text-center text-xs text-[var(--th-text-muted)] border border-dashed border-[var(--th-border)] rounded-xl">
-                    Chưa có dữ liệu Bản sao số (Digital Twin) cho môn học này.
+                    {studentTwinData?.scopeMessage || "Chưa có dữ liệu Bản sao số (Digital Twin) cho môn học này."}
                   </div>
                 ) : (
                   <div className="space-y-4">

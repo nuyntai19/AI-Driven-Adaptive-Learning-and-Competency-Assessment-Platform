@@ -214,7 +214,7 @@ export const TeacherStudentTwinView: React.FC = () => {
 
               {topics.length === 0 ? (
                 <div style={{ padding: "30px", textAlign: "center", color: "var(--th-text-muted)" }}>
-                  Chưa có dữ liệu đánh giá nào cho môn học này
+                  {twinData?.scopeMessage || "Chưa có dữ liệu đánh giá nào cho môn học này"}
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>

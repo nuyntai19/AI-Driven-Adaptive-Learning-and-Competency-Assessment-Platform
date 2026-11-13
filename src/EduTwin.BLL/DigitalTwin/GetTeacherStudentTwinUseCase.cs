@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.BLL.Organization;
 using EduTwin.Contracts.DigitalTwin;
 using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.DAL.Persistence;
@@ -74,12 +75,21 @@ public sealed class GetTeacherStudentTwinUseCase : IGetTeacherStudentTwinUseCase
             return StudentTwinResult.NotFound();
         }
 
-        // 1. Active topics for subject + student KnowledgeTwins
-        var activeTopics = await _dbContext.KnowledgeNodes.AsNoTracking()
-            .Where(n => n.CenterId == centerId && n.SubjectId == subjectId && n.NodeType == NodeType.Topic && n.IsActive && !n.IsDeleted)
-            .OrderBy(n => n.OrderIndex)
-            .Select(n => new { n.NodeId, n.NodeName })
-            .ToListAsync(cancellationToken);
+        // 1. Topics the student is actually studying: published curricula applied to the
+        // student's current classes (or the approved grade library for independent study),
+        // never every active node in the subject.
+        var scope = await StudentLearningScope.ResolveAsync(
+            _dbContext, centerId, studentId, subjectId, classId: null, history: false, cancellationToken);
+        var scopeTopicIds = (scope.TopicIds ?? []).ToList();
+
+        var activeTopics = (await _dbContext.KnowledgeNodes.AsNoTracking()
+            .Where(n => n.CenterId == centerId && n.SubjectId == subjectId && n.NodeType == NodeType.Topic && n.IsActive && !n.IsDeleted &&
+                        scopeTopicIds.Contains(n.NodeId))
+            .Select(n => new { n.NodeId, n.NodeName, n.OrderIndex })
+            .ToListAsync(cancellationToken))
+            .OrderBy(n => scope.OrderByNodeId.TryGetValue(n.NodeId, out var order) ? order : uint.MaxValue)
+            .ThenBy(n => n.OrderIndex)
+            .ToList();
 
         var activeTopicIds = activeTopics.Select(t => t.NodeId).ToList();
 
@@ -133,7 +143,8 @@ public sealed class GetTeacherStudentTwinUseCase : IGetTeacherStudentTwinUseCase
             StudentId = studentId,
             SubjectId = subjectId,
             Topics = topicDtos,
-            Behavior = behaviorDto
+            Behavior = behaviorDto,
+            ScopeMessage = topicDtos.Count == 0 ? scope.Reason : null
         };
 
         return StudentTwinResult.Success(resultDto);
