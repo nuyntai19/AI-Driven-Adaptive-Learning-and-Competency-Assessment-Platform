@@ -38,6 +38,7 @@ import {
 import { ConfirmDialog } from "../components/centerManager/CenterManagerOverlays";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
 import { RichMathText } from "../components/math/RichMathText";
+import { DateTimeInput } from "../components/DateInput";
 
 const toLocalDateTime = (value: string | null) => {
   if (!value) return "";
@@ -916,15 +917,14 @@ function CenterManagerAssignmentEditorView() {
                 <label htmlFor="assignment-dueat-input" className="block text-xs font-semibold uppercase tracking-wider text-[var(--cm-text-muted)] mb-1">
                   Hạn chót nộp bài (tùy chọn)
                 </label>
-                <input
+                <DateTimeInput
                   id="assignment-dueat-input"
-                  type="datetime-local"
                   min={minDateTime}
                   onFocus={refreshMinDateTime}
                   onPointerDown={refreshMinDateTime}
                   disabled={isReadOnly}
                   value={dueAt}
-                  onChange={(e) => handleDueAtChange(e.target.value)}
+                  onChange={handleDueAtChange}
                   className={`cm-input w-full text-sm ${dueDateError ? "!border-rose-500 focus:!border-rose-500" : ""}`}
                 />
                 {dueDateError ? (

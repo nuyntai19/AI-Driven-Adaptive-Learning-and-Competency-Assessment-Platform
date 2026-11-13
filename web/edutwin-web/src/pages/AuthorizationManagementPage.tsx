@@ -7,6 +7,7 @@ import { permissions } from "../auth/permissions";
 import { useAuthStore } from "../stores/authStore";
 import { CenterManagerThemeScope } from "../components/centerManager/CenterManagerThemeScope";
 import type { AccountType } from "../types/auth";
+import { DateTimeInput } from "../components/DateInput";
 import type {
   AuthorizationAuditDto,
   AuthorizationRoleDto,
@@ -1882,12 +1883,11 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
 
           <div>
             <label className="block text-[11px] font-semibold text-[var(--cm-text-secondary)]">Từ thời điểm</label>
-            <input
-              type="datetime-local"
+            <DateTimeInput
               aria-label="Lọc từ thời điểm"
               value={filterFrom}
-              onChange={(e) => {
-                setFilterFrom(e.target.value);
+              onChange={(value) => {
+                setFilterFrom(value);
                 setPage(1);
               }}
               className="cm-input mt-1 w-full text-xs"
@@ -1896,12 +1896,11 @@ const AuditPanel = ({ canReadAudit }: AuditPanelProps) => {
 
           <div>
             <label className="block text-[11px] font-semibold text-[var(--cm-text-secondary)]">Đến thời điểm</label>
-            <input
-              type="datetime-local"
+            <DateTimeInput
               aria-label="Lọc đến thời điểm"
               value={filterTo}
-              onChange={(e) => {
-                setFilterTo(e.target.value);
+              onChange={(value) => {
+                setFilterTo(value);
                 setPage(1);
               }}
               className="cm-input mt-1 w-full text-xs"

@@ -41,6 +41,7 @@ import { RichMathText } from "../../components/math/RichMathText";
 import { questionTypeLabel } from "../../utils/academicDisplay";
 import { parseKnowledgeTopicContext, sameSubject, topicClassDisposition, validateKnowledgeTopicContext, withoutTopicContext } from "../../utils/knowledgeTopicContext";
 import { knowledgeKeys, readKnowledgeScope } from "../../utils/knowledgeScope";
+import { DateTimeInput } from "../../components/DateInput";
 
 const toLocalDateTime = (value: string | null) => {
   if (!value) return "";
@@ -772,7 +773,7 @@ export function TeacherAssignmentEditorView() {
       {canRescheduleExam && <section className="th-surface space-y-3 p-4" aria-label="Điều chỉnh lịch thi đã công bố">
         <h2 className="font-semibold">Điều chỉnh lịch thi đã công bố</h2>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="text-sm">Ngày giờ thi<input type="datetime-local" className="th-input mt-1 block" min={minDateTime} value={examAt} onChange={e => setExamAt(e.target.value)} /></label>
+          <label className="text-sm">Ngày giờ thi<DateTimeInput className="th-input mt-1 block" min={minDateTime} value={examAt} onChange={setExamAt} /></label>
           <label className="text-sm">Thời lượng (phút)<input type="number" min={1} className="th-input mt-1 block" value={effectiveTimeLimitMinutes ?? ""} onChange={e => handleTimeLimitChange(e.target.value, "minutes")} /></label>
           <button type="button" disabled={updateMutation.isPending} className="th-primary-button" onClick={saveExamSchedule}>{updateMutation.isPending ? "Đang cập nhật…" : "Lưu lịch thi"}</button>
         </div>
@@ -914,19 +915,18 @@ export function TeacherAssignmentEditorView() {
 
             <div>
               <label className="mb-4 block text-xs font-semibold text-[var(--th-text-muted)]">Phân loại bài<select className="th-input mt-1 w-full text-sm" value={kind} disabled={isReadOnly} onChange={e => setKind(e.target.value)}><option value="Regular">Bài tập thường</option><option value="Midterm">Thi giữa kỳ</option><option value="Final">Thi cuối kỳ</option><option value="MockExam">Thi thử</option></select></label>
-              {kind !== "Regular" && <label className="mb-4 block text-xs font-semibold text-[var(--th-text-muted)]">Ngày giờ thi<input type="datetime-local" className="th-input mt-1 w-full text-sm" min={minDateTime} disabled={isReadOnly} value={examAt} onChange={e => setExamAt(e.target.value)} /><span className="mt-1 block font-normal">Bài thi đã công bố sẽ xuất hiện trong lộ trình học sinh thuộc phạm vi giao bài.</span></label>}
+              {kind !== "Regular" && <label className="mb-4 block text-xs font-semibold text-[var(--th-text-muted)]">Ngày giờ thi<DateTimeInput className="th-input mt-1 w-full text-sm" min={minDateTime} disabled={isReadOnly} value={examAt} onChange={setExamAt} /><span className="mt-1 block font-normal">Bài thi đã công bố sẽ xuất hiện trong lộ trình học sinh thuộc phạm vi giao bài.</span></label>}
               <label htmlFor="teacher-assignment-dueat-input" className="block text-xs font-semibold uppercase tracking-wider text-[var(--th-text-muted)] mb-1">
                 Hạn chót nộp bài (tùy chọn)
               </label>
-              <input
+              <DateTimeInput
                 id="teacher-assignment-dueat-input"
-                type="datetime-local"
                 min={minDateTime}
                 onFocus={refreshMinDateTime}
                 onPointerDown={refreshMinDateTime}
                 disabled={isReadOnly}
                 value={dueAt}
-                onChange={(e) => handleDueAtChange(e.target.value)}
+                onChange={handleDueAtChange}
                 className={`th-input w-full text-sm ${dueDateError ? "!border-rose-500 focus:!border-rose-500" : ""}`}
               />
               {dueDateError ? (

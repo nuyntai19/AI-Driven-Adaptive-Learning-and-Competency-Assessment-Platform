@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { CustomizePathProposalRequest, PathProposalDto, ProposedMilestoneDto } from "../../types/learningPath";
 import { TimeBudgetSlider } from "./TimeBudgetSlider";
 import { MIN_GOAL_STUDY_MINUTES } from "../../utils/studyTime";
+import { DateInput } from "../DateInput";
 
 function todayIso() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 /** Minutes for one set, at the pace the teacher-set question times give this practice. */
@@ -71,10 +72,10 @@ export function ProposalCustomizationForm({ proposal, availableMilestones: allMi
       </dl>
     </div>}
     <fieldset disabled={pending} className="space-y-5 disabled:opacity-60">
-      <TimeBudgetSlider label="Tổng thời gian học mỗi ngày" min={MIN_GOAL_STUDY_MINUTES} value={minutes} onChange={setMinutes} summary="Tối thiểu 10 phút/ngày để đủ làm một bộ luyện. Đây là tổng quỹ thời gian cho cả tuyến; hệ thống xếp các phần học vào quỹ này theo tiến độ và mức độ cần củng cố." />
+      <TimeBudgetSlider label="Tổng thời gian học mỗi ngày" minValue={MIN_GOAL_STUDY_MINUTES} value={minutes} onChange={setMinutes} summary="Tối thiểu 10 phút/ngày để đủ làm một bộ luyện. Đây là tổng quỹ thời gian cho cả tuyến; hệ thống xếp các phần học vào quỹ này theo tiến độ và mức độ cần củng cố." />
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-sm">Ngày mỗi tuần<select className={input} value={days} onChange={event => setDays(Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7].map(day => <option key={day}>{day}</option>)}</select></label>
-        <label className="text-sm">Mốc thời gian (nếu có)<input type="date" min={todayIso()} className={input} value={deadline} onChange={event => setDeadline(event.target.value)} />
+        <label className="text-sm">Mốc thời gian (nếu có)<DateInput min={todayIso()} className={input} value={deadline} onChange={setDeadline} />
           {proposal.suggestedDeadline && <button type="button" className="mt-1 text-xs font-semibold text-indigo-700 underline" onClick={() => setDeadline(suggestedPart)}>Dùng ngày đề xuất ({formatIsoDate(proposal.suggestedDeadline)})</button>}</label>
       </div>
       {infeasible && earliestApprox && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">Không có lộ trình phù hợp với mốc này: cần tối thiểu khoảng {daysNeeded} ngày học, sớm nhất khoảng {formatDate(earliestApprox)} theo lịch vừa chọn (ước tính lại; hệ thống kiểm tra chính xác khi cập nhật). Hãy dời mốc, tăng phút/ngày hoặc ngày/tuần.</p>}

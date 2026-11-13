@@ -6,6 +6,7 @@ import { platformApi } from "../api/platformApi";
 import type { PlatformAuditItem, PlatformAuditQuery } from "../types/platform";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
 import { auditActionLabel, auditTargetLabel } from "../utils/platformPresentation";
+import { DateTimeInput } from "../components/DateInput";
 
 export const PlatformAuditLogsPage: React.FC = () => {
   const [page, setPage] = useState<number>(1);
@@ -262,10 +263,10 @@ export const PlatformAuditLogsPage: React.FC = () => {
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
               Từ thời điểm (UTC)
             </label>
-            <input
-              type="datetime-local"
+            <DateTimeInput
+              aria-label="Từ thời điểm (UTC)"
               value={fromUtcInput}
-              onChange={(e) => setFromUtcInput(e.target.value)}
+              onChange={setFromUtcInput}
               className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -274,10 +275,10 @@ export const PlatformAuditLogsPage: React.FC = () => {
             <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
               Đến thời điểm (UTC)
             </label>
-            <input
-              type="datetime-local"
+            <DateTimeInput
+              aria-label="Đến thời điểm (UTC)"
               value={toUtcInput}
-              onChange={(e) => setToUtcInput(e.target.value)}
+              onChange={setToUtcInput}
               className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>

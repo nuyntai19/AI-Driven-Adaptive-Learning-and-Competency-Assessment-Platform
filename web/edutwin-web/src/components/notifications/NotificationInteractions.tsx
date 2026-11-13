@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notificationsApi } from "../../api/notificationsApi";
 import type { NotificationFilters, NotificationItem, NotificationSent } from "../../types/notifications";
 import { useNotifications } from "./useNotifications";
+import { DateInput } from "../DateInput";
 import { notificationSendAccess, notificationDateBoundary, notificationDateInput, notificationContentError } from "../../utils/notificationHelpers";
 
 const button = "rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium disabled:opacity-40 dark:border-slate-700";
@@ -13,8 +14,8 @@ export function NotificationFiltersBar({ filters, onChange }: { filters: Notific
     <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <label className="grid gap-2 text-sm">Loại<select className={field} value={filters.category ?? ""} onChange={e => onChange({ ...filters, category: e.target.value || undefined })}><option value="">Tất cả</option><option value="Information">Thông tin</option><option value="Request">Yêu cầu</option><option value="System">Tự động</option></select></label>
       <label className="grid gap-2 text-sm">Ưu tiên<select className={field} value={filters.priority ?? ""} onChange={e => onChange({ ...filters, priority: e.target.value || undefined })}><option value="">Tất cả</option><option value="Normal">Thông thường</option><option value="Important">Quan trọng</option><option value="Urgent">Khẩn</option></select></label>
-      <label className="grid gap-2 text-sm">Từ ngày<input type="date" className={field} value={notificationDateInput(filters.from)} onChange={e => onChange({ ...filters, from: notificationDateBoundary(e.target.value) })} /></label>
-      <label className="grid gap-2 text-sm">Đến ngày<input type="date" className={field} value={notificationDateInput(filters.until)} onChange={e => onChange({ ...filters, until: notificationDateBoundary(e.target.value, true) })} /></label>
+      <label className="grid gap-2 text-sm">Từ ngày<DateInput className={field} value={notificationDateInput(filters.from)} onChange={value => onChange({ ...filters, from: notificationDateBoundary(value) })} /></label>
+      <label className="grid gap-2 text-sm">Đến ngày<DateInput className={field} value={notificationDateInput(filters.until)} onChange={value => onChange({ ...filters, until: notificationDateBoundary(value, true) })} /></label>
     </div>
     <label className="mt-4 flex items-center gap-2 text-sm"><input type="checkbox" checked={filters.needsAcknowledgement ?? false} onChange={e => onChange({ ...filters, needsAcknowledgement: e.target.checked })} />Cần tôi xác nhận nhận</label>
     <button className={`${button} mt-3`} type="button" onClick={() => onChange({})}>Xóa bộ lọc</button>

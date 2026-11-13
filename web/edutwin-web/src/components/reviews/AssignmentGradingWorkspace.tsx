@@ -30,6 +30,7 @@ import { hydrateRubricForm, buildRubricScores, type RubricForm } from "../../uti
 import { RubricGradeView } from "./RubricGradeView";
 import { getAnalysisFeedbackLabel, normalizeQuestionScore, questionAssignmentContribution, toInternalQuestionScore } from "../../utils/attemptFeedbackPresentation";
 import { normalizeAITextLineBreaks } from "../../utils/aiTextFormatting";
+import { DateInput } from "../DateInput";
 
 export interface AssignmentGradingWorkspaceProps {
   actor: "Teacher" | "CenterManager";
@@ -779,10 +780,10 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                     Chọn ngày cụ thể
                   </label>
-                  <input
-                    type="date"
+                  <DateInput
+                    aria-label="Chọn ngày cụ thể"
                     value={customDate}
-                    onChange={(e) => setCustomDate(e.target.value)}
+                    onChange={setCustomDate}
                     className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                   />
                 </div>

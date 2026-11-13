@@ -8,13 +8,19 @@ function clock(minutes: number): string {
 
 const marks = [5, 60, 120, 180, 240, 300];
 
-export function TimeBudgetSlider({ value, onChange, label = "Thời gian học", summary, min = MIN_STUDY_MINUTES, max = MAX_STUDY_MINUTES, capacity }: {
-  value: number; onChange: (minutes: number) => void; label?: string; summary?: string; min?: number; max?: number;
+export function TimeBudgetSlider({ value, onChange, label = "Thời gian học", summary, min = MIN_STUDY_MINUTES, max = MAX_STUDY_MINUTES, minValue, capacity }: {
+  value: number; onChange: (minutes: number) => void; label?: string; summary?: string;
+  /** Ends of the track; every slider uses the same 5p–5h scale so the marks line up. */
+  min?: number; max?: number;
+  /** Lowest value that can be picked when it is above the start of the track (e.g. 10 minutes for a goal). */
+  minValue?: number;
   /** Minutes of work available today; time beyond this adds nothing, so it is marked on the track. */
   capacity?: number;
 }) {
   const id = useId();
   const step = 5;
+  const floor = Math.max(min, minValue ?? min);
+  const pick = (minutes: number) => onChange(Math.min(max, Math.max(floor, minutes)));
   const percent = ((value - min) / (max - min)) * 100;
   const cap = capacity && capacity < max ? (Math.max(capacity - min, 0) / (max - min)) * 100 : null;
   const over = cap != null && value > capacity!;
@@ -28,7 +34,7 @@ export function TimeBudgetSlider({ value, onChange, label = "Thời gian học",
     </div>
     <div className="relative">
     <input id={id} type="range" min={min} max={max} step={step} value={value}
-      onChange={e => onChange(Math.min(max, Math.max(min, Math.round(Number(e.target.value) / step) * step || min)))}
+      onChange={e => pick(Math.round(Number(e.target.value) / step) * step || floor)}
       aria-valuetext={formatStudyMinutes(value)}
       className="mt-3 h-2 w-full cursor-pointer appearance-none rounded-full accent-indigo-600"
       style={{ background: cap != null
@@ -37,7 +43,7 @@ export function TimeBudgetSlider({ value, onChange, label = "Thời gian học",
     {cap != null && <span aria-hidden="true" title="Hết việc của hôm nay" className="pointer-events-none absolute top-2 h-4 w-0.5 -translate-x-1/2 rounded bg-amber-500" style={{ left: `${cap}%` }} />}
     </div>
     <div className="mt-1 flex justify-between text-[11px] text-slate-400" aria-hidden="true">
-      {marks.filter(m => m >= min && m <= max).map(m => <button type="button" key={m} className="hover:text-indigo-600" onClick={() => onChange(m)}>{m < 60 ? `${m}p` : `${m / 60}h`}</button>)}
+      {marks.filter(m => m >= min && m <= max).map(m => <button type="button" key={m} className="hover:text-indigo-600" onClick={() => pick(m)}>{m < 60 ? `${m}p` : `${m / 60}h`}</button>)}
     </div>
     {summary && <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{summary}</p>}
     {cap != null && <p className={`mt-1 text-xs ${over ? "font-medium text-amber-700 dark:text-amber-300" : "text-slate-500"}`}>

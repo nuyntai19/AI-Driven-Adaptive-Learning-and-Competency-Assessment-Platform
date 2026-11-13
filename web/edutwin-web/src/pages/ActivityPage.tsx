@@ -6,6 +6,7 @@ import { useAuthStore } from "../stores/authStore";
 import type { ApiCollectionResponse } from "../types/api";
 import { activitySourceLabels as sourceLabels, activityActionLabels as actionLabels, activityTitle, activityDescription, activityTargetLabel, activityStatus } from "../utils/activityPresentation";
 import { notificationDateBoundary } from "../utils/notificationHelpers";
+import { DateInput } from "../components/DateInput";
 
 interface Activity {
   source: string; sourceId: string; occurredAt: string; actorName: string; action: string; targetType: string; targetId: string;
@@ -34,8 +35,8 @@ function ActivityView({ embedded }: { embedded: boolean }) {
     <div className="mb-5 flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
       <label className="min-w-[180px] flex-1 text-xs font-medium text-slate-500">Nguồn lịch sử<select value={source} onChange={e => { setSource(e.target.value); setPage(1); }} className="mt-2 block w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:text-white"><option value="">Tất cả nguồn được phép</option>{Object.entries(sourceLabels).filter(([key]) => !administrative || ["Audit", "Curriculum", "Business"].includes(key)).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
       <label className="min-w-[180px] flex-1 text-xs font-medium text-slate-500">Hoạt động<select value={action} onChange={e => { setAction(e.target.value); setPage(1); }} className="mt-2 block w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm dark:border-slate-700"><option value="">Tất cả hoạt động</option>{Object.entries(actionLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-      <label className="text-xs font-medium text-slate-500">Từ ngày<input type="date" value={from} onChange={e => { setFrom(e.target.value); setPage(1); }} className="mt-2 block rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm dark:border-slate-700" /></label>
-      <label className="text-xs font-medium text-slate-500">Đến ngày<input type="date" value={until} onChange={e => { setUntil(e.target.value); setPage(1); }} className="mt-2 block rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm dark:border-slate-700" /></label>
+      <label className="text-xs font-medium text-slate-500">Từ ngày<DateInput value={from} onChange={value => { setFrom(value); setPage(1); }} className="mt-2 block rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm dark:border-slate-700" /></label>
+      <label className="text-xs font-medium text-slate-500">Đến ngày<DateInput value={until} onChange={value => { setUntil(value); setPage(1); }} className="mt-2 block rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm dark:border-slate-700" /></label>
       <button type="button" className={button} onClick={() => { setSource(""); setAction(""); setFrom(""); setUntil(""); setPage(1); }}>Xóa bộ lọc</button>
     </div>
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
