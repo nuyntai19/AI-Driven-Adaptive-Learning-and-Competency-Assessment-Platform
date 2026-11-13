@@ -27,13 +27,29 @@ public class MathAnswerNormalizer : IMathAnswerNormalizer
         @"^\\frac\{\s*([+-]?\d+)\s*\}\{\s*([+-]?\d+)\s*\}$",
         RegexOptions.Compiled);
 
+    // LaTeX also accepts single-token arguments: MathLive writes 4/2 typed as a fraction as "\frac42" (= \frac{4}{2}),
+    // and \dfrac / \tfrac are the same fraction in display/text size. An answer box may keep its $...$ delimiters.
+    private static readonly Regex LatexFractionShorthandRegex = new(
+        @"^\\[dt]?frac\s*(?:\{([^{}]*)\}|(\d))\s*(?:\{([^{}]*)\}|(\d))$",
+        RegexOptions.Compiled);
+
+    private static string ExpandLatexFraction(string text)
+    {
+        if (text.Length >= 2 && text[0] == '$' && text[^1] == '$') text = text.Trim('$').Trim();
+        var match = LatexFractionShorthandRegex.Match(text);
+        if (!match.Success) return text;
+        var numerator = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
+        var denominator = match.Groups[3].Success ? match.Groups[3].Value : match.Groups[4].Value;
+        return $"\\frac{{{numerator}}}{{{denominator}}}";
+    }
+
     public bool TryNormalize(string? rawAnswer, [NotNullWhen(true)] out RationalFraction? normalized)
     {
         normalized = null;
         if (string.IsNullOrWhiteSpace(rawAnswer))
             return false;
 
-        var text = rawAnswer.Trim();
+        var text = ExpandLatexFraction(rawAnswer.Trim());
         if (text.Length > MaxRawLength)
             return false;
 

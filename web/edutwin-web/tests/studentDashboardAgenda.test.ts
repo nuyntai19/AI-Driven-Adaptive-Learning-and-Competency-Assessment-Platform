@@ -7,6 +7,7 @@ import ts from "typescript";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { studentScopeUrl } from "../src/utils/studentAcademicNavigation.ts";
+import * as assignmentReviewTiming from "../src/utils/assignmentReviewTiming.ts";
 
 const require = createRequire(import.meta.url);
 const source = readFileSync(new URL("../src/pages/StudentDashboardPage.tsx", import.meta.url), "utf8");
@@ -40,6 +41,7 @@ function render({ assignment = false, pending = false, history = false, all = fa
     "../utils/studentAcademicNavigation": { studentScopeUrl },
     "../utils/academicDisplay": { goalGapLabel: () => "" },
     "../utils/studentDashboardNudge": { dashboardGreeting: () => "", dashboardNudge: () => "" },
+    "../utils/assignmentReviewTiming": assignmentReviewTiming,
   };
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS,
     jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true, target: ts.ScriptTarget.ES2022 } }).outputText,

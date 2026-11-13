@@ -8,6 +8,7 @@ import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentBadge } from "../components/student/StudentBadge";
 import type { ProgressStatus, StudentAssignmentListItemDto } from "../types/assignments";
 import { studentScopeUrl } from "../utils/studentAcademicNavigation";
+import { isAssignmentPastDue } from "../utils/assignmentReviewTiming";
 import { AssignmentKnowledgeScope } from "../components/student/AssignmentKnowledgeScope";
 import { assignmentKnowledgeSearch, assignmentResultLabel } from "../utils/assignmentKnowledge";
 
@@ -333,6 +334,7 @@ export const StudentAssignmentsPage: React.FC = () => {
                   const theme = getSubjectTheme(subjectName);
                   const isDone = progress.status === "Completed";
                   const isStarted = progress.completedQuestionCount > 0;
+                  const isPastDue = !isDone && (progress.status === "Overdue" || isAssignmentPastDue(item.dueAt));
 
                   return (
                     <div
@@ -423,7 +425,7 @@ export const StudentAssignmentsPage: React.FC = () => {
                           to={studentScopeUrl(`/hoc-tap/bai-tap/${item.assignmentId}`, searchParams)}
                           className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold text-stone-800 dark:text-stone-200 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
                         >
-                          <span>{history ? "Xem lại" : isDone ? "Xem lại" : isStarted ? "Tiếp tục" : "Bắt đầu"}</span>
+                          <span>{history || isDone ? "Xem lại" : isPastDue ? "Xem (quá hạn)" : isStarted ? "Tiếp tục" : "Bắt đầu"}</span>
                           <span className="text-[11px]">→</span>
                         </Link>
                       </div>

@@ -31,6 +31,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("varchar(36)")
                         .HasColumnName("center_id");
 
+                    b.Property<string>("ClassId")
+                        .HasColumnType("varchar(36)")
+                        .HasColumnName("class_id");
+
                     b.Property<string>("CloseReason")
                         .HasColumnType("varchar(64)")
                         .HasColumnName("close_reason");

@@ -164,6 +164,8 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
         queryClient.invalidateQueries({ queryKey: ["adaptive-practice", "session", sessionId] });
       }
     },
+    // The session may have ended meanwhile (time up, stopped in another tab): reload it so the ended screen shows.
+    onError: () => { void queryClient.invalidateQueries({ queryKey: ["adaptive-practice", "session", sessionId] }); },
   });
 
   // Đưa bản chép vào ô bài làm duy nhất; đáp án nộp đi được suy ra từ bài
@@ -581,7 +583,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
                 </>
               )}
               {submitMutation.isError && !feedback && (
-                <p role="alert" className="text-xs font-medium text-rose-700 dark:text-rose-300">Chưa nộp được câu trả lời. Hãy thử lại.</p>
+                <p role="alert" className="text-xs font-medium text-rose-700 dark:text-rose-300">{(submitMutation.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Chưa nộp được câu trả lời. Hãy thử lại."}</p>
               )}
             </section>
           </div>

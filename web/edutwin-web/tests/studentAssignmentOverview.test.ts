@@ -7,6 +7,7 @@ import ts from "typescript";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as questionDisplay from "../src/utils/questionDisplay.ts";
+import * as assignmentReviewTiming from "../src/utils/assignmentReviewTiming.ts";
 
 const require = createRequire(import.meta.url);
 const source = fs.readFileSync(new URL("../src/pages/StudentAssignmentDetailPage.tsx", import.meta.url), "utf8");
@@ -29,6 +30,7 @@ function renderOverview(submitted = false, started = false) {
     if (name.endsWith("assignmentDraftStorage")) return { readAssignmentDraft: () => JSON.stringify({ "1": { finalAnswer: "one" }, "2": { finalAnswer: "two" }, "3": { reasoningText: "three" } }) };
     if (name.endsWith("questionDisplay")) return questionDisplay;
     if (name.endsWith("studentAcademicNavigation")) return { studentScopeUrl: (path: string) => path };
+    if (name.endsWith("assignmentReviewTiming")) return assignmentReviewTiming;
     if (name.endsWith("subjectTheme")) return { getSubjectTheme: () => ({}) };
     if (name.endsWith("StudentSubjectPattern")) return { StudentSubjectPattern: () => null };
     if (name.endsWith("StudentBadge")) return { StudentBadge: ({ children }: any) => React.createElement("span", null, children) };

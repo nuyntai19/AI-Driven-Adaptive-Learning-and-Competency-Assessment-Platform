@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading;
 using EduTwin.BLL.Organization;
 using EduTwin.Contracts.AdaptivePractice;
@@ -15,6 +16,7 @@ using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.DigitalTwin;
 using EduTwin.Contracts.KnowledgeGraph;
+using EduTwin.Contracts.Organization;
 using EduTwin.Contracts.Recommendations;
 using EduTwin.DAL.AdaptivePractice;
 using EduTwin.DAL.AssessmentAndReasoning;
@@ -201,11 +203,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         var currentMastery = twins.TryGetValue(selectedTopic.NodeId, out var selectedTwin) ? selectedTwin.MasteryPercentage : 0m;
         // Review consolidates what is already known: a small step from where the
         // student is, without the 60% floor of a session that teaches the topic.
-        var targetMastery = isDiagnostic
-            ? 60m
-            : mode == AdaptivePracticeMode.SpacedReview && !customTopicId.HasValue
-                ? Math.Min(100m, currentMastery + 5m)
-                : Math.Min(100m, Math.Max(60m, currentMastery + 15m));
+        var targetMastery = DefaultTargetMastery(isDiagnostic, mode, currentMastery);
 
         return new AdaptivePracticeProposalDto
         {
@@ -280,7 +278,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
 
         decimal startMastery = twin?.MasteryPercentage ?? 0m;
         bool isDiagnostic = twin == null || twin.EvidenceCount == 0;
-        decimal targetMastery = request.CustomTargetMastery ?? (isDiagnostic ? 60m : Math.Min(100m, Math.Max(60m, startMastery + 15m)));
+        decimal targetMastery = request.CustomTargetMastery ?? DefaultTargetMastery(isDiagnostic, request.PracticeMode, startMastery);
 
         // Question limits configuration based on minutes (BR-03, Section V UC-02)
         int minQuestions = request.TimeBudgetMinutes switch
@@ -335,6 +333,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             TopicNodeId = request.TopicNodeId,
             LearningPathId = request.LearningPathId,
             LearningPathItemId = request.LearningPathItemId,
+            ClassId = request.ClassId,
             PracticeMode = request.PracticeMode,
             StartingMastery = startMastery,
             TargetMastery = targetMastery,
@@ -471,6 +470,33 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         DateTime utcNow,
         CancellationToken ct)
     {
+        await using var scope = await BeginStudentScopeAsync(centerId, studentId, ct);
+        var result = await CloseSessionCoreAsync(centerId, studentId, sessionId, closeReason, utcNow, ct);
+        if (scope is not null) await scope.CommitAsync(ct);
+        return result;
+    }
+
+    /// <summary>
+    /// Close, next-question and submit of one student run one after another: a last answer racing "stop", or the
+    /// same question submitted from two tabs, otherwise both write the session and the loser fails with a 500
+    /// (D03, C03). Nested calls (next-question closing the session) reuse the open transaction.
+    /// </summary>
+    private async Task<IDbContextTransaction?> BeginStudentScopeAsync(Guid centerId, Guid studentId, CancellationToken ct)
+    {
+        if (!_dbContext.Database.IsRelational() || _dbContext.Database.CurrentTransaction is not null) return null;
+        var transaction = await _dbContext.Database.BeginTransactionAsync(ct);
+        await EduTwin.BLL.Recommendations.StudentLockHelper.AcquireStudentLockAsync(_dbContext, centerId, studentId, ct);
+        return transaction;
+    }
+
+    private async Task<AdaptivePracticeSummaryDto> CloseSessionCoreAsync(
+        Guid centerId,
+        Guid studentId,
+        Guid sessionId,
+        AdaptivePracticeCloseReason closeReason,
+        DateTime utcNow,
+        CancellationToken ct)
+    {
         var session = await _dbContext.AdaptivePracticeSessions
             .Include(s => s.Items)
             .Include(s => s.TopicNode)
@@ -517,6 +543,19 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         DateTime utcNow,
         CancellationToken ct)
     {
+        await using var scope = await BeginStudentScopeAsync(centerId, studentId, ct);
+        var result = await GetNextQuestionCoreAsync(centerId, studentId, sessionId, utcNow, ct);
+        if (scope is not null) await scope.CommitAsync(ct);
+        return result;
+    }
+
+    private async Task<AdaptivePracticeQuestionDto?> GetNextQuestionCoreAsync(
+        Guid centerId,
+        Guid studentId,
+        Guid sessionId,
+        DateTime utcNow,
+        CancellationToken ct)
+    {
         var session = await _dbContext.AdaptivePracticeSessions
             .Include(s => s.Items)
             .Include(s => s.TopicNode)
@@ -537,10 +576,18 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             return await BuildQuestionDtoAsync(centerId, existingPresented, session, ct);
         }
 
+        // T03: once the planned time is used up no new question is issued (an issued, unanswered one above may still
+        // be answered and counts). Pauses move StartedAt forward, so this is working time, as at submit (END03).
+        if (utcNow - (session.StartedAt ?? session.CreatedAt) >= TimeSpan.FromMinutes(session.TimeBudgetMinutes))
+        {
+            await CloseSessionCoreAsync(centerId, studentId, sessionId, AdaptivePracticeCloseReason.TimeBudgetReached, utcNow, ct);
+            return null;
+        }
+
         // Check if session reached max question limit
         if (session.QuestionCount >= session.MaximumQuestions)
         {
-            await CloseSessionAsync(centerId, studentId, sessionId, AdaptivePracticeCloseReason.QuestionLimitReached, utcNow, ct);
+            await CloseSessionCoreAsync(centerId, studentId, sessionId, AdaptivePracticeCloseReason.QuestionLimitReached, utcNow, ct);
             return null;
         }
 
@@ -595,7 +642,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
 
         // Fetch candidate questions for the node. Adaptation needs an immediate
         // right/wrong result, so questions that need a teacher are left out.
-        var questionScope = await StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, session.SubjectId, null, false, ct);
+        var questionScope = await StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, session.SubjectId, session.ClassId, false, ct);
         async Task<List<Question>> LoadCandidatesAsync(ulong nodeId) => (await _dbContext.Questions
             .Where(q => q.CenterId == centerId
                 && q.SubjectId == session.SubjectId
@@ -644,7 +691,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         if (availablePool.Count == 0)
         {
             // BR-14: Out of questions in bank
-            await CloseSessionAsync(centerId, studentId, sessionId, AdaptivePracticeCloseReason.OutOfQuestions, utcNow, ct);
+            await CloseSessionCoreAsync(centerId, studentId, sessionId, AdaptivePracticeCloseReason.OutOfQuestions, utcNow, ct);
             return null;
         }
 
@@ -749,6 +796,20 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         DateTime utcNow,
         CancellationToken ct)
     {
+        await using var scope = await BeginStudentScopeAsync(centerId, studentId, ct);
+        var result = await SubmitAnswerCoreAsync(centerId, studentId, sessionId, request, utcNow, ct);
+        if (scope is not null) await scope.CommitAsync(ct);
+        return result;
+    }
+
+    private async Task<AdaptivePracticeAnswerFeedbackDto> SubmitAnswerCoreAsync(
+        Guid centerId,
+        Guid studentId,
+        Guid sessionId,
+        SubmitAdaptivePracticeAnswerRequest request,
+        DateTime utcNow,
+        CancellationToken ct)
+    {
         var session = await _dbContext.AdaptivePracticeSessions
             .Include(s => s.Items)
             .Include(s => s.TopicNode)
@@ -787,7 +848,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
 
         if (session.Status != AdaptivePracticeSessionStatus.InProgress)
         {
-            throw new InvalidOperationException("Cannot submit answer to a session that is not in progress.");
+            throw new InvalidOperationException("Phiên luyện tập đã kết thúc (hết giờ, đã dừng hoặc đã đạt mục tiêu) nên câu trả lời này không được ghi nhận. Hãy xem tổng kết phiên.");
         }
 
         var question = await _dbContext.Questions
@@ -831,7 +892,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         // attempt_id is AUTO_INCREMENT and shared with assignment attempts: an
         // explicit random value would push every later attempt to that range.
         // The insert comes first because the item and twin reference the new id.
-        await using var transaction = _dbContext.Database.IsRelational()
+        await using var transaction = _dbContext.Database.IsRelational() && _dbContext.Database.CurrentTransaction is null
             ? await _dbContext.Database.BeginTransactionAsync(ct)
             : null;
         _dbContext.Attempts.Add(attempt);
@@ -856,7 +917,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
                 throw;
             }
 
-            return await SubmitAnswerAsync(centerId, studentId, sessionId, request, utcNow, ct);
+            return await SubmitAnswerCoreAsync(centerId, studentId, sessionId, request, utcNow, ct);
         }
 
         // Update SessionItem
@@ -918,8 +979,9 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             // If consecutive errors >= 2, check for prerequisite to probe (AP-16, BR-23)
             if (session.ConsecutiveIncorrect >= 2 && !session.PrerequisiteTestedNodeId.HasValue)
             {
-                // A prerequisite outside the student's curriculum has no questions for them.
-                var scope = await StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, session.SubjectId, null, false, ct);
+                // A prerequisite outside the curriculum of the session's class has no questions for this session (G06):
+                // another class of the same subject must not leak its topics in.
+                var scope = await StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, session.SubjectId, session.ClassId, false, ct);
                 var prereqEdge = (await _dbContext.KnowledgeEdges
                     .AsNoTracking()
                     .Where(e => e.CenterId == centerId
@@ -1059,7 +1121,9 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
     {
         var summary = await _dbContext.AdaptivePracticeSessionSummaries
             .Include(s => s.RecommendedNextTopic)
-            .SingleOrDefaultAsync(s => s.CenterId == centerId && s.SessionId == sessionId && !s.IsDeleted, ct);
+            // Only the student who owns the session may read its summary (A03): another student of the same
+            // center gets "not found", exactly as for a session that does not exist.
+            .SingleOrDefaultAsync(s => s.CenterId == centerId && s.StudentId == studentId && s.SessionId == sessionId && !s.IsDeleted, ct);
 
         if (summary == null) return null;
 
@@ -1149,41 +1213,55 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         Guid? subjectId,
         int limit,
         CancellationToken ct)
+        => await GetTeacherSessionsAsync(centerId, teacherId, false, classId, subjectId, limit, ct);
+
+    /// <summary>
+    /// Practice sessions of the students in the classes this actor may see (A07): a teacher only the classes they
+    /// teach, a center manager every class of the center; a chosen class narrows it further, and a class outside
+    /// the actor's reach returns nothing. A session belongs to the class it was started in; older sessions without
+    /// a class are matched to a class of the same subject the student is enrolled in.
+    /// </summary>
+    public async Task<IReadOnlyList<TeacherAdaptivePracticeSessionDto>> GetTeacherSessionsAsync(
+        Guid centerId,
+        Guid actorId,
+        bool allClasses,
+        Guid? classId,
+        Guid? subjectId,
+        int limit,
+        CancellationToken ct)
     {
-        var query = _dbContext.AdaptivePracticeSessions
-            .AsNoTracking()
-            .Include(s => s.Student).ThenInclude(st => st.User)
+        var visible = await VisibleClassMembersAsync(centerId, actorId, allClasses, classId, ct);
+        if (visible.Count == 0) return [];
+        var sessions = await VisibleSessionsQuery(centerId, actorId, allClasses, classId)
+            .Where(s => s.Status == AdaptivePracticeSessionStatus.Closed && (!subjectId.HasValue || s.SubjectId == subjectId.Value))
+            .Include(s => s.Student)
             .Include(s => s.Subject)
             .Include(s => s.TopicNode)
             .Include(s => s.Summary)
-            .Where(s => s.CenterId == centerId && s.Status == AdaptivePracticeSessionStatus.Closed && !s.IsDeleted);
-
-        if (subjectId.HasValue)
-        {
-            query = query.Where(s => s.SubjectId == subjectId.Value);
-        }
-
-        var list = await query
             .OrderByDescending(s => s.CompletedAt ?? s.CreatedAt)
-            .Take(limit)
+            .Take(limit * 4)
             .ToListAsync(ct);
 
-        return list.Select(s => new TeacherAdaptivePracticeSessionDto
-        {
-            SessionId = s.SessionId,
-            StudentId = s.StudentId,
-            StudentName = s.Student.FullName,
-            ClassName = "Lớp học",
-            SubjectName = s.Subject.Name,
-            TopicName = s.TopicNode.Name,
-            TotalQuestions = s.Summary?.TotalQuestions ?? s.QuestionCount,
-            CorrectCount = s.Summary?.CorrectCount ?? 0,
-            GoalAchievementStatus = s.Summary?.GoalAchievementStatus ?? (s.CloseReason == AdaptivePracticeCloseReason.GoalAchievedWithEvidence ? "Achieved" : "NotAchieved"),
-            CloseReason = s.CloseReason,
-            CompletedAt = s.CompletedAt,
-            RequiresIntervention = s.CloseReason == AdaptivePracticeCloseReason.RemediationNeeded,
-            InterventionReason = s.CloseReason == AdaptivePracticeCloseReason.RemediationNeeded ? "Học sinh gặp khó khăn liên tục ở kiến thức nền và cần được củng cố bổ trợ." : null
-        }).ToList();
+        return sessions
+            .Select(s => (Session: s, Class: OwningClass(s, visible)))
+            .Where(x => x.Class is not null)
+            .Take(limit)
+            .Select(x => new TeacherAdaptivePracticeSessionDto
+            {
+                SessionId = x.Session.SessionId,
+                StudentId = x.Session.StudentId,
+                StudentName = x.Session.Student.FullName,
+                ClassName = x.Class!.ClassName,
+                SubjectName = x.Session.Subject.Name,
+                TopicName = x.Session.TopicNode.Name,
+                TotalQuestions = x.Session.Summary?.TotalQuestions ?? x.Session.QuestionCount,
+                CorrectCount = x.Session.Summary?.CorrectCount ?? 0,
+                GoalAchievementStatus = x.Session.Summary?.GoalAchievementStatus ?? (x.Session.CloseReason == AdaptivePracticeCloseReason.GoalAchievedWithEvidence ? "Achieved" : "NotAchieved"),
+                CloseReason = x.Session.CloseReason,
+                CompletedAt = x.Session.CompletedAt,
+                RequiresIntervention = x.Session.CloseReason == AdaptivePracticeCloseReason.RemediationNeeded,
+                InterventionReason = x.Session.CloseReason == AdaptivePracticeCloseReason.RemediationNeeded ? "Học sinh gặp khó khăn liên tục ở kiến thức nền và cần được củng cố bổ trợ." : null
+            }).ToList();
     }
 
     public async Task<IReadOnlyList<TeacherAdaptivePracticeAlertDto>> GetTeacherAlertsAsync(
@@ -1191,39 +1269,80 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         Guid teacherId,
         Guid? classId,
         CancellationToken ct)
+        => await GetTeacherAlertsAsync(centerId, teacherId, false, classId, ct);
+
+    /// <summary>Remediation alerts of the last 7 days, limited to the classes the actor may see (same rule as the session log).</summary>
+    public async Task<IReadOnlyList<TeacherAdaptivePracticeAlertDto>> GetTeacherAlertsAsync(
+        Guid centerId,
+        Guid actorId,
+        bool allClasses,
+        Guid? classId,
+        CancellationToken ct)
     {
-        // Alerts for students who had remediation needed in last 7 days
+        var visible = await VisibleClassMembersAsync(centerId, actorId, allClasses, classId, ct);
+        if (visible.Count == 0) return [];
         var thresholdDate = DateTime.UtcNow.AddDays(-7);
-        var alertSessions = await _dbContext.AdaptivePracticeSessions
-            .AsNoTracking()
-            .Include(s => s.Student).ThenInclude(st => st.User)
+        var alertSessions = await VisibleSessionsQuery(centerId, actorId, allClasses, classId)
+            .Where(s => s.CloseReason == AdaptivePracticeCloseReason.RemediationNeeded && s.CompletedAt >= thresholdDate)
+            .Include(s => s.Student)
             .Include(s => s.Subject)
             .Include(s => s.TopicNode)
-            .Where(s => s.CenterId == centerId
-                && s.CloseReason == AdaptivePracticeCloseReason.RemediationNeeded
-                && s.CompletedAt >= thresholdDate
-                && !s.IsDeleted)
             .OrderByDescending(s => s.CompletedAt)
-            .Take(20)
+            .Take(80)
             .ToListAsync(ct);
 
-        return alertSessions.Select(s => new TeacherAdaptivePracticeAlertDto
-        {
-            AlertId = s.SessionId.ToString("N"),
-            StudentId = s.StudentId,
-            StudentName = s.Student.FullName,
-            ClassName = "Lớp học",
-            SubjectId = s.SubjectId,
-            SubjectName = s.Subject.Name,
-            TopicNodeId = s.TopicNodeId,
-            TopicName = s.TopicNode.Name,
-            AlertType = "PREREQUISITE_DEFICIT",
-            Description = $"Học sinh gặp lỗi lặp lại trong phiên '{s.TopicNode.Name}' dù đã nhận gợi ý. Hệ thống kiến nghị giáo viên can thiệp hoặc giao bài củng cố kiến thức nền.",
-            CreatedAt = s.CompletedAt ?? s.UpdatedAt
-        }).ToList();
+        return alertSessions
+            .Select(s => (Session: s, Class: OwningClass(s, visible)))
+            .Where(x => x.Class is not null)
+            .Take(20)
+            .Select(x => new TeacherAdaptivePracticeAlertDto
+            {
+                AlertId = x.Session.SessionId.ToString("N"),
+                StudentId = x.Session.StudentId,
+                StudentName = x.Session.Student.FullName,
+                ClassName = x.Class!.ClassName,
+                SubjectId = x.Session.SubjectId,
+                SubjectName = x.Session.Subject.Name,
+                TopicNodeId = x.Session.TopicNodeId,
+                TopicName = x.Session.TopicNode.Name,
+                AlertType = "PREREQUISITE_DEFICIT",
+                Description = $"Học sinh gặp lỗi lặp lại trong phiên '{x.Session.TopicNode.Name}' dù đã nhận gợi ý. Hệ thống kiến nghị giáo viên can thiệp hoặc giao bài củng cố kiến thức nền.",
+                CreatedAt = x.Session.CompletedAt ?? x.Session.UpdatedAt
+            }).ToList();
     }
 
+    private sealed record VisibleClassMember(Guid ClassId, Guid SubjectId, string ClassName, Guid StudentId, bool Active);
+
+    private async Task<List<VisibleClassMember>> VisibleClassMembersAsync(Guid centerId, Guid actorId, bool allClasses, Guid? classId, CancellationToken ct) =>
+        await (from c in _dbContext.Classes.AsNoTracking()
+               join cs in _dbContext.ClassStudents.AsNoTracking() on new { c.CenterId, c.ClassId } equals new { cs.CenterId, cs.ClassId }
+               where c.CenterId == centerId && !c.IsDeleted && (allClasses || c.TeacherId == actorId) && (!classId.HasValue || c.ClassId == classId.Value)
+               select new VisibleClassMember(c.ClassId, c.SubjectId, c.ClassName, cs.StudentId, cs.Status == ClassStudentStatus.Active))
+            .ToListAsync(ct);
+
+    // Sessions of students enrolled in a visible class of the same subject; OwningClass then applies the exact rule.
+    private IQueryable<AdaptivePracticeSession> VisibleSessionsQuery(Guid centerId, Guid actorId, bool allClasses, Guid? classId) =>
+        _dbContext.AdaptivePracticeSessions.AsNoTracking().Where(s => s.CenterId == centerId && !s.IsDeleted &&
+            _dbContext.ClassStudents.Any(cs => cs.CenterId == centerId && cs.StudentId == s.StudentId &&
+                _dbContext.Classes.Any(c => c.CenterId == centerId && c.ClassId == cs.ClassId && c.SubjectId == s.SubjectId && !c.IsDeleted &&
+                    (allClasses || c.TeacherId == actorId) && (!classId.HasValue || c.ClassId == classId.Value))));
+
+    private static VisibleClassMember? OwningClass(AdaptivePracticeSession session, List<VisibleClassMember> visible) =>
+        session.ClassId.HasValue
+            ? visible.FirstOrDefault(m => m.ClassId == session.ClassId.Value && m.StudentId == session.StudentId)
+            : visible.Where(m => m.StudentId == session.StudentId && m.SubjectId == session.SubjectId)
+                .OrderByDescending(m => m.Active).FirstOrDefault();
+
     // --- Private Helpers ---
+
+    /// <summary>
+    /// Target used when the client sends none; the proposal shows the same value (M07/M08). Review consolidates what
+    /// is already known: a small step from where the student is, without the 60% floor of a session that teaches.
+    /// </summary>
+    internal static decimal DefaultTargetMastery(bool isDiagnostic, AdaptivePracticeMode mode, decimal currentMastery) =>
+        isDiagnostic ? 60m
+        : mode == AdaptivePracticeMode.SpacedReview ? Math.Min(100m, currentMastery + 5m)
+        : Math.Min(100m, Math.Max(60m, currentMastery + 15m));
 
     // Questions in an open assignment must not appear in practice, whose feedback
     // reveals the answer. A question is reusable only when every assignment

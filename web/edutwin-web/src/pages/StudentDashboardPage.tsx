@@ -14,6 +14,7 @@ import { StudentJourneyRoute } from "../components/student/StudentJourneyRoute";
 import { studentScopeUrl } from "../utils/studentAcademicNavigation";
 import { goalGapLabel } from "../utils/academicDisplay";
 import { dashboardGreeting, dashboardNudge } from "../utils/studentDashboardNudge";
+import { isAssignmentPastDue } from "../utils/assignmentReviewTiming";
 
 const StudentRadarChart = React.lazy(() => import("../components/student/StudentRadarChart"));
 const StudentMasteryTrendChart = React.lazy(() => import("../components/student/StudentMasteryTrendChart"));
@@ -99,7 +100,8 @@ export const StudentDashboardPage: React.FC = () => {
 
   const urgentAssignment = useMemo(() => {
     const list = assignmentsData?.data || [];
-    const active = list.filter((a) => a.progress?.status !== "Completed");
+    // An overdue assignment can no longer be started or submitted: never push it as "do it now".
+    const active = list.filter((a) => a.progress?.status !== "Completed" && a.progress?.status !== "Overdue" && !isAssignmentPastDue(a.dueAt));
     active.sort((a, b) => {
       if (!a.dueAt) return 1;
       if (!b.dueAt) return -1;

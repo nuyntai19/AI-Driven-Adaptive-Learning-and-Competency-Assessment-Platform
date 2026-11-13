@@ -76,6 +76,8 @@ public static class AdaptivePracticeHintGenerator
     private static bool ContainsAnswer(string text, string? answer) =>
         !string.IsNullOrWhiteSpace(answer) && AnswerToken(answer).IsMatch(text);
 
+    // Inside a formula the answer becomes a box, in prose a phrase: "[kết quả cần tìm]" typed inside $...$ was
+    // rendered by KaTeX as garbled math letters.
     private static string MaskAnswer(string text, string? answer) =>
-        string.IsNullOrWhiteSpace(answer) ? text : AnswerToken(answer).Replace(text, "[kết quả cần tìm]");
+        string.IsNullOrWhiteSpace(answer) ? text : EduTwin.BLL.AssessmentAndReasoning.MathAwareMask.Replace(text, AnswerToken(answer), "[kết quả cần tìm]");
 }

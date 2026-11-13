@@ -444,7 +444,9 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         var pattern = wordLike ? $@"(?<![\p{{L}}\p{{N}}]){escaped}(?![\p{{L}}\p{{N}}])" : escaped;
         // One-character answers (e.g. option "A") are matched case-sensitively so articles like "a" survive.
         var options = answer.Length <= 1 ? System.Text.RegularExpressions.RegexOptions.None : System.Text.RegularExpressions.RegexOptions.IgnoreCase;
-        return System.Text.RegularExpressions.Regex.Replace(text, pattern, "___", options);
+        // "___" inside a formula is a KaTeX subscript error; formulas get a box instead.
+        return EduTwin.BLL.AssessmentAndReasoning.MathAwareMask.Replace(text,
+            new System.Text.RegularExpressions.Regex(pattern, options, TimeSpan.FromMilliseconds(200)), "___");
     }
 
     private static string Shorten(string text, int max) => text.Length <= max ? text : text[..max].TrimEnd() + "…";

@@ -107,4 +107,12 @@ public interface IAdaptivePracticeEngine
         Guid teacherId,
         Guid? classId,
         CancellationToken ct);
+
+    /// <param name="allClasses">True for a center manager (every class of the center); a teacher sees only the classes they teach.</param>
+    Task<IReadOnlyList<TeacherAdaptivePracticeSessionDto>> GetTeacherSessionsAsync(
+        Guid centerId, Guid actorId, bool allClasses, Guid? classId, Guid? subjectId, int limit, CancellationToken ct);
+
+    /// <param name="allClasses">True for a center manager (every class of the center); a teacher sees only the classes they teach.</param>
+    Task<IReadOnlyList<TeacherAdaptivePracticeAlertDto>> GetTeacherAlertsAsync(
+        Guid centerId, Guid actorId, bool allClasses, Guid? classId, CancellationToken ct);
 }

@@ -10,6 +10,7 @@ using EduTwin.BLL.AdaptivePractice;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AdaptivePractice;
 using EduTwin.Contracts.Common;
+using EduTwin.Contracts.IdentityAndTenancy;
 
 namespace EduTwin.API.Controllers;
 
@@ -310,7 +311,8 @@ public sealed class AdaptivePracticeController : ControllerBase
             return Forbid();
         }
 
-        var sessions = await _engine.GetTeacherSessionsAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, classId, subjectId, Math.Clamp(limit, 1, 100), ct);
+        var sessions = await _engine.GetTeacherSessionsAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value,
+            _tenantContext.Role == nameof(UserRole.CenterManager), classId, subjectId, Math.Clamp(limit, 1, 100), ct);
         return Ok(sessions);
     }
 
@@ -326,7 +328,8 @@ public sealed class AdaptivePracticeController : ControllerBase
             return Forbid();
         }
 
-        var alerts = await _engine.GetTeacherAlertsAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, classId, ct);
+        var alerts = await _engine.GetTeacherAlertsAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value,
+            _tenantContext.Role == nameof(UserRole.CenterManager), classId, ct);
         return Ok(alerts);
     }
 

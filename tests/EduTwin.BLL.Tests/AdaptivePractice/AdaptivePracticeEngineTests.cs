@@ -886,6 +886,113 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
         Assert.Equal(AdaptivePracticeCloseReason.StudentStopped, sessionDb.CloseReason);
     }
 
+    // --- Team findings A03, T03, M07/M08, A07 ---
+
+    [Fact]
+    public async Task Summary_OfAnotherStudentsSession_IsNotReturned()
+    {
+        var session = await StartSessionAsync();
+        await _engine.CloseSessionAsync(_centerId, _studentId, session.SessionId, AdaptivePracticeCloseReason.StudentStopped, _utcNow, CancellationToken.None);
+
+        Assert.NotNull(await _engine.GetSummaryAsync(_centerId, _studentId, session.SessionId, CancellationToken.None));
+        Assert.Null(await _engine.GetSummaryAsync(_centerId, Guid.NewGuid(), session.SessionId, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task GetNextQuestion_AfterTheTimeBudget_IssuesNoNewQuestionAndCloses()
+    {
+        var session = await StartSessionAsync();
+
+        var question = await _engine.GetNextQuestionAsync(_centerId, _studentId, session.SessionId, _utcNow.AddMinutes(16), CancellationToken.None);
+
+        Assert.Null(question);
+        var saved = await _dbContext.AdaptivePracticeSessions.SingleAsync();
+        Assert.Equal(AdaptivePracticeSessionStatus.Closed, saved.Status);
+        Assert.Equal(AdaptivePracticeCloseReason.TimeBudgetReached, saved.CloseReason);
+        Assert.Empty(await _dbContext.AdaptivePracticeSessionItems.ToListAsync());
+    }
+
+    [Fact]
+    public async Task GetNextQuestion_AfterTheTimeBudget_StillReturnsTheIssuedQuestion()
+    {
+        var session = await StartSessionAsync();
+        var issued = await _engine.GetNextQuestionAsync(_centerId, _studentId, session.SessionId, _utcNow, CancellationToken.None);
+
+        var again = await _engine.GetNextQuestionAsync(_centerId, _studentId, session.SessionId, _utcNow.AddMinutes(16), CancellationToken.None);
+
+        Assert.Equal(issued!.SessionItemId, again!.SessionItemId);
+    }
+
+    [Theory]
+    [InlineData(40, 45)]
+    [InlineData(90, 95)]
+    public async Task CreateSession_SpacedReviewWithoutTarget_KeepsTheProposedTarget(int mastery, int expected)
+    {
+        _dbContext.KnowledgeTwins.Add(new EduTwin.DAL.DigitalTwin.KnowledgeTwin
+        {
+            KnowledgeTwinId = 5002, CenterId = _centerId, StudentId = _studentId, SubjectId = _subjectId,
+            TopicNodeId = _mainTopicId, MasteryPercentage = mastery, EvidenceCount = 3,
+            LastEvidenceAt = DateTime.UtcNow.AddDays(-30), CreatedAt = _utcNow, UpdatedAt = _utcNow
+        });
+        await _dbContext.SaveChangesAsync();
+        var proposal = await _engine.GetProposalAsync(_centerId, _studentId, _subjectId, null, AdaptivePracticeMode.SpacedReview, null, CancellationToken.None);
+
+        var session = await _engine.CreateSessionAsync(_centerId, _studentId, new CreateAdaptivePracticeSessionRequest
+        {
+            SubjectId = _subjectId, TopicNodeId = _mainTopicId, TimeBudgetMinutes = 15, PracticeMode = AdaptivePracticeMode.SpacedReview
+        }, _utcNow, CancellationToken.None);
+
+        Assert.Equal(expected, proposal.TargetMastery);
+        Assert.Equal(proposal.TargetMastery, session.TargetMastery);
+    }
+
+    [Fact]
+    public async Task TeacherSessions_OnlyShowTheActorsClasses()
+    {
+        // The session exists before the class rows: the fixture's curriculum scope has no classes.
+        var session = await StartSessionAsync();
+        await _engine.CloseSessionAsync(_centerId, _studentId, session.SessionId, AdaptivePracticeCloseReason.StudentStopped, _utcNow, CancellationToken.None);
+        var teacherA = Guid.NewGuid();
+        var teacherB = Guid.NewGuid();
+        var classA = Guid.NewGuid();
+        var classB = Guid.NewGuid();
+        _dbContext.Classes.Add(new Class { CenterId = _centerId, ClassId = classA, TeacherId = teacherA, SubjectId = _subjectId, ClassName = "10A1", AcademicYear = "2026", Status = ClassStatus.Active, CreatedAt = _utcNow, UpdatedAt = _utcNow });
+        _dbContext.Classes.Add(new Class { CenterId = _centerId, ClassId = classB, TeacherId = teacherB, SubjectId = _subjectId, ClassName = "10B2", AcademicYear = "2026", Status = ClassStatus.Active, CreatedAt = _utcNow, UpdatedAt = _utcNow });
+        _dbContext.ClassStudents.Add(new ClassStudent { CenterId = _centerId, ClassId = classA, StudentId = _studentId, JoinedAt = _utcNow, Status = ClassStudentStatus.Active });
+        await _dbContext.SaveChangesAsync();
+
+        var own = await _engine.GetTeacherSessionsAsync(_centerId, teacherA, false, classA, null, 20, CancellationToken.None);
+        var ownAll = await _engine.GetTeacherSessionsAsync(_centerId, teacherA, false, null, null, 20, CancellationToken.None);
+        var otherClassOfTeacherA = await _engine.GetTeacherSessionsAsync(_centerId, teacherA, false, classB, null, 20, CancellationToken.None);
+        var otherTeacher = await _engine.GetTeacherSessionsAsync(_centerId, teacherB, false, null, null, 20, CancellationToken.None);
+        var manager = await _engine.GetTeacherSessionsAsync(_centerId, Guid.NewGuid(), true, classA, null, 20, CancellationToken.None);
+
+        Assert.Equal("10A1", Assert.Single(own).ClassName);
+        Assert.Single(ownAll);
+        Assert.Empty(otherClassOfTeacherA);
+        Assert.Empty(otherTeacher);
+        Assert.Single(manager);
+    }
+
+    [Fact]
+    public async Task TeacherSessions_UseTheClassTheSessionWasStartedIn()
+    {
+        var session = await StartSessionAsync();
+        await _engine.CloseSessionAsync(_centerId, _studentId, session.SessionId, AdaptivePracticeCloseReason.StudentStopped, _utcNow, CancellationToken.None);
+        var teacher = Guid.NewGuid();
+        var classA = Guid.NewGuid();
+        var classB = Guid.NewGuid();
+        _dbContext.Classes.Add(new Class { CenterId = _centerId, ClassId = classA, TeacherId = teacher, SubjectId = _subjectId, ClassName = "10A1", AcademicYear = "2026", Status = ClassStatus.Active, CreatedAt = _utcNow, UpdatedAt = _utcNow });
+        _dbContext.Classes.Add(new Class { CenterId = _centerId, ClassId = classB, TeacherId = teacher, SubjectId = _subjectId, ClassName = "10B2", AcademicYear = "2026", Status = ClassStatus.Active, CreatedAt = _utcNow, UpdatedAt = _utcNow });
+        _dbContext.ClassStudents.Add(new ClassStudent { CenterId = _centerId, ClassId = classA, StudentId = _studentId, JoinedAt = _utcNow, Status = ClassStudentStatus.Active });
+        _dbContext.ClassStudents.Add(new ClassStudent { CenterId = _centerId, ClassId = classB, StudentId = _studentId, JoinedAt = _utcNow, Status = ClassStudentStatus.Active });
+        (await _dbContext.AdaptivePracticeSessions.SingleAsync()).ClassId = classB;
+        await _dbContext.SaveChangesAsync();
+
+        Assert.Empty(await _engine.GetTeacherSessionsAsync(_centerId, teacher, false, classA, null, 20, CancellationToken.None));
+        Assert.Equal("10B2", Assert.Single(await _engine.GetTeacherSessionsAsync(_centerId, teacher, false, classB, null, 20, CancellationToken.None)).ClassName);
+    }
+
     private sealed class AdaptivePracticeTestDbContext(
         DbContextOptions<EduTwinDbContext> options, TenantContext tenantContext)
         : EduTwinDbContext(options, tenantContext);

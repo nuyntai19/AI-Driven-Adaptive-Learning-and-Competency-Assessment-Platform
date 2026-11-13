@@ -18,6 +18,9 @@ public class AdaptivePracticeSession : IMutableTenantAggregate
     public ulong TopicNodeId { get; set; }
     public Guid? LearningPathId { get; set; }
     public ulong? LearningPathItemId { get; set; }
+    /// <summary>The class the session was started in; its curriculum bounds every question, including prerequisite checks.
+    /// Null for sessions created before the column existed.</summary>
+    public Guid? ClassId { get; set; }
 
     public AdaptivePracticeMode PracticeMode { get; set; }
     public decimal StartingMastery { get; set; }

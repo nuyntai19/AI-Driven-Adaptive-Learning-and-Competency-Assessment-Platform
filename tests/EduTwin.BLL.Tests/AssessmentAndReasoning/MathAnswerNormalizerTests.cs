@@ -25,6 +25,27 @@ public class MathAnswerNormalizerTests
         Assert.Equal(BigInteger.Parse(expectedDen), frac.Value.Denominator);
     }
 
+    // F03: MathLive writes a typed fraction 4/2 as "\frac42"; LaTeX single-token arguments mean the same as braces.
+    [Theory]
+    [InlineData(@"\frac42", "2", "1")]
+    [InlineData(@"\frac{4}2", "2", "1")]
+    [InlineData(@"\frac{12}3", "4", "1")]
+    [InlineData(@"\dfrac{4}{2}", "2", "1")]
+    [InlineData(@"\tfrac34", "3", "4")]
+    [InlineData(@"$\frac42$", "2", "1")]
+    public void TryNormalize_LatexFractionShorthand_IsTheSameFraction(string input, string expectedNum, string expectedDen)
+    {
+        Assert.True(_normalizer.TryNormalize(input, out var frac));
+        Assert.Equal(BigInteger.Parse(expectedNum), frac!.Value.Numerator);
+        Assert.Equal(BigInteger.Parse(expectedDen), frac.Value.Denominator);
+    }
+
+    [Theory]
+    [InlineData(@"\frac420")]
+    [InlineData(@"\frac{4}{0}")]
+    [InlineData(@"\frac{x}{2}")]
+    public void TryNormalize_InvalidLatexFraction_IsRejected(string input) => Assert.False(_normalizer.TryNormalize(input, out _));
+
     [Theory]
     [InlineData("1/2", "1", "2")]
     [InlineData("2/4", "1", "2")]

@@ -10,6 +10,7 @@ import { getSubjectTheme } from "../components/student/subjectTheme";
 import { StudentBadge } from "../components/student/StudentBadge";
 import type { ProgressStatus, StudentAssignmentQuestionDto } from "../types/assignments";
 import { studentScopeUrl } from "../utils/studentAcademicNavigation";
+import { isAssignmentPastDue } from "../utils/assignmentReviewTiming";
 
 const getStudentDetailError = (error: unknown) => {
   if (isAxiosError(error)) return error.response?.data?.detail || error.message;
@@ -72,6 +73,8 @@ export const StudentAssignmentDetailPage: React.FC = () => {
   const { progress, questions } = assignment;
   const isReadOnly = assignment.isReadOnly === true || searchParams.get("history") === "true";
   const examUpcoming = !!assignment.examAt && new Date(assignment.examAt).getTime() > Date.now();
+  // The server refuses to start or submit after the due date; show that instead of a start button that would fail.
+  const pastDue = !assignment.isSubmitted && isAssignmentPastDue(assignment.dueAt);
   const isTermExam = assignment.kind === "Midterm" || assignment.kind === "Final";
   const draftQuestionIds = new Set<string>();
   if (!assignment.isSubmitted) {
@@ -210,7 +213,14 @@ export const StudentAssignmentDetailPage: React.FC = () => {
             </div>
 
             {/* Primary Action Button */}
-            {examUpcoming && !isAssignmentFinished ? <span className="rounded-lg bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700">Chưa tới giờ thi</span> : isAssignmentFinished || isReadOnly ? (
+            {examUpcoming && !isAssignmentFinished ? <span className="rounded-lg bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700">Chưa tới giờ thi</span>
+            : pastDue && !isAssignmentFinished && !isReadOnly ? <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                <span className="rounded-lg bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 dark:bg-rose-950/40 dark:text-rose-200">Đã quá hạn nộp · không thể làm tiếp</span>
+                {(progress.completedQuestionCount > 0 || assignment.startedAt) && questions[0] && <Link
+                  to={studentScopeUrl(`/hoc-tap/luyen-tap/${questions[0].questionId}`, searchParams, { assignmentId: assignment.assignmentId })}
+                  className="rounded-lg border border-stone-300 px-4 py-2 text-xs sm:text-sm font-semibold text-stone-800 dark:border-stone-600 dark:text-stone-200">Xem bài đã làm</Link>}
+              </div>
+            : isAssignmentFinished || isReadOnly ? (
               <Link
                 to={studentScopeUrl(`/hoc-tap/luyen-tap/${questions[0]?.questionId || ""}`, searchParams, { assignmentId:assignment.assignmentId })}
                 className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-stone-200 px-4 py-2 text-xs sm:text-sm font-semibold text-white dark:text-stone-900 transition-colors cursor-pointer self-start sm:self-auto"

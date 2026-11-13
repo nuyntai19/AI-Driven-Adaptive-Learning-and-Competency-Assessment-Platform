@@ -103,6 +103,9 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
   const [mission, setMission] = useState<AgendaItemDto | null>(null);
   // Set while a run of an older route is open read-only from "Lịch sử tuyến học".
   const [historyContext, setHistoryContext] = useState<string | null>(null);
+  // Between two parts of a multi-part check the route is reloaded (2-5 s) before the next part opens; a full-screen
+  // waiting screen covers it instead of flashing the route page.
+  const [transitionNote, setTransitionNote] = useState<string | null>(null);
   const [acceptedNotice, setAcceptedNotice] = useState("");
   const map = useQuery({ queryKey: ["learning-paths", "capability-map", actor?.centerId, actor?.userId, subjectId, access.classId],
     queryFn: () => getCapabilityMap(subjectId, access.classId), enabled: !!subjectId && access.writable });
@@ -381,7 +384,8 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
       insights={agenda.data?.insights} suggestedSkillIds={initialScope} selfAssessedSkillIds={selfAssessed}
       placementReport={entryMode === "FromPlacement" ? (agenda.data?.placementReport ?? undefined) : undefined}
       initialSelfReportedPrerequisiteSkillIds={entryMode === "Update" || entryMode === "FromPlacement" ? agenda.data?.selfReportedPrerequisiteSkillIds : undefined}
-      onPlacementStarted={async () => { setFlow(true); placementOpened.current = false; const fresh = await agenda.refetch(); void map.refetch(); advancePlacement(fresh.data); }}
+      onPlacementStarted={async () => { setFlow(true); placementOpened.current = false; setTransitionNote("Đang mở phần kiểm tra đầu tiên…");
+        try { const fresh = await agenda.refetch(); void map.refetch(); advancePlacement(fresh.data); } finally { setTransitionNote(null); } }}
       subjectId={subjectId} classId={access.classId} skills={map.data?.skills ?? []} subjectName={subject?.subjectName ?? ""}
       onOpenBlockingMission={blocked => {
         setShowGoal(false);
@@ -393,10 +397,10 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
     {showExtend && <ExtendCheckModal subjectId={subjectId} classId={access.classId} subjectName={subject?.subjectName ?? ""} candidates={extendCandidates}
       onClose={() => setShowExtend(false)}
       onStarted={async (ids, unavailableNames) => {
-        setShowExtend(false); extraQueue.current = [...ids];
+        setShowExtend(false); extraQueue.current = [...ids]; setTransitionNote("Đang mở phần kiểm tra đầu tiên…");
         setAcceptedNotice(`Đã thêm ${ids.length} phần kiểm tra vào lộ trình hiện tại; các phần sẽ mở nối tiếp nhau. Lộ trình và tiến độ đang có được giữ nguyên.`
           + (unavailableNames.length ? ` Chưa thêm được: ${unavailableNames.join(", ")} (chưa đủ 3 câu tự chấm được; hãy báo giáo viên bổ sung câu hỏi).` : ""));
-        const [fresh] = await Promise.all([agenda.refetch(), map.refetch()]); openNextExtra(fresh.data);
+        try { const [fresh] = await Promise.all([agenda.refetch(), map.refetch()]); openNextExtra(fresh.data); } finally { setTransitionNote(null); }
       }} />}
     {mission && <MissionPlayerModal key={`${mission.missionId}:${mission.retry ? "retry" : mission.reviewOnly ? `review-${mission.latestRunId}` : "open"}`} isOpen mission={mission} subjectId={subjectId}
       contextLabel={historyContext ?? (placementRunning ? sectionLabel(mission) : mission.title.startsWith("Kiểm tra thêm") ? "Kiểm tra thêm phần khác · lộ trình hiện tại được giữ" : undefined)}
@@ -405,18 +409,29 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
       onClose={async () => {
         const closedId = mission.missionId; setMission(null);
         if (historyContext) { setHistoryContext(null); return; }
-        const [fresh] = await Promise.all([agenda.refetch(), map.refetch()]);
-        if (extraQueue.current.length) {
-          const closedExtra = fresh.data?.missions.find(m => m.missionId === closedId);
-          if (closedExtra?.runs?.some(r => r.sessionRunId === closedExtra.activeRunId && r.status === "InProgress")) { extraQueue.current = []; return; }
-          if (extraQueue.current[0] === closedId) extraQueue.current.shift();
-          openNextExtra(fresh.data); return;
-        }
-        if (!placementFlow.current) return;
-        // Saved and left mid-section: stop here; "Tiếp tục kiểm tra" resumes later.
-        const closed = fresh.data?.missions.find(m => m.missionId === closedId);
-        if (closed?.runs?.some(r => r.sessionRunId === closed.activeRunId && r.status === "InProgress")) { setFlow(false); return; }
-        advancePlacement(fresh.data);
+        if (extraQueue.current.length > 1 || placementFlow.current) setTransitionNote("Đã lưu phần vừa làm. Đang chuẩn bị phần kiểm tra tiếp theo…");
+        try { await afterMissionClosed(closedId); } finally { setTransitionNote(null); }
       }} />}
+    {transitionNote && !mission && <div role="status" aria-live="polite" className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-white px-6 text-center dark:bg-slate-900">
+      <span className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent motion-reduce:animate-none" aria-hidden="true" />
+      <p className="text-base font-semibold text-slate-800 dark:text-slate-100">{transitionNote}</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400">Bài làm được lưu theo tài khoản; nếu mạng chậm, phần tiếp theo sẽ tự mở khi sẵn sàng.</p>
+    </div>}
   </div>;
+
+  // After a part closes: reload the route, then open the next queued part (if any). Declared below the JSX (hoisted).
+  async function afterMissionClosed(closedId: string) {
+    const [fresh] = await Promise.all([agenda.refetch(), map.refetch()]);
+    if (extraQueue.current.length) {
+      const closedExtra = fresh.data?.missions.find(m => m.missionId === closedId);
+      if (closedExtra?.runs?.some(r => r.sessionRunId === closedExtra.activeRunId && r.status === "InProgress")) { extraQueue.current = []; return; }
+      if (extraQueue.current[0] === closedId) extraQueue.current.shift();
+      openNextExtra(fresh.data); return;
+    }
+    if (!placementFlow.current) return;
+    // Saved and left mid-section: stop here; "Tiếp tục kiểm tra" resumes later.
+    const closed = fresh.data?.missions.find(m => m.missionId === closedId);
+    if (closed?.runs?.some(r => r.sessionRunId === closed.activeRunId && r.status === "InProgress")) { setFlow(false); return; }
+    advancePlacement(fresh.data);
+  }
 }

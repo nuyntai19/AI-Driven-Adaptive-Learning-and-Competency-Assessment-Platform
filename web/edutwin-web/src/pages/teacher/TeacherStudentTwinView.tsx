@@ -79,6 +79,19 @@ export const TeacherStudentTwinView: React.FC = () => {
 
   const studentName = studentDetail?.fullName || `Học sinh #${studentId?.slice(0, 8)}`;
 
+  // Rule-based advice from the Twin data (not an AI judgment). No evidence means nothing to praise: "learning very
+  // well" is only said when the measured topics are all strong.
+  const measuredTopics = topics.filter((t) => t.evidenceCount > 0);
+  const pedagogyAdvice = measuredTopics.length === 0
+    ? topics.length === 0
+      ? "Chưa đủ dữ liệu để nhận xét: lớp của học sinh chưa áp dụng giáo trình có đồ thị kiến thức và học sinh chưa có bài làm nào được ghi nhận. Hãy áp dụng giáo trình cho lớp hoặc giao một bài chẩn đoán ngắn."
+      : `Chưa đủ dữ liệu để nhận xét: ${topics.length} chủ đề trong giáo trình đều chưa có bài làm. Nên giao một bài chẩn đoán ngắn để biết học sinh đang ở đâu.`
+    : weakTopics.length > 0
+      ? `Học sinh đang gặp khó khăn ở ${weakTopics.length} chủ đề (${weakTopics.map((w) => w.topicName).slice(0, 2).join(", ")}${weakTopics.length > 2 ? "..." : ""}). Khuyến nghị giao bộ câu hỏi bước đệm và yêu cầu viết giải trình chi tiết từng bước.`
+      : strongTopics.length === measuredTopics.length
+        ? `Các chủ đề đã có bài làm (${measuredTopics.length}/${topics.length}) đều đạt từ 80%. Có thể giao bài nâng cao${measuredTopics.length < topics.length ? " và kiểm tra tiếp các chủ đề chưa có bài làm" : ""}.`
+        : `Đã có bài làm ở ${measuredTopics.length}/${topics.length} chủ đề, chưa có chủ đề dưới 60% nhưng còn chủ đề chưa vững (60–80%). Nên luyện thêm các chủ đề này trước khi mở nội dung mới.`;
+
   return (
     <div className="th-page-container">
       <TeacherPageHeader
@@ -184,7 +197,7 @@ export const TeacherStudentTwinView: React.FC = () => {
       </div>
 
       {isTwinLoading && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 20rem), 1fr))", gap: "20px" }}>
           <TeacherSkeleton height={350} />
           <TeacherSkeleton height={350} />
         </div>
@@ -199,7 +212,7 @@ export const TeacherStudentTwinView: React.FC = () => {
       )}
 
       {!isTwinLoading && !isTwinError && (
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "20px", alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 22rem), 1fr))", gap: "20px", alignItems: "start" }}>
           {/* Left Column: Topic Mastery Breakdown */}
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
             <div className="th-surface" style={{ borderRadius: "12px", padding: "20px" }}>
@@ -440,12 +453,10 @@ export const TeacherStudentTwinView: React.FC = () => {
               }}
             >
               <h4 style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--th-primary)", margin: "0 0 8px 0" }}>
-                Gợi Ý Sư Phạm Cá Nhân Hóa (AI Advisor)
+                Gợi Ý Sư Phạm Từ Dữ Liệu Học Tập
               </h4>
               <p style={{ fontSize: "0.825rem", color: "var(--th-text-secondary)", lineHeight: 1.5, margin: "0 0 12px 0" }}>
-                {weakTopics.length > 0
-                  ? `Học sinh đang gặp khó khăn ở ${weakTopics.length} chủ đề (${weakTopics.map((w) => w.topicName).slice(0, 2).join(", ")}...). Khuyến nghị giáo viên giao bộ câu hỏi bước đệm và yêu cầu viết giải trình chi tiết từng bước.`
-                  : `Học sinh đang có tốc độ học tập rất tốt trên toàn bộ chủ đề đã học. Khuyến nghị mở rộng ngân hàng bài tập nâng cao hoặc mở sớm các chủ đề ở cấp độ tiếp theo.`}
+                {pedagogyAdvice}
               </p>
               <Link
                 to={`/giao-vien/cau-hoi?subjectId=${activeSubjectId}`}

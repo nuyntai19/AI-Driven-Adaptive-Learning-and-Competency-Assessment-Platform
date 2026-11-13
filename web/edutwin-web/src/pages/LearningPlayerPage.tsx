@@ -45,7 +45,7 @@ import { AttemptScratchpadAttachment } from "../components/student/AttemptScratc
 import { transcribeHandwriting } from "../api/handwritingApi";
 import { readScratchpadPhoto } from "../utils/scratchpadPngImport";
 import { AssignmentReviewReceipt } from "../components/student/AssignmentReviewReceipt";
-import { isAssignmentWorkSubmitted, shouldStartAssignment, getAssignmentReviewTiming, isActiveAssignmentExpired } from "../utils/assignmentReviewTiming";
+import { isAssignmentWorkSubmitted, shouldStartAssignment, getAssignmentReviewTiming, isActiveAssignmentExpired, isAssignmentPastDue } from "../utils/assignmentReviewTiming";
 import { getAttemptFeedbackPresentation, normalizeQuestionScore, fallbackAssignmentGrade } from "../utils/attemptFeedbackPresentation";
 import { getDifficultyLabel, hasDeterminedGrade } from "../utils/questionDisplay";
 import { MathFormulaPreview } from "../components/math/MathFormulaPreview";
@@ -2742,6 +2742,21 @@ const PracticePlayerPage = () => {
           onNextSession={() => navigate(studentLearningPathReturnUrl(searchParams, pathSessionId))}
           onClose={() => navigate(studentLearningPathReturnUrl(searchParams, pathSessionId))}
         />
+      </div>
+    );
+  }
+  // Overdue and never started: the server refuses to start it, so explain instead of offering the start gate.
+  if (assignmentId && assignment?.assignmentId === assignmentId && !assignmentError &&
+      canStartAssignment && !assignment.startedAt && isAssignmentPastDue(assignment.dueAt)) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] dark:bg-[#090d16] p-6 text-slate-800 dark:text-slate-100 flex items-center justify-center">
+        <div role="alert" className="mx-auto max-w-xl w-full rounded-3xl bg-white dark:bg-[#0f172a] p-8 sm:p-10 shadow-xs border border-slate-200/80 dark:border-slate-800 space-y-4">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">{assignment.title}</h2>
+          <p className="text-sm leading-relaxed text-rose-700 dark:text-rose-300">
+            Bài tập đã quá hạn nộp ({new Date(assignment.dueAt!).toLocaleString("vi-VN")}) nên không thể bắt đầu làm bài. Nếu cần làm bù, hãy liên hệ giáo viên.
+          </p>
+          <Link to={studentScopeUrl("/hoc-tap/bai-tap", searchParams)} className="inline-block rounded-xl bg-slate-100 dark:bg-slate-800 px-5 py-2.5 text-sm font-bold text-slate-700 dark:text-slate-300">← Về danh sách bài tập</Link>
+        </div>
       </div>
     );
   }

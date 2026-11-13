@@ -29,6 +29,12 @@ export function getAssignmentReviewTiming(assignment: StudentAssignmentDetailDto
   return { submittedAt, elapsedSeconds };
 }
 
+/** Past the due date: the server no longer accepts starting or submitting, so no screen may offer it. */
+export function isAssignmentPastDue(dueAt: string | null | undefined, now = Date.now()) {
+  const due = dueAt ? Date.parse(dueAt) : NaN;
+  return Number.isFinite(due) && now > due;
+}
+
 export function isActiveAssignmentExpired(submitted: boolean, expiresAt: number | null, now = Date.now()) {
   return !submitted && expiresAt !== null && Number.isFinite(expiresAt) && now >= expiresAt;
 }

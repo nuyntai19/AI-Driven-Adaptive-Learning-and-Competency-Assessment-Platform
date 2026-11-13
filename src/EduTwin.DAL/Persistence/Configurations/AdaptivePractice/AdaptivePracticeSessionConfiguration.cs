@@ -27,6 +27,7 @@ public class AdaptivePracticeSessionConfiguration : IEntityTypeConfiguration<Ada
         builder.Property(s => s.SubjectId).HasColumnName("subject_id").HasColumnType("varchar(36)").IsRequired();
         builder.Property(s => s.TopicNodeId).HasColumnName("topic_node_id").HasColumnType("bigint unsigned").IsRequired();
         builder.Property(s => s.LearningPathId).HasColumnName("learning_path_id").HasColumnType("varchar(36)").IsRequired(false);
+        builder.Property(s => s.ClassId).HasColumnName("class_id").HasColumnType("varchar(36)").IsRequired(false);
         builder.Property(s => s.LearningPathItemId).HasColumnName("learning_path_item_id").HasColumnType("bigint unsigned").IsRequired(false);
 
         builder.Property(s => s.PracticeMode)
