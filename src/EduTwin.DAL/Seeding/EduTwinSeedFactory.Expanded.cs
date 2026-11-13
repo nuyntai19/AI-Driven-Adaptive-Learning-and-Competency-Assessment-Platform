@@ -136,9 +136,55 @@ public partial class EduTwinSeedFactory
             Sample("MATH10-Q-06", "MATH10-QUADRATIC", 10, "Cho hàm số y = -x² + 2x + 3. Tìm giá trị lớn nhất của hàm số.", "4", "Đỉnh tại x = 1, y = -1 + 2 + 3 = 4; vì a < 0 nên 4 là giá trị lớn nhất.", true),
             Sample("MATH10-Q-07", "MATH10-QUADRATIC", 10, "Phương trình x² + 2x + 5 = 0 có bao nhiêu nghiệm thực?", "0", "Δ = 2² - 4·1·5 = -16 < 0 nên phương trình vô nghiệm.", true),
             Sample("MATH10-Q-08", "MATH10-QUADRATIC", 10, "Giải phương trình x² = 7x. Viết hai nghiệm theo thứ tự tăng dần, cách nhau bằng dấu phẩy.", "0,7", "x² - 7x = x(x-7) = 0 nên x=0 hoặc x=7."),
-            Sample("MATH10-Q-09", "MATH10-QUADRATIC", 10, "Tìm m để phương trình x² - 2x + m = 0 có nghiệm kép.", "1", "Nghiệm kép khi Δ = (-2)² - 4m = 0, tức m = 1.", true)
+            Sample("MATH10-Q-09", "MATH10-QUADRATIC", 10, "Tìm m để phương trình x² - 2x + m = 0 có nghiệm kép.", "1", "Nghiệm kép khi Δ = (-2)² - 4m = 0, tức m = 1.", true),
+            // Vectơ và tọa độ trong mặt phẳng: thêm 5 câu (độ khó 1–4, trắc nghiệm và
+            // trả lời ngắn) để chủ đề đủ 6 câu cho kiểm tra đầu vào và luyện tập.
+            // Thêm ở CUỐI danh sách để ID xác định của các câu trước không đổi.
+            Choice("MATH10-C-02", "MATH10-COORDINATE", 10, 1,
+                "Trong mặt phẳng tọa độ Oxy, cho hai điểm A(1; 2) và B(4; -2). Tọa độ của vectơ AB là:",
+                "C", "Vectơ AB = (x_B - x_A; y_B - y_A) = (4 - 1; -2 - 2) = (3; -4).",
+                ["Tọa độ vectơ bằng tọa độ điểm cuối trừ tọa độ điểm đầu"], ["Lấy điểm đầu trừ điểm cuối nên sai dấu", "Cộng tọa độ thay vì trừ"],
+                ("A", "(-3; 4)"), ("B", "(5; 0)"), ("C", "(3; -4)"), ("D", "(3; 4)")),
+            Graded("MATH10-C-03", "MATH10-COORDINATE", 10, 2,
+                "Trong mặt phẳng tọa độ Oxy, cho A(2; 3) và B(6; -1). Tìm tọa độ trung điểm M của đoạn thẳng AB. Viết theo dạng (x; y).",
+                "(4; 1)", "x_M = (2 + 6)/2 = 4 và y_M = (3 + (-1))/2 = 1, nên M(4; 1).", QuestionAnswerEvaluationMode.Coordinate2D,
+                ["Tọa độ trung điểm bằng trung bình cộng tọa độ hai đầu mút"], ["Quên chia cho 2", "Lấy hiệu thay vì tổng các tọa độ"]),
+            Graded("MATH10-C-04", "MATH10-COORDINATE", 10, 2,
+                "Trong mặt phẳng tọa độ Oxy, cho hai vectơ a = (2; -1) và b = (3; 4). Tính tích vô hướng a · b.",
+                "2", "a · b = x₁x₂ + y₁y₂ = 2·3 + (-1)·4 = 6 - 4 = 2.", QuestionAnswerEvaluationMode.NumericRational,
+                ["Tích vô hướng bằng x₁x₂ + y₁y₂"], ["Nhầm dấu khi nhân với số âm", "Nhân chéo x₁y₂ + x₂y₁"]),
+            Graded("MATH10-C-05", "MATH10-COORDINATE", 10, 3,
+                "Trong mặt phẳng tọa độ Oxy, cho hình bình hành ABCD có A(1; 2), B(4; 3), C(6; 6). Tìm tọa độ đỉnh D. Viết theo dạng (x; y).",
+                "(3; 5)", "ABCD là hình bình hành nên vectơ AD = vectơ BC = (6 - 4; 6 - 3) = (2; 3). Do đó D = (1 + 2; 2 + 3) = (3; 5).", QuestionAnswerEvaluationMode.Coordinate2D,
+                ["Hình bình hành ABCD cho vectơ AD = vectơ BC (hoặc AB = DC)"], ["Viết sai cặp vectơ bằng nhau, ví dụ AB = CD", "Tính D = A + B - C"]),
+            Choice("MATH10-C-06", "MATH10-COORDINATE", 10, 4,
+                "Trong mặt phẳng tọa độ Oxy, cho tam giác ABC có A(1; 2), B(3; 4), C(5; 0). Giá trị cos của góc BAC là:",
+                "A", "Vectơ AB = (2; 2), vectơ AC = (4; -2). AB · AC = 2·4 + 2·(-2) = 4; |AB| = 2√2; |AC| = 2√5. Vậy cos BAC = 4/(2√2 · 2√5) = 1/√10 = √10/10.",
+                ["cos góc giữa hai vectơ bằng tích vô hướng chia tích độ dài"], ["Dùng vectơ BA, CA làm sai dấu", "Quên lấy căn khi tính độ dài vectơ"],
+                ("A", "√10/10"), ("B", "-√10/10"), ("C", "1/10"), ("D", "√10/5"))
         };
         GenerateQuestionsFromTemplates(data, templates, mathTeacher, englishTeacher);
+
+        QuestionTemplate Graded(string code, string topic, byte grade, byte difficulty, string prompt, string answer, string solution,
+            QuestionAnswerEvaluationMode mode, List<string> ideas, List<string> errors) => new()
+        {
+            LogicalCode = code, TopicCode = topic, GradeLevel = grade, Difficulty = difficulty,
+            QuestionType = QuestionType.ShortAnswer, AnswerEvaluationMode = mode, LanguageCode = "vi",
+            QuestionText = prompt, CorrectAnswer = answer, Solution = solution, ExpectedReasoning = solution,
+            GradingCriteria = new GradingCriteria { SchemaVersion = "1.0", RequiredIdeas = ideas, CommonErrors = errors, ScoringNotes = "Chấm theo đáp án mẫu." },
+            MaxScore = 10, EstimatedTimeSeconds = 60U + 45U * difficulty
+        };
+
+        QuestionTemplate Choice(string code, string topic, byte grade, byte difficulty, string prompt, string correct, string solution,
+            List<string> ideas, List<string> errors, params (string Label, string Text)[] options) => new()
+        {
+            LogicalCode = code, TopicCode = topic, GradeLevel = grade, Difficulty = difficulty,
+            QuestionType = QuestionType.MultipleChoice, LanguageCode = "vi",
+            QuestionText = prompt, CorrectAnswer = correct, Solution = solution, ExpectedReasoning = solution,
+            GradingCriteria = new GradingCriteria { SchemaVersion = "1.0", RequiredIdeas = ideas, CommonErrors = errors, ScoringNotes = "Cho điểm tối đa nếu chọn đúng." },
+            MaxScore = 10, EstimatedTimeSeconds = 45U + 45U * difficulty,
+            Options = options.Select(o => new OptionTemplate { Label = o.Label, Text = o.Text, IsCorrect = o.Label == correct }).ToList()
+        };
 
         QuestionTemplate Sample(string code, string topic, byte grade, string prompt, string answer, string solution,
             bool numeric = false, bool essay = false) => new()

@@ -79,7 +79,7 @@ public class EduTwinSeedFactoryTests
         var factory = new EduTwinSeedFactory(true);
         var data = factory.CreateData();
 
-        Assert.Equal(49, data.Questions.Count);
+        Assert.Equal(54, data.Questions.Count);
         Assert.Equal(["MATH-FUNC-05"], data.SkippedQuestionTemplates);
         Assert.DoesNotContain(data.Questions, q => q.QuestionId == DeterministicSeedIds.CenterAQuestionIdBase + 4);
         foreach (var q in data.Questions)
@@ -100,8 +100,8 @@ public class EduTwinSeedFactoryTests
         var saQuestions = data.Questions.Where(q => q.QuestionType == EduTwin.Contracts.CurriculumAndQuestions.QuestionType.ShortAnswer).ToList();
         var essayQuestions = data.Questions.Where(q => q.QuestionType == EduTwin.Contracts.CurriculumAndQuestions.QuestionType.Essay).ToList();
 
-        Assert.Equal(12, mcQuestions.Count);
-        Assert.Equal(31, saQuestions.Count);
+        Assert.Equal(14, mcQuestions.Count);
+        Assert.Equal(34, saQuestions.Count);
         Assert.Equal(6, essayQuestions.Count);
 
         foreach (var topic in data.Topics)
@@ -109,7 +109,7 @@ public class EduTwinSeedFactoryTests
             var topicQuestions = data.Questions.Where(q => q.PrimaryTopicNodeId == topic.NodeId).OrderBy(q => q.Difficulty).ToList();
             if (topic.NodeId >= DeterministicSeedIds.CenterANodeIdBase + 5000)
             {
-                Assert.Equal(topic.NodeCode == "MATH10-QUADRATIC" ? 9 : 1, topicQuestions.Count);
+                Assert.Equal(topic.NodeCode switch { "MATH10-QUADRATIC" => 9, "MATH10-COORDINATE" => 6, _ => 1 }, topicQuestions.Count);
                 continue;
             }
             Assert.Equal(topic.NodeCode == "MATH-FUNCTIONS" ? 4 : 5, topicQuestions.Count);
@@ -256,5 +256,44 @@ public class EduTwinSeedFactoryTests
             EduTwin.Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.Coordinate2D,
             question.AnswerEvaluationMode);
         Assert.Equal("(1, 1)", question.CorrectAnswer);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void CreateData_VectorCoordinateTopic_HasSixGradableGrade10Questions_AtStableIds(bool centerA)
+    {
+        var data = new EduTwinSeedFactory(centerA).CreateData();
+        var topic = data.Topics.Single(n => n.NodeCode == "MATH10-COORDINATE");
+        var questions = data.Questions.Where(q => q.PrimaryTopicNodeId == topic.NodeId).OrderBy(q => q.QuestionId).ToList();
+        var expandedBase = centerA ? 15000UL : 25000UL;
+
+        Assert.Equal(6, questions.Count);
+        Assert.All(questions, q => Assert.Equal((byte)10, q.GradeLevel));
+        // The original sample keeps its ID; the five additions are appended after every earlier expanded sample.
+        Assert.Equal([expandedBase + 1, expandedBase + 20, expandedBase + 21, expandedBase + 22, expandedBase + 23, expandedBase + 24],
+            questions.Select(q => q.QuestionId));
+        Assert.Equal(new byte[] { 2, 1, 2, 2, 3, 4 }, questions.Select(q => q.Difficulty));
+
+        foreach (var choice in questions.Where(q => q.QuestionType == EduTwin.Contracts.CurriculumAndQuestions.QuestionType.MultipleChoice))
+        {
+            var options = data.QuestionOptions.Where(o => o.QuestionId == choice.QuestionId).ToList();
+            Assert.Equal(4, options.Count);
+            Assert.Equal(choice.CorrectAnswer, Assert.Single(options, o => o.IsCorrect).OptionLabel);
+        }
+
+        var grader = new EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading.ShortAnswerGrader();
+        bool Grade(ulong id, string answer)
+        {
+            var question = questions.Single(q => q.QuestionId == id);
+            return grader.Grade(answer, question.CorrectAnswer, new EduTwin.BLL.AssessmentAndReasoning.PreliminaryGrading.QuestionGradingContext
+                { EvaluationMode = question.AnswerEvaluationMode, MaxScore = question.MaxScore }).IsCorrect == true;
+        }
+        Assert.True(Grade(expandedBase + 21, "M(4,1)"));
+        Assert.False(Grade(expandedBase + 21, "(4; -1)"));
+        Assert.True(Grade(expandedBase + 22, "2"));
+        Assert.False(Grade(expandedBase + 22, "10"));
+        Assert.True(Grade(expandedBase + 23, "D(3;5)"));
+        Assert.False(Grade(expandedBase + 23, "(5; 3)"));
     }
 }
