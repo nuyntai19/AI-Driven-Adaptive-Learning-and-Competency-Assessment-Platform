@@ -41,8 +41,14 @@ public sealed partial class LearningPathV4Planner
         foreach (var id in wanted)
         {
             var node = nodes.Single(n => n.NodeId.ToString() == id);
-            var fresh = questions.Count(q => q.PrimaryTopicNodeId == node.NodeId && !used.Contains(q.QuestionId) && !exposed.Contains(q.QuestionId));
-            if (fresh < LearningPathPacing.IndependentCheckQuestions) { response.UnavailableSkillIds.Add(id); continue; }
+            // Same tiered rule as listing and starting the check: fresh questions first, then questions answered
+            // before. Requiring five never-answered questions silently dropped any part the student had already
+            // practised (e.g. after placement), even though the check itself could run.
+            var eligible = questions.Where(q => q.PrimaryTopicNodeId == node.NodeId).ToList();
+            var fresh = eligible.Count(q => !used.Contains(q.QuestionId) && !exposed.Contains(q.QuestionId));
+            var (minimum, size) = LearningAssessmentPolicy.CheckSize(fresh, eligible.Count);
+            if (eligible.Count < minimum) { response.UnavailableSkillIds.Add(id); continue; }
+            var freshUsed = Math.Min(fresh, size);
             var milestone = plan.Milestones.FirstOrDefault(m => m.SkillIds.Contains(id));
             if (milestone == null)
             {
@@ -65,9 +71,11 @@ public sealed partial class LearningPathV4Planner
             var check = new ProposedMissionDto
             {
                 MissionId = Guid.NewGuid().ToString(), SkillId = id, Purpose = "IndependentCheck", ActivityTypes = ["IndependentCheck"],
-                Title = $"Kiểm tra thêm: {node.NodeName}", QuestionCount = LearningPathPacing.IndependentCheckQuestions, EstimatedMinutes = 10,
+                Title = $"Kiểm tra thêm: {node.NodeName}", QuestionCount = (uint)size, EstimatedMinutes = (uint)Math.Max(5, size * 2),
                 CanStart = true, IsProbe = true,
-                SelectionReason = "Em chọn kiểm tra thêm phần này. 5 câu mới; đạt thì giữ lịch ôn, chưa đạt sẽ thêm bộ rèn lại ngay trong lộ trình hiện tại."
+                SelectionReason = freshUsed >= size
+                    ? $"Em chọn kiểm tra thêm phần này. {size} câu mới; đạt thì giữ lịch ôn, chưa đạt sẽ thêm bộ rèn lại ngay trong lộ trình hiện tại."
+                    : $"Em chọn kiểm tra thêm phần này. {size} câu: {freshUsed} câu mới và {size - freshUsed} câu em đã làm trước đây (ngân hàng câu còn ít nên độ tin cậy thấp hơn); đạt thì giữ lịch ôn, chưa đạt sẽ thêm bộ rèn lại ngay trong lộ trình hiện tại."
             };
             milestone.Missions.Insert(0, check);
             // Add through the set: a new session with a preset key attached via the navigation would be treated as an update.
@@ -75,7 +83,7 @@ public sealed partial class LearningPathV4Planner
             {
                 SessionId = Guid.Parse(check.MissionId), CenterId = centerId, LearningPathId = path.LearningPathId, TopicNodeId = node.NodeId,
                 ClassId = classId, Title = check.Title, Objective = check.Purpose, Rationale = check.SelectionReason,
-                PolicyVersion = LearningPathV4Data.Policy, MinimumQuestions = LearningPathPacing.IndependentCheckQuestions, RequiredCorrectRate = .8m,
+                PolicyVersion = LearningPathV4Data.Policy, MinimumQuestions = (uint)size, RequiredCorrectRate = .8m,
                 PhaseNumber = milestone.Order, WeekNumber = milestone.Order, SessionOrder = ++order, CreatedAt = Now, UpdatedAt = Now, RowVersion = 1
             });
             response.MissionIds.Add(check.MissionId);

@@ -8,27 +8,29 @@ import { extractProblemDetails } from "../../utils/problemDetails";
 export function ExtendCheckModal({ subjectId, classId, subjectName, candidates, onClose, onStarted }: {
   subjectId: string; classId?: string; subjectName: string;
   candidates: (SkillCapabilityStatusDto & { note?: string })[];
-  onClose: () => void; onStarted: (missionIds: string[]) => void;
+  onClose: () => void;
+  /** Parts that could not be added are named so the page can say so: the modal closes as the first check opens. */
+  onStarted: (missionIds: string[], unavailableNames: string[]) => void;
 }) {
   const [selected, setSelected] = useState(candidates.map(s => s.skillId));
   const [unavailable, setUnavailable] = useState<string[]>([]);
+  const nameOf = (id: string) => candidates.find(s => s.skillId === id)?.skillName ?? id;
   const start = useMutation({
     mutationFn: () => extendPathWithCheck({ subjectId, classId, skillIds: selected }),
     onSuccess: res => {
       setUnavailable(res.unavailableSkillIds);
-      if (res.missionIds.length) onStarted(res.missionIds);
+      if (res.missionIds.length) onStarted(res.missionIds, res.unavailableSkillIds.map(nameOf));
     }
   });
-  const nameOf = (id: string) => candidates.find(s => s.skillId === id)?.skillName ?? id;
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
     <section role="dialog" aria-modal="true" aria-labelledby="extend-title" className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100">
       <header className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
         <div><h2 id="extend-title" className="text-2xl font-semibold">Kiểm tra thêm phần khác · {subjectName}</h2>
-          <p className="mt-2 text-sm text-slate-500">Lộ trình đang học được giữ nguyên. Mỗi phần có 5 câu mới; đạt thì giữ lịch ôn, chưa đạt sẽ thêm bộ rèn lại vào lộ trình hiện tại.</p></div>
+          <p className="mt-2 text-sm text-slate-500">Lộ trình đang học được giữ nguyên. Mỗi phần tối đa 5 câu, ưu tiên câu em chưa làm; thiếu câu mới thì dùng lại câu đã làm trước đây. Đạt thì giữ lịch ôn, chưa đạt sẽ thêm bộ rèn lại vào lộ trình hiện tại.</p></div>
         <button onClick={onClose} aria-label="Đóng" className="rounded-lg border px-3 py-1">×</button>
       </header>
       <div className="min-h-0 space-y-3 overflow-y-auto py-4">
-        {unavailable.length > 0 && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Chưa đủ câu hỏi mới để kiểm tra {unavailable.map(nameOf).join(", ")} (cần 5 câu chưa làm). Hãy báo giáo viên bổ sung câu hỏi.</p>}
+        {unavailable.length > 0 && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Chưa đủ câu hỏi để kiểm tra {unavailable.map(nameOf).join(", ")} (cần ít nhất 3 câu tự chấm được trong phần này). Hãy báo giáo viên bổ sung câu hỏi.</p>}
         {start.error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{extractProblemDetails(start.error).message}</p>}
         <fieldset className="space-y-2"><legend className="text-sm font-semibold">Chọn phần muốn kiểm tra</legend>
           {candidates.map(s => <label key={s.skillId} className="flex items-start gap-2 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">

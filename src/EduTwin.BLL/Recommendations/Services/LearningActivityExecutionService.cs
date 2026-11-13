@@ -161,7 +161,7 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
                     .Take(desired).ToList();
                 // Fewer than the desired questions is allowed (classification policy already
                 // flags small samples as low-confidence), but never below the absolute floor.
-                minimum = Math.Min(desired, Math.Max(LearningAssessmentPolicy.MinimumPlacementQuestions, Math.Min(freshPool.Count, desired)));
+                minimum = LearningAssessmentPolicy.CheckSize(freshPool.Count, pool.Count).Minimum;
                 effectiveCheckMinimum = minimum;
             }
             if (pool.Count < minimum) throw new InvalidOperationException($"Có {freshPool.Count} câu mới và {pool.Count - freshPool.Count} câu đã học có thể dùng lại (tổng {pool.Count}/{minimum}) đủ điều kiện. Phần này chưa đủ dữ liệu; vẫn có thể học các phần khác hoặc lập lộ trình từ dữ liệu hiện có.");

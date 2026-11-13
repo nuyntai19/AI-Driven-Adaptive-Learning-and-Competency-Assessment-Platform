@@ -196,6 +196,40 @@ public sealed class LearningPathSelfAssessedTests
     }
 
     [Fact]
+    public async Task ExtendCheck_PartWithFewerThanFiveFreshQuestions_IsStillAdded_AndTopsUpWithAnsweredOnes()
+    {
+        using var f = new LearningPathV4Fixture();
+        var proposal = await Proposal(f, ["103"], []);
+        await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId);
+        // The student already answered 8 of the 12 questions on 102 (e.g. during placement): only 4 are fresh.
+        for (ulong i = 1; i <= 8; i++) await f.RecordEvidence(102, i, correct: i % 2 == 0);
+        // 101 keeps just 2 gradable questions: too few for any check, so it is reported, not silently dropped.
+        foreach (var question in f.Db.Questions.Where(q => q.PrimaryTopicNodeId == 101 && q.QuestionId > 10102)) question.IsDeleted = true;
+        await f.Db.SaveChangesAsync();
+
+        var result = await f.Planner.ExtendPathWithCheckAsync(f.Center, f.Student, new ExtendPathCheckRequest { SubjectId = f.English, SkillIds = ["101", "102"] });
+
+        var missionId = Assert.Single(result.MissionIds);
+        Assert.Equal(["101"], result.UnavailableSkillIds);
+        f.Db.ChangeTracker.Clear();
+        var check = (await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English)).Missions.Single(m => m.MissionId == missionId);
+        Assert.Equal("102", check.SkillId);
+        Assert.True(check.CanStart);
+        Assert.Equal(5u, check.QuestionCount);
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(missionId));
+        Assert.Equal(5, run.Activities.Count); // 4 fresh questions + 1 answered before.
+    }
+
+    [Fact]
+    public void CheckSize_UsesFreshQuestionsFirst_AndNeverGoesBelowThree()
+    {
+        Assert.Equal((5, 5), LearningAssessmentPolicy.CheckSize(fresh: 9, eligible: 9));
+        Assert.Equal((4, 5), LearningAssessmentPolicy.CheckSize(fresh: 4, eligible: 9));
+        Assert.Equal((3, 5), LearningAssessmentPolicy.CheckSize(fresh: 0, eligible: 9));
+        Assert.Equal((3, 2), LearningAssessmentPolicy.CheckSize(fresh: 2, eligible: 2)); // 2 < 3: the check cannot start.
+    }
+
+    [Fact]
     public async Task Agenda_ReportsCapacity_SoAnyLargerTimeBudgetAddsNothing()
     {
         using var f = new LearningPathV4Fixture();

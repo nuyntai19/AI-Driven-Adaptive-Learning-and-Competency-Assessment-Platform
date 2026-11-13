@@ -25,6 +25,17 @@ public static class LearningAssessmentPolicy
         return correct / (decimal)answered <= .4m ? "NeedsSupport" : "Inconclusive";
     }
 
+    /// <summary>
+    /// Size of a regular (non-placement, non-mock-exam) self-check. Fresh questions come first; questions the
+    /// student answered before or saw as worked examples fill the rest, so a small bank never makes the check
+    /// unreachable. <paramref name="fresh"/>: never answered nor shown; <paramref name="eligible"/>: every
+    /// auto-gradable question of the part. The check can start when <c>eligible &gt;= Minimum</c> and uses
+    /// <c>Count</c> questions. One rule for adding, listing and starting a check.
+    /// </summary>
+    public static (int Minimum, int Count) CheckSize(int fresh, int eligible) =>
+        (Math.Min(DesiredQuestions, Math.Max(MinimumPlacementQuestions, Math.Min(fresh, DesiredQuestions))),
+         Math.Min(DesiredQuestions, Math.Max(fresh, eligible)));
+
     public static LearningScheduleSettings Settings(JsonDocument? json) => json == null ? new()
         : JsonSerializer.Deserialize<LearningScheduleSettings>(json.RootElement.GetRawText(), LearningPathV4Data.Json) ?? new();
 

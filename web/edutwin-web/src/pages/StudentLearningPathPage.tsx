@@ -369,9 +369,10 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
       onAccepted={res => { setAcceptedNotice(`${res.message} Các nhiệm vụ của tuyến đã được cập nhật.`); void agenda.refetch(); void map.refetch(); }} />}
     {showExtend && <ExtendCheckModal subjectId={subjectId} classId={access.classId} subjectName={subject?.subjectName ?? ""} candidates={extendCandidates}
       onClose={() => setShowExtend(false)}
-      onStarted={async ids => {
+      onStarted={async (ids, unavailableNames) => {
         setShowExtend(false); extraQueue.current = [...ids];
-        setAcceptedNotice(`Đã thêm ${ids.length} phần kiểm tra vào lộ trình hiện tại. Lộ trình và tiến độ đang có được giữ nguyên.`);
+        setAcceptedNotice(`Đã thêm ${ids.length} phần kiểm tra vào lộ trình hiện tại; các phần sẽ mở nối tiếp nhau. Lộ trình và tiến độ đang có được giữ nguyên.`
+          + (unavailableNames.length ? ` Chưa thêm được: ${unavailableNames.join(", ")} (chưa đủ 3 câu tự chấm được; hãy báo giáo viên bổ sung câu hỏi).` : ""));
         const [fresh] = await Promise.all([agenda.refetch(), map.refetch()]); openNextExtra(fresh.data);
       }} />}
     {mission && <MissionPlayerModal key={`${mission.missionId}:${mission.retry ? "retry" : mission.reviewOnly ? `review-${mission.latestRunId}` : "open"}`} isOpen mission={mission} subjectId={subjectId}

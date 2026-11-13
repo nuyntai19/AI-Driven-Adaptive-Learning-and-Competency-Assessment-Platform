@@ -667,8 +667,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 var available = strict ? fresh : allForMission.Count;
                 var minimum = m.IsMilestoneExam
                     ? Math.Min(5 * Math.Max(1, m.AssessedSkillIds.Count), 3 * Math.Max(1, m.AssessedSkillIds.Count))
-                    : strict ? Math.Max(1, Math.Min(3, fresh)) : Math.Min(5, Math.Max(3, Math.Min(fresh, 5)));
-                item.QuestionCount = m.IsMilestoneExam ? m.QuestionCount : (uint)Math.Min(5, Math.Max(fresh, Math.Min(5, available)));
+                    : strict ? Math.Max(1, Math.Min(3, fresh)) : LearningAssessmentPolicy.CheckSize(fresh, available).Minimum;
+                item.QuestionCount = m.IsMilestoneExam ? m.QuestionCount : (uint)LearningAssessmentPolicy.CheckSize(fresh, available).Count;
                 item.CanStart = available >= minimum && prerequisitesReady && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped &&
                     !(plan.IsPlacement && latest?.Status == SessionRunStatus.Completed);
                 if (m.IsMilestoneExam && m.AssessedSkillIds.Any(id => allForMission.Count(q => q.PrimaryTopicNodeId.ToString() == id) < 3)) item.CanStart = false;
