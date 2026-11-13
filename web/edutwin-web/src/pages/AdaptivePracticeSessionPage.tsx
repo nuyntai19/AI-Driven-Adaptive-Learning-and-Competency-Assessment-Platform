@@ -596,7 +596,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
 
       {/* Pause Modal */}
       {isPaused && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 p-6 text-center space-y-4 shadow-xl">
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">
               Phiên luyện tập đang tạm dừng
@@ -626,7 +626,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
 
       {/* Confirm Exit Modal */}
       {showExitConfirm && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xl">
             <h3 className="text-base font-bold text-slate-900 dark:text-white">
               Bạn có chắc chắn muốn dừng phiên luyện tập?

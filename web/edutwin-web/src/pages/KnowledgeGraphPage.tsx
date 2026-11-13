@@ -2614,7 +2614,7 @@ const LegacyKnowledgeGraphPage: React.FC = () => {
 
         {/* Modal 1: Edit Knowledge Node */}
         {editingNode && (
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl ring-1 ring-slate-200">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
                 <h3 className="text-lg font-bold text-slate-900">
@@ -2794,7 +2794,7 @@ const LegacyKnowledgeGraphPage: React.FC = () => {
 
         {/* Modal 2: Delete Knowledge Node */}
         {deletingNode && (
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl ring-1 ring-slate-200">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
                 <h3 className="text-lg font-bold text-red-600">Xác nhận xóa nút kiến thức</h3>
@@ -2850,7 +2850,7 @@ const LegacyKnowledgeGraphPage: React.FC = () => {
 
         {/* Modal 3: Edit Knowledge Edge */}
         {editingEdge && (
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl ring-1 ring-slate-200">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
                 <h3 className="text-lg font-bold text-slate-900">Cập nhật liên kết kiến thức</h3>
@@ -2939,7 +2939,7 @@ const LegacyKnowledgeGraphPage: React.FC = () => {
 
         {/* Modal 4: Delete Knowledge Edge */}
         {deletingEdge && (
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl ring-1 ring-slate-200">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
                 <h3 className="text-lg font-bold text-red-600">Xác nhận xóa liên kết</h3>

@@ -1280,7 +1280,7 @@ const LegacySubjectListPage: React.FC = () => {
         </div>
 
         {isCreating && (
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 flex items-center justify-center p-4">
             <div className="relative transform overflow-hidden rounded-2xl bg-white p-6 text-left shadow-xl transition-all sm:w-full sm:max-w-lg">
               <h3 className="text-lg font-bold text-slate-900 mb-4">Thêm môn học mới</h3>
               {createError && (
@@ -1341,7 +1341,7 @@ const LegacySubjectListPage: React.FC = () => {
         )}
 
         {editingSubject && (
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 flex items-center justify-center p-4">
             <div className="relative transform overflow-hidden rounded-2xl bg-white p-6 text-left shadow-xl transition-all sm:w-full sm:max-w-lg">
               <h3 className="text-lg font-bold text-slate-900 mb-4">Chỉnh sửa môn học</h3>
               {editError && (
@@ -1427,7 +1427,7 @@ const LegacySubjectListPage: React.FC = () => {
         )}
 
         {detailSubject && (
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 flex items-center justify-center p-4">
             <div className="relative transform overflow-hidden rounded-2xl bg-white p-6 text-left shadow-xl transition-all sm:w-full sm:max-w-lg">
               <div className="flex items-start justify-between border-b border-slate-200 pb-3 mb-4">
                 <h3 className="text-lg font-bold text-slate-900">Hồ sơ chi tiết môn học</h3>
@@ -1517,7 +1517,7 @@ const LegacySubjectListPage: React.FC = () => {
         )}
 
         {deletingSubject && (
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/50 flex items-center justify-center p-4">
             <div className="relative transform overflow-hidden rounded-2xl bg-white p-6 text-left shadow-xl transition-all sm:w-full sm:max-w-md">
               <h3 className="text-lg font-bold text-slate-900 mb-2">Xác nhận xóa môn học</h3>
               <p className="text-sm text-slate-600 mb-4">

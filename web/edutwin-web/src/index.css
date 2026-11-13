@@ -106,6 +106,14 @@ math-field[data-input-mode="text"]::part(menu-toggle),
   }
 }
 
+/* While any modal dialog is open, only the dialog scrolls: lock the page behind it so the wheel
+   or touchpad over the backdrop does not move the page. Every modal renders with aria-modal="true"
+   only while open. The gutter keeps the page from shifting sideways when its scrollbar is hidden. */
+html:has([aria-modal="true"]) {
+  overflow: hidden;
+  scrollbar-gutter: stable;
+}
+
 /* Page notifications are shown in the bottom-right corner by AlertToastHost (with their buttons
    proxied); the in-page element only carries the state, so it never pushes content or needs a scroll. */
 [data-notify="toast"] {

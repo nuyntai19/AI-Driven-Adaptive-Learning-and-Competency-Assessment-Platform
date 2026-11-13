@@ -2269,7 +2269,7 @@ const LegacyClassListPage: React.FC = () => {
         </div>
 
         {isCreateModalOpen && (
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
             <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
               <h3 className="text-base font-semibold leading-6 text-gray-900 mb-4">
                 Tạo lớp học mới
@@ -2390,7 +2390,7 @@ const LegacyClassListPage: React.FC = () => {
         )}
 
         {editingClass && (
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
             <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
               <h3 className="text-base font-semibold leading-6 text-gray-900 mb-4">
                 Chỉnh sửa lớp học
@@ -2471,7 +2471,7 @@ const LegacyClassListPage: React.FC = () => {
         )}
 
         {viewingClassId && (
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
             <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-4xl sm:p-6">
               <div className="flex justify-between items-start mb-4 border-b pb-3">
                 <div>
@@ -2642,7 +2642,7 @@ const LegacyClassListPage: React.FC = () => {
         )}
 
         {isAddStudentsModalOpen && viewingClassId && (
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
             <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-2xl sm:p-6">
               <h3 className="text-base font-semibold leading-6 text-gray-900 mb-2">
                 Thêm học sinh vào lớp học
@@ -2875,7 +2875,7 @@ const LegacyClassListPage: React.FC = () => {
         )}
 
         {removingStudent && (
-          <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 overflow-y-auto bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
             <div className="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-md sm:p-6">
               <h3 className="text-base font-semibold leading-6 text-gray-900 mb-2">
                 Xác nhận xóa học sinh khỏi lớp
