@@ -378,7 +378,7 @@ export const StudentAssignmentsPage: React.FC = () => {
                             {item.title}
                           </Link>
 
-                          <AssignmentKnowledgeScope summary={item.summary} completed={isDone} />
+                          <AssignmentKnowledgeScope summary={item.summary} completed={isDone} hideDistribution={item.kind === "Midterm" || item.kind === "Final"} />
                           {isDone && item.summary && <p className="text-xs font-medium text-stone-600 dark:text-stone-300">{assignmentResultLabel(item.summary)}</p>}
 
                           {item.instructions && (

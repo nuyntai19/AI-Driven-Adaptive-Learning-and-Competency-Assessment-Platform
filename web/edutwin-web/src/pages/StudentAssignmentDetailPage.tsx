@@ -72,6 +72,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
   const { progress, questions } = assignment;
   const isReadOnly = assignment.isReadOnly === true || searchParams.get("history") === "true";
   const examUpcoming = !!assignment.examAt && new Date(assignment.examAt).getTime() > Date.now();
+  const isTermExam = assignment.kind === "Midterm" || assignment.kind === "Final";
   const draftQuestionIds = new Set<string>();
   if (!assignment.isSubmitted) {
     for (const draft of assignment.draftAnswers ?? []) {
@@ -315,7 +316,8 @@ export const StudentAssignmentDetailPage: React.FC = () => {
 
                 <div className="flex items-center gap-2.5">
                   {renderAttemptStatusBadge(question)}
-                  {!examUpcoming && <Link
+                  {/* Midterm/final exams: no jumping straight into a question; only review once the exam is over. */}
+                  {!examUpcoming && (!isTermExam || isAssignmentFinished || isReadOnly) && <Link
                     to={studentScopeUrl(`/hoc-tap/luyen-tap/${question.questionId}`, searchParams, { assignmentId:assignment.assignmentId })}
                     className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] motion-reduce:transform-none ${
                       isDone || isReadOnly

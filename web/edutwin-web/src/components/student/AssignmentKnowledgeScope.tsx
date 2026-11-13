@@ -1,7 +1,9 @@
 import type { AssignmentResultSummaryDto } from "../../types/assignments";
 
-export function AssignmentKnowledgeScope({ summary, completed }: { summary?: AssignmentResultSummaryDto | null; completed: boolean }) {
+export function AssignmentKnowledgeScope({ summary, completed, hideDistribution = false }: { summary?: AssignmentResultSummaryDto | null; completed: boolean; hideDistribution?: boolean }) {
   const areas = summary?.knowledgeAreas ?? [];
+  // Exams (midterm/final) must not reveal the per-skill question distribution before submission.
+  const showDetails = areas.length > 0 && (completed || !hideDistribution);
   return <div className="space-y-2 pt-1 text-xs">
     <div className="flex flex-wrap items-center gap-1.5" aria-label="Phạm vi kiến thức">
       <span className="font-medium text-stone-500 dark:text-stone-400">Nội dung luyện:</span>
@@ -11,7 +13,7 @@ export function AssignmentKnowledgeScope({ summary, completed }: { summary?: Ass
       {areas.length > 3 && <span className="text-stone-500">+{areas.length - 3} kỹ năng</span>}
       {summary?.estimatedMinutes != null && <span className="text-stone-500">· khoảng {summary.estimatedMinutes} phút</span>}
     </div>
-    {areas.length > 0 && <details className="text-stone-600 dark:text-stone-300">
+    {showDetails && <details className="text-stone-600 dark:text-stone-300">
       <summary className="cursor-pointer font-medium text-indigo-700 dark:text-indigo-300">{completed ? "Xem kết quả theo kỹ năng" : "Xem phân bố câu hỏi"}</summary>
       <ul className="mt-2 space-y-2 rounded-lg border border-stone-200 bg-white p-3 dark:border-stone-700 dark:bg-slate-900">{areas.map(area => <li key={area.skillId} className="flex flex-wrap justify-between gap-x-4 gap-y-1">
         <span>{area.topicName !== area.skillName ? `${area.topicName} → ` : ""}{area.skillName}</span>
