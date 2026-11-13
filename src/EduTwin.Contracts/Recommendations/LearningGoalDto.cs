@@ -59,6 +59,26 @@ public class CreateLearningGoalRequest
     public string PreferredMode { get; set; } = "Balanced";
 }
 
+/// <summary>
+/// Feasibility of a goal while the student is still filling it in; nothing is saved. Without a deadline in the
+/// request the server picks the suggested date (re-checked against the route it produces) and evaluates that.
+/// Dates are calendar days in the schedule's time zone.
+/// </summary>
+public class LearningGoalEstimateDto
+{
+    public DateOnly? DeadlineDate { get; set; }
+    public bool DeadlineSuggested { get; set; }
+    public DateOnly? EarliestFeasibleDate { get; set; }
+    public DateOnly? SuggestedDeadline { get; set; }
+    public decimal? CurrentEstimatedScore { get; set; }
+    public decimal? TargetScore { get; set; }
+    public decimal? AchievableScore { get; set; }
+    public uint RequiredStudyMinutes { get; set; }
+    public uint MinimumStudyDays { get; set; }
+    public string FeasibilityStatus { get; set; } = "Feasible"; // Feasible, TightBudget, InsufficientTime
+    public string? FeasibilityMessage { get; set; }
+}
+
 public class UpdateLearningGoalRequest
 {
     public decimal? TargetScore { get; set; }

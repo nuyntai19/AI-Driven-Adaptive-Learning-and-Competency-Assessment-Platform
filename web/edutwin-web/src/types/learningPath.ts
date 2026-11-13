@@ -312,6 +312,24 @@ export interface CreateLearningGoalRequest {
   preferredMode?: string;
 }
 
+/**
+ * Feasibility of a goal while it is being filled in (nothing is saved). Dates are "yyyy-mm-dd".
+ * Without a deadline in the request the server picks the suggested date and evaluates it (deadlineSuggested).
+ */
+export interface LearningGoalEstimateDto {
+  deadlineDate?: string | null;
+  deadlineSuggested: boolean;
+  earliestFeasibleDate?: string | null;
+  suggestedDeadline?: string | null;
+  currentEstimatedScore?: number | null;
+  targetScore?: number | null;
+  achievableScore?: number | null;
+  requiredStudyMinutes?: number;
+  minimumStudyDays?: number;
+  feasibilityStatus: 'Feasible' | 'TightBudget' | 'InsufficientTime' | string;
+  feasibilityMessage?: string | null;
+}
+
 export interface ProposedMissionDto {
   plannedDate?: string | null;
   deferred?: boolean;

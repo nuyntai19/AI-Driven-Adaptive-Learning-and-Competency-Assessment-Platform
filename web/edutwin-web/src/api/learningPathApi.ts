@@ -123,6 +123,19 @@ export const createOrUpdateLearningGoal = async (
   return response.data;
 };
 
+/** Suggested deadline and feasibility for a goal still being edited; validates like saving but stores nothing. */
+export const estimateLearningGoal = async (
+  request: import("../types/learningPath").CreateLearningGoalRequest,
+  signal?: AbortSignal
+): Promise<import("../types/learningPath").LearningGoalEstimateDto> => {
+  const response = await httpClient.post<import("../types/learningPath").LearningGoalEstimateDto>(
+    "/students/me/learning-goals/estimate",
+    { ...request, classId: request.classId || undefined },
+    { signal }
+  );
+  return response.data;
+};
+
 export const generatePathProposal = async (
   request: import("../types/learningPath").GeneratePathProposalRequest
 ): Promise<import("../types/learningPath").PathProposalDto> => {

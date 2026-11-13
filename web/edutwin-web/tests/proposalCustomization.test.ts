@@ -34,6 +34,7 @@ function load(file: string, dependencies: Record<string, any> = {}) {
       const key = Object.keys(dependencies).find(key => name.endsWith(key));
       if (key) return dependencies[key];
       if (name.endsWith("TimeBudgetSlider")) return { TimeBudgetSlider: () => null };
+      if (name.endsWith("DateInput")) return { DateInput: () => null, DateTimeInput: () => null };
       if (name.endsWith("studyTime")) return { MIN_GOAL_STUDY_MINUTES: 10 };
       throw new Error(`Missing test dependency ${name}`);
     } });
@@ -113,7 +114,8 @@ test("empty scope, invalid count and saving state cannot submit a customized pre
 function modal() {
   let index = 0; const mutations: any[] = []; const accepted: string[] = []; const customized: any[] = [];
   const component = load("GoalAndProposalModal", {
-    "@tanstack/react-query": { useQueryClient: () => ({ invalidateQueries: async () => {} }), useMutation: (config: any) => {
+    "@tanstack/react-query": { useQueryClient: () => ({ invalidateQueries: async () => {} }),
+      useQuery: () => ({ data: undefined, error: null, isError: false, isPlaceholderData: false }), keepPreviousData: undefined, useMutation: (config: any) => {
       const position = index++;
       const entry = mutations[position] ??= { isPending: false, error: null, reset() { entry.error = null; },
         async mutate(value?: any) { entry.isPending = true; try { const result = await entry.config.mutationFn(value); await entry.config.onSuccess?.(result); }

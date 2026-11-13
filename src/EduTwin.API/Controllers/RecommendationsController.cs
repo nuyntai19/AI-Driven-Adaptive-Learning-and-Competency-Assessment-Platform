@@ -761,6 +761,22 @@ public sealed class RecommendationsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("learning-goals/estimate")]
+    [Authorize(Policy = "recommendations.student.read_own")]
+    [V4LearningExceptionFilter]
+    [ProducesResponseType(typeof(LearningGoalEstimateDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> EstimateLearningGoal([FromBody] CreateLearningGoalRequest request, CancellationToken cancellationToken)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        if (_v4Planner is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
+        }
+
+        var result = await _v4Planner.EstimateGoalAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, request, cancellationToken);
+        return Ok(result);
+    }
+
     [HttpGet("learning-goals")]
     [Authorize(Policy = "recommendations.student.read_own")]
     [V4LearningExceptionFilter]

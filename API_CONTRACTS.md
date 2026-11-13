@@ -3219,6 +3219,7 @@ All routes below use `/api/v1/students/me`, resolved tenant, the authenticated s
 | Route | Behavior |
 |---|---|
 | `POST /learning-goals` | Creates a draft goal using real selected node IDs; does not replace the active route. |
+| `POST /learning-goals/estimate` | Same body and validation as `POST /learning-goals`, but stores nothing. Returns `LearningGoalEstimateDto` from the same planner as the preview: current/target/achievable score, required minutes and study days, `earliestFeasibleDate`, `suggestedDeadline` and the feasibility verdict for `deadlineDate` (calendar days, `yyyy-MM-dd`). With no deadline (or `clearDeadline`), the server picks the suggested date, re-checks it with the route it produces, and returns it with `deadlineSuggested: true`. Placement requests are rejected. |
 | `POST /path-proposals` | Returns real scoped milestones, activity types, duration estimates and availability reasons. |
 | `POST /path-proposals/{id}/accept` | Atomic, idempotent acceptance under a student lock. Open V4 runs/pending reviews block replacement. Legacy InProgress runs are abandoned with audit reason and preserved submissions, as disclosed in preview. |
 | `GET /learning-paths/capability-map?subjectId=&classId=` | Real node/evidence states; Unknown is distinct from zero mastery. |

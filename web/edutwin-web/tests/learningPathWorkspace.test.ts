@@ -29,7 +29,35 @@ test("the learning path asks the server for the goal's minutes on first load", (
 test("a standing plan cannot be set below ten minutes a day", () => {
   assert.match(read("utils/studyTime.ts"), /MIN_GOAL_STUDY_MINUTES = 10/);
   for (const form of ["GoalAndProposalModal", "ProposalCustomizationForm"])
-    assert.match(read(`components/learningPathV4/${form}.tsx`), /min=\{MIN_GOAL_STUDY_MINUTES\}/);
+    assert.match(read(`components/learningPathV4/${form}.tsx`), /minValue=\{MIN_GOAL_STUDY_MINUTES\}/);
+});
+
+test("goal sliders keep the same 5p–5h scale as today's slider, with the ten-minute floor enforced", () => {
+  const slider = read("components/learningPathV4/TimeBudgetSlider.tsx");
+  assert.match(slider, /const marks = \[5, 60, 120, 180, 240, 300\]/);
+  assert.match(slider, /const floor = Math\.max\(min, minValue \?\? min\)/);
+  assert.match(slider, /onClick=\{\(\) => pick\(m\)\}/);
+  for (const form of ["GoalAndProposalModal", "ProposalCustomizationForm"])
+    assert.doesNotMatch(read(`components/learningPathV4/${form}.tsx`), /<TimeBudgetSlider[^>]* min=/);
+});
+
+test("date fields read and type as dd/mm/yyyy in every role's screens", () => {
+  for (const file of ["pages/ActivityPage.tsx", "pages/AssignmentEditorPage.tsx", "pages/AuthorizationManagementPage.tsx", "pages/PlatformAuditLogsPage.tsx",
+    "pages/teacher/TeacherAssignmentEditorView.tsx", "components/reviews/AssignmentGradingWorkspace.tsx", "components/notifications/NotificationInteractions.tsx",
+    "components/learningPathV4/GoalAndProposalModal.tsx", "components/learningPathV4/ProposalCustomizationForm.tsx"]) {
+    const source = read(file);
+    assert.doesNotMatch(source, /type="date"|type="datetime-local"/, file);
+    assert.match(source, /<Date(Time)?Input\s/, file);
+  }
+});
+
+test("the goal form fills in the suggested deadline and warns about a date that is too close before the preview", () => {
+  const goal = read("components/learningPathV4/GoalAndProposalModal.tsx");
+  assert.match(goal, /estimateLearningGoal\(/);
+  assert.match(goal, /if \(suggestedFill\) setDeadline\(suggestedFill\)/);
+  assert.match(goal, /role="alertdialog"/);
+  assert.match(goal, /blockedByDeadline \?/);
+  assert.match(read("api/learningPathApi.ts"), /\/students\/me\/learning-goals\/estimate/);
 });
 
 test("every work box shows the answer that will be graded", () => {

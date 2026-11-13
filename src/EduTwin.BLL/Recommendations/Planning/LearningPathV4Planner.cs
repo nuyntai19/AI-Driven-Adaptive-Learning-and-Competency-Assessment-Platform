@@ -15,6 +15,52 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
     public async Task<LearningGoalDto> CreateOrUpdateGoalAsync(Guid centerId, Guid studentId,
         CreateLearningGoalRequest request, CancellationToken cancellationToken = default)
     {
+        var goal = await PrepareGoalAsync(centerId, studentId, request, cancellationToken);
+        // Previewing another goal must not supersede the accepted one.
+        db.LearningGoals.Add(goal);
+        await db.SaveChangesAsync(cancellationToken);
+        return GoalDto(goal);
+    }
+
+    public async Task<LearningGoalEstimateDto> EstimateGoalAsync(Guid centerId, Guid studentId,
+        CreateLearningGoalRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request.StartWithPlacement || request.GoalType == "Placement")
+            throw new ArgumentException("Kiểm tra đầu vào không cần ngày đích để ước tính.");
+        var goal = await PrepareGoalAsync(centerId, studentId, request, cancellationToken);
+        var zone = request.Schedule.TimeZoneId;
+        var requested = request.ClearDeadline ? null : request.DeadlineDate;
+        goal.DeadlineDate = requested;
+        var plan = await BuildProposalAsync(centerId, studentId, goal, cancellationToken);
+        if (!requested.HasValue)
+        {
+            // A deadline adds stage checks and mock exams, so the date suggested without one is re-checked with it,
+            // moving later (never earlier) until the route it produces fits.
+            for (var pass = 0; pass < 3 && plan.SuggestedDeadline.HasValue; pass++)
+            {
+                var day = DateOnly.FromDateTime(plan.SuggestedDeadline.Value);
+                var end = TimeZoneInfo.ConvertTimeToUtc(day.ToDateTime(new TimeOnly(23, 59, 59)), LearningPathCalendar.Zone(zone));
+                if (goal.DeadlineDate.HasValue && (plan.FeasibilityStatus != "InsufficientTime" || end <= goal.DeadlineDate.Value)) break;
+                goal.DeadlineDate = end;
+                plan = await BuildProposalAsync(centerId, studentId, goal, cancellationToken);
+            }
+        }
+        return new LearningGoalEstimateDto
+        {
+            DeadlineDate = goal.DeadlineDate.HasValue ? LearningPathCalendar.LocalDate(goal.DeadlineDate.Value, zone) : null,
+            DeadlineSuggested = !requested.HasValue && goal.DeadlineDate.HasValue,
+            EarliestFeasibleDate = plan.EarliestFeasibleDate.HasValue ? DateOnly.FromDateTime(plan.EarliestFeasibleDate.Value) : null,
+            SuggestedDeadline = plan.SuggestedDeadline.HasValue ? DateOnly.FromDateTime(plan.SuggestedDeadline.Value) : null,
+            CurrentEstimatedScore = plan.CurrentEstimatedScore, TargetScore = plan.TargetScore, AchievableScore = plan.AchievableScore,
+            RequiredStudyMinutes = plan.RequiredStudyMinutes, MinimumStudyDays = plan.MinimumStudyDays,
+            FeasibilityStatus = plan.FeasibilityStatus, FeasibilityMessage = plan.FeasibilityMessage
+        };
+    }
+
+    /// <summary>Validates a goal request and builds the (unsaved) goal it describes.</summary>
+    private async Task<LearningGoal> PrepareGoalAsync(Guid centerId, Guid studentId,
+        CreateLearningGoalRequest request, CancellationToken cancellationToken)
+    {
         var nodes = await LearningPathV4Data.NodesAsync(db, centerId, studentId, request.SubjectId, request.ClassId, cancellationToken);
         LearningPathCalendar.Validate(request.Schedule, request.AvailableDaysPerWeek);
         if (request.Schedule.StudyDays.Count == 0)
@@ -61,7 +107,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             if (scope.SelfReportedPrerequisiteSkillIds.Any(id => !byId.ContainsKey(id) || !visited.Contains(id) || scope.TargetSkillIds.Contains(id)))
                 throw new ArgumentException("Chỉ tự xác nhận nền tảng liên quan trong giáo trình và ngoài các phần đã chọn học.");
         }
-        var goal = new LearningGoal
+        return new LearningGoal
         {
             GoalId = Guid.NewGuid(), CenterId = centerId, StudentId = studentId, SubjectId = request.SubjectId,
             ClassId = request.ClassId, GoalType = request.GoalType == "Placement" ? currentGoal?.GoalType ?? "KeepUp" : request.GoalType,
@@ -73,10 +119,6 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             AvailableDaysPerWeek = request.AvailableDaysPerWeek, PreferredPace = request.PreferredPace,
             PreferredMode = request.PreferredMode, Status = "Draft", CreatedAt = Now, UpdatedAt = Now, RowVersion = 1
         };
-        // Previewing another goal must not supersede the accepted one.
-        db.LearningGoals.Add(goal);
-        await db.SaveChangesAsync(cancellationToken);
-        return GoalDto(goal);
     }
 
     public async Task<LearningGoalDto?> GetActiveGoalAsync(Guid centerId, Guid studentId, Guid subjectId, CancellationToken cancellationToken = default)

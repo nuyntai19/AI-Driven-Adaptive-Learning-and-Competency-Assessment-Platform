@@ -13,6 +13,13 @@ public interface ILearningPathV4Planner
         CreateLearningGoalRequest request,
         CancellationToken cancellationToken = default);
 
+    /// <summary>Feasibility and suggested deadline for a goal being filled in; validates like a save but stores nothing.</summary>
+    Task<LearningGoalEstimateDto> EstimateGoalAsync(
+        Guid centerId,
+        Guid studentId,
+        CreateLearningGoalRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<LearningGoalDto?> GetActiveGoalAsync(
         Guid centerId,
         Guid studentId,
