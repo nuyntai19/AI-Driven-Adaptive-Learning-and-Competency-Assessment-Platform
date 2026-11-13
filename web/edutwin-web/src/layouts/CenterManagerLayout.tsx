@@ -248,7 +248,11 @@ export function CenterManagerLayout() {
         <div className="min-w-0 lg:col-start-2">
           <header className="sticky top-0 z-20 flex h-[4.5rem] items-center justify-between gap-4 border-b border-[var(--cm-border-subtle)] bg-[var(--cm-surface)]/95 px-4 backdrop-blur sm:px-6">
             <div className="flex min-w-0 items-center gap-3">
-              <button type="button" className="cm-icon-button h-10 w-10 border border-[var(--cm-border)] lg:hidden" aria-label="Mở menu điều hướng" onClick={() => setMobileOpen(true)}>☰</button>
+              {/* Drawer toggle for narrow screens only. The wrapper hides it from lg up, where the sidebar is
+                  always shown: .cm-icon-button sets display itself and would override lg:hidden on the button. */}
+              <div className="shrink-0 lg:hidden">
+                <button type="button" className="cm-icon-button h-10 w-10 border border-[var(--cm-border)]" aria-label="Mở menu điều hướng" onClick={() => setMobileOpen(true)}>☰</button>
+              </div>
               <div className="min-w-0">
                 <p className="text-xs text-[var(--cm-text-muted)]">CenterManager /</p>
                 <p className="truncate text-sm font-semibold text-[var(--cm-text)]">{activeItem?.label ?? "Không gian trung tâm"}</p>

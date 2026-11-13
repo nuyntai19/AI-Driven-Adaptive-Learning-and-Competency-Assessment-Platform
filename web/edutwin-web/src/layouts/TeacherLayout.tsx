@@ -344,14 +344,18 @@ export function TeacherLayout() {
           {/* Top Navbar */}
           <header className="sticky top-0 z-20 flex h-[4.5rem] items-center justify-between gap-4 border-b border-[var(--th-border-subtle)] bg-[var(--th-surface)]/95 px-4 backdrop-blur sm:px-6 lg:px-8">
             <div className="flex min-w-0 items-center gap-3">
-              <button
-                type="button"
-                className="th-icon-button h-10 w-10 border border-[var(--th-border)] lg:hidden"
-                aria-label="Mở menu điều hướng"
-                onClick={() => setMobileOpen(true)}
-              >
-                ☰
-              </button>
+              {/* Drawer toggle for narrow screens only. The wrapper hides it from lg up, where the sidebar is
+                  always shown: .th-icon-button sets display itself and would override lg:hidden on the button. */}
+              <div className="shrink-0 lg:hidden">
+                <button
+                  type="button"
+                  className="th-icon-button h-10 w-10 border border-[var(--th-border)]"
+                  aria-label="Mở menu điều hướng"
+                  onClick={() => setMobileOpen(true)}
+                >
+                  ☰
+                </button>
+              </div>
               <div className="min-w-0">
                 <p className="text-xs text-[var(--th-text-muted)]">Giáo viên /</p>
                 <p className="truncate text-sm font-semibold text-[var(--th-text)]">
