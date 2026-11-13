@@ -101,6 +101,8 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
   const [showExtend, setShowExtend] = useState(false);
   const extraQueue = useRef<string[]>([]);
   const [mission, setMission] = useState<AgendaItemDto | null>(null);
+  // Set while a run of an older route is open read-only from "Lịch sử tuyến học".
+  const [historyContext, setHistoryContext] = useState<string | null>(null);
   const [acceptedNotice, setAcceptedNotice] = useState("");
   const map = useQuery({ queryKey: ["learning-paths", "capability-map", actor?.centerId, actor?.userId, subjectId, access.classId],
     queryFn: () => getCapabilityMap(subjectId, access.classId), enabled: !!subjectId && access.writable });
@@ -143,7 +145,7 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
   const routeSkills = new Set(missions.filter(m => !m.isSelfAssessedCheck && !m.title.startsWith("Kiểm tra thêm")).map(m => m.skillId));
   const extendCandidates = agenda.data?.learningPathId && !agenda.data.isPlacement ? (map.data?.skills ?? [])
     .filter(s => s.state !== "Confirmed" && !routeSkills.has(s.skillId) && !missions.some(m => m.skillId === s.skillId && m.title.startsWith("Kiểm tra thêm") && m.status !== "Skipped"))
-    .map(s => ({ ...s, note: agenda.data?.selfAssessedSkillIds?.includes(s.skillId) ? "Tự đánh giá đã vững · thay cho bài ôn xác nhận"
+    .map(s => ({ ...s, checkableQuestions: agenda.data?.checkableQuestionsBySkill?.[s.skillId], note: agenda.data?.selfAssessedSkillIds?.includes(s.skillId) ? "Tự đánh giá đã vững · thay cho bài ôn xác nhận"
       : agenda.data?.selfReportedPrerequisiteSkillIds?.includes(s.skillId) ? "Nền tảng em đã tự xác nhận bỏ qua" : "Chưa có trong lộ trình" })) : [];
   const openNextExtra = (data?: LearningAgendaDto) => {
     while (extraQueue.current.length) {
@@ -160,7 +162,8 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
   const todayPlan = agenda.data?.todayPlan ?? (primary ? [primary, ...(agenda.data?.alternativeOptions ?? [])] : []);
   const planSummary = agenda.data?.learningPathId
     ? todayPlan.length === 0 ? "Chưa có nhiệm vụ vừa với thời gian này."
-      : `Kế hoạch: ${todayPlan.reduce((n, m) => n + (m.purpose === "Practice" || m.purpose === "Review" ? m.plannedSets ?? 1 : 1), 0)} bước · khoảng ${formatStudyMinutes(agenda.data.plannedMinutes ?? 0)}${agenda.data.plannedQuestionCount ? ` · ≈ ${agenda.data.plannedQuestionCount} câu` : ""}${agenda.isPlaceholderData ? " · đang tính lại…" : ""}`
+      // Count the rows the student sees below; practice sets are named separately (one row may hold several sets).
+      : `Kế hoạch: ${todayPlan.length} nhiệm vụ${todayPlan.some(m => (m.plannedSets ?? 1) > 1) ? ` (${todayPlan.reduce((n, m) => n + (m.purpose === "Practice" || m.purpose === "Review" ? m.plannedSets ?? 1 : 0), 0)} bộ luyện)` : ""} · khoảng ${formatStudyMinutes(agenda.data.plannedMinutes ?? 0)}${agenda.data.plannedQuestionCount ? ` · ≈ ${agenda.data.plannedQuestionCount} câu` : ""}${agenda.isPlaceholderData ? " · đang tính lại…" : ""}`
     : undefined;
   const panel = "rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 sm:p-6";
   const action = "rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed";
@@ -346,9 +349,29 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
     {(agenda.data?.pathHistory?.length ?? 0) > 0 && <section className={panel} aria-labelledby="path-history-title">
       <h2 id="path-history-title" className="text-xl font-semibold">Lịch sử tuyến học</h2>
       <p className="mt-1 text-sm text-slate-500">Đổi tuyến không xóa bài làm. Mọi câu trả lời của các tuyến trước vẫn được dùng để xác định phần yếu và bỏ qua phần đã vững.</p>
-      <ul className="mt-4 space-y-2">{agenda.data!.pathHistory!.map(h => <li key={h.learningPathId} className="rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
-        <p className="font-medium">Phiên bản {h.version} · {h.goalTitle}</p>
-        <p className="mt-1 text-xs text-slate-500">{new Date(h.createdAt).toLocaleDateString("vi-VN")}{h.endedAt ? ` – ${new Date(h.endedAt).toLocaleDateString("vi-VN")}` : ""} · {h.completedMissions}/{h.totalMissions} nhiệm vụ hoàn thành · {h.answeredQuestions} câu đã trả lời</p>
+      <ul className="mt-4 space-y-2">{agenda.data!.pathHistory!.map(h => <li key={h.learningPathId} className="rounded-xl border border-slate-200 text-sm dark:border-slate-700">
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-start justify-between gap-3 p-3">
+            <span><span className="block font-medium">Phiên bản {h.version} · {h.goalTitle}</span>
+              <span className="mt-1 block text-xs text-slate-500">{new Date(h.createdAt).toLocaleDateString("vi-VN")}{h.endedAt ? ` – ${new Date(h.endedAt).toLocaleDateString("vi-VN")}` : ""} · {h.completedMissions}/{h.totalMissions} nhiệm vụ hoàn thành · {h.answeredQuestions} câu đã trả lời</span></span>
+            <span className="shrink-0 text-xs font-semibold text-indigo-600 dark:text-indigo-300"><span className="group-open:hidden">Xem bài đã làm</span><span className="hidden group-open:inline">Thu gọn</span></span>
+          </summary>
+          <div className="border-t border-slate-100 p-3 dark:border-slate-800">
+            {!h.missions?.length ? <p className="text-xs text-slate-500">Tuyến này chưa có lượt làm bài nào để xem lại.</p>
+              : <ul className="space-y-3">{[...new Set(h.missions.map(m => m.skillName))].map(skillName => <li key={skillName}>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{skillName}</p>
+                <ul className="mt-1 space-y-1">{h.missions!.filter(m => m.skillName === skillName).flatMap(m => m.runs.map(r => <li key={r.sessionRunId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800">
+                  <span className="min-w-0"><span className="font-medium">{m.title}</span><span className="block text-xs text-slate-500">{runSummary(r)}</span></span>
+                  <button className="shrink-0 rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold dark:border-slate-600"
+                    onClick={() => { setHistoryContext(`Lịch sử tuyến · Phiên bản ${h.version} · chỉ xem, không làm lại hoặc sửa`);
+                      setMission({ missionId: m.missionId, title: m.title, objective: "", purpose: m.purpose, skillId: m.skillId, skillName: m.skillName,
+                        estimatedDurationMinutes: 0, activityTypes: [], recommendationReason: "", questionCount: 0, canStart: false, status: "Completed",
+                        latestRunId: r.sessionRunId, reviewOnly: true, retry: false }); }}>Xem lại</button>
+                </li>))}</ul>
+              </li>)}</ul>}
+            <p className="mt-3 text-xs text-slate-500">Chỉ xem lại câu hỏi, câu trả lời và lời giải đã lưu; không thể làm lại hoặc chỉnh sửa bài của tuyến cũ.</p>
+          </div>
+        </details>
       </li>)}</ul>
     </section>}
     {showGoal && <GoalAndProposalModal key={`${subjectId}:${access.classId}:${entryMode}`} isOpen onClose={() => setShowGoal(false)}
@@ -376,11 +399,12 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
         const [fresh] = await Promise.all([agenda.refetch(), map.refetch()]); openNextExtra(fresh.data);
       }} />}
     {mission && <MissionPlayerModal key={`${mission.missionId}:${mission.retry ? "retry" : mission.reviewOnly ? `review-${mission.latestRunId}` : "open"}`} isOpen mission={mission} subjectId={subjectId}
-      contextLabel={placementRunning ? sectionLabel(mission) : mission.title.startsWith("Kiểm tra thêm") ? "Kiểm tra thêm phần khác · lộ trình hiện tại được giữ" : undefined}
+      contextLabel={historyContext ?? (placementRunning ? sectionLabel(mission) : mission.title.startsWith("Kiểm tra thêm") ? "Kiểm tra thêm phần khác · lộ trình hiện tại được giữ" : undefined)}
       nextLabel={placementRunning && sectionLabel(mission) ? placementSections.filter(m => m.missionId !== mission.missionId).some(m => m.canStart && m.status !== "Completed" && !m.latestRunId) ? "Sang phần tiếp theo" : "Xem kết quả và lộ trình đề xuất" : undefined}
       onResumeMission={setMission}
       onClose={async () => {
         const closedId = mission.missionId; setMission(null);
+        if (historyContext) { setHistoryContext(null); return; }
         const [fresh] = await Promise.all([agenda.refetch(), map.refetch()]);
         if (extraQueue.current.length) {
           const closedExtra = fresh.data?.missions.find(m => m.missionId === closedId);

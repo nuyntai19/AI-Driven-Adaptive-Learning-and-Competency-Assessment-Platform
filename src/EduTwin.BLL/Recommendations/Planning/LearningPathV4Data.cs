@@ -31,6 +31,21 @@ public static class LearningPathV4Data
         return answered.Concat(exposed).ToHashSet();
     }
 
+    /// <summary>When each cooling question becomes usable again (last answer/exposure + the student's reuse delay).</summary>
+    public static async Task<Dictionary<ulong, DateTime>> CoolingReleaseTimesAsync(EduTwinDbContext db, Guid center, Guid student,
+        DateTime now, uint delayDays, CancellationToken ct)
+    {
+        if (delayDays == 0) return [];
+        var cutoff = now.AddDays(-(int)delayDays);
+        var answered = await db.Attempts.AsNoTracking().Where(a => a.CenterId == center && a.StudentId == student && a.CreatedAt > cutoff)
+            .GroupBy(a => a.QuestionId).Select(g => new { QuestionId = g.Key, At = g.Max(a => a.CreatedAt) }).ToListAsync(ct);
+        var exposed = await db.IssuedItems.AsNoTracking().Where(i => i.CenterId == center && i.ActivityRun.SessionRun.StudentId == student &&
+            i.QuestionId != null && i.SolutionExposedAt > cutoff)
+            .GroupBy(i => i.QuestionId!.Value).Select(g => new { QuestionId = g.Key, At = g.Max(i => i.SolutionExposedAt!.Value) }).ToListAsync(ct);
+        return answered.Concat(exposed).GroupBy(x => x.QuestionId)
+            .ToDictionary(g => g.Key, g => g.Max(x => x.At).AddDays(delayDays));
+    }
+
     public static async Task<List<KnowledgeNode>> NodesAsync(EduTwinDbContext db, Guid center, Guid student,
         Guid subject, Guid? classId, CancellationToken ct)
     {

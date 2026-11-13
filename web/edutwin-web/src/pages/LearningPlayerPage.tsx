@@ -58,6 +58,7 @@ import { WorkToolbar } from "../components/learning/WorkToolbar";
 import { useQuestionBookmarks } from "../utils/useQuestionBookmarks";
 import { GradedAnswerPreview } from "../components/learning/GradedAnswerPreview";
 import { RichMathEditor, type RichMathEditorRef } from "../components/math/RichMathEditor";
+import { useWorkInputMode } from "../hooks/useWorkInputMode";
 import type { AnswerEditorRef } from "../components/math/answer-editor/answerEditorHelpers";
 import { SideAssistantWorkspace, type AssistantToolTab } from "../components/math/SideAssistantWorkspace";
 import { ScratchpadInlinePanel, type ScratchpadInlinePanelHandle } from "../components/math/ScratchpadInlinePanel";
@@ -286,18 +287,8 @@ const PracticePlayerPage = () => {
   // draw: viết tay trên giấy A4 (bảng) rồi quét vào phần trình bày.
   // photo: chụp/tải ảnh bài giải giấy, quét vào phần trình bày, ảnh đính kèm.
   // Cả ba cùng ghi vào finalAnswer/reasoningText nên chuyển qua lại không
-  // mất bài. Lựa chọn được nhớ theo học sinh (localStorage).
-  type InputMode = "keyboard" | "draw" | "photo";
-  const [inputMode, setInputModeState] = useState<InputMode>(() => {
-    try {
-      const v = localStorage.getItem("edutwin-input-mode");
-      return v === "draw" || v === "photo" ? v : "keyboard";
-    } catch { return "keyboard"; }
-  });
-  const setInputMode = (mode: InputMode) => {
-    setInputModeState(mode);
-    try { localStorage.setItem("edutwin-input-mode", mode); } catch { /* ignore */ }
-  };
+  // mất bài. Lựa chọn được nhớ theo từng môn, mặc định bàn phím
+  // (useWorkInputMode, khai báo sau khi có thông tin bài tập).
   // Tỉ lệ cột trái (câu hỏi + trình bày) trong bố cục vẽ A4; kéo thanh chia
   // ở giữa để chỉnh, giống kéo cột trong Excel.
   const [drawSplitPct, setDrawSplitPct] = useState<number>(() => {
@@ -419,6 +410,8 @@ const PracticePlayerPage = () => {
   } = useStudentAssignment(assignmentId || undefined);
 
   const assignment = assignmentResponse?.data;
+  // Remembered per subject, keyboard first (see useWorkInputMode).
+  const [inputMode, setInputMode] = useWorkInputMode(assignment?.subjectId || subjectId || assignment?.subjectName);
   const classReadOnly = isHistory || assignment?.isReadOnly === true;
   const classReadOnlyRef = useRef(classReadOnly);
   classReadOnlyRef.current = classReadOnly;
@@ -4302,14 +4295,26 @@ const PracticePlayerPage = () => {
                     >
                       ← Câu trước
                     </button>
-                    <button
-                      type="button"
-                      disabled={currentAssignmentIndex >= totalQuestions - 1}
-                      onClick={() => handleSwitchQuestion(assignmentQuestions[currentAssignmentIndex + 1].questionId)}
-                      className="px-5 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 font-bold text-xs disabled:opacity-40 cursor-pointer border border-indigo-200/80 dark:border-indigo-800"
-                    >
-                      Câu tiếp theo →
-                    </button>
+                    {currentAssignmentIndex >= totalQuestions - 1 && !classReadOnly && !isAssignmentSubmitted ? (
+                      // Last question: the next step is handing in the work, with the same check as the header button.
+                      <button
+                        type="button"
+                        onClick={() => setShowBatchConfirmModal(true)}
+                        disabled={isSubmitting || isAssignmentExpired}
+                        className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs disabled:opacity-40 cursor-pointer"
+                      >
+                        Nộp bài ({answeredCount}/{totalQuestions})
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={currentAssignmentIndex >= totalQuestions - 1}
+                        onClick={() => handleSwitchQuestion(assignmentQuestions[currentAssignmentIndex + 1].questionId)}
+                        className="px-5 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 font-bold text-xs disabled:opacity-40 cursor-pointer border border-indigo-200/80 dark:border-indigo-800"
+                      >
+                        Câu tiếp theo →
+                      </button>
+                    )}
                   </div>
                 ) : isReadOnly ? (
                   <p role="status" className="text-xs text-slate-500 dark:text-slate-400">
@@ -4388,7 +4393,7 @@ const PracticePlayerPage = () => {
 
             {missingReasoningIndices.length > 0 && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-900 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
               <p className="font-bold">Các câu đã có đáp án nhưng thiếu lập luận bắt buộc:</p>
-              <p className="mt-1">{missingReasoningIndices.map(n => `Câu ${n}`).join(", ")}. Chọn Kiểm tra lại để bổ sung lập luận trước khi nộp. Các đáp án này được giữ trong bản nháp.</p>
+              <p className="mt-1">{missingReasoningIndices.map(n => `Câu ${n}`).join(", ")}. Chọn "Xem lại câu còn thiếu" để bổ sung lập luận trước khi nộp. Các đáp án này được giữ trong bản nháp.</p>
             </div>}
 
             {unansweredQuestionIndices.length > 0 && (
@@ -4409,10 +4414,16 @@ const PracticePlayerPage = () => {
             <div className="pt-2 flex items-center justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setShowBatchConfirmModal(false)}
+                onClick={() => {
+                  setShowBatchConfirmModal(false);
+                  // Go straight to the first question that still needs work, if any.
+                  const first = unansweredQuestionIndices[0] ?? missingReasoningIndices[0];
+                  const target = first ? assignmentQuestions[first - 1] : undefined;
+                  if (target && target.questionId !== question?.questionId) handleSwitchQuestion(target.questionId);
+                }}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer"
               >
-                Kiểm tra lại
+                {unansweredQuestionIndices.length + missingReasoningIndices.length > 0 ? "Xem lại câu còn thiếu" : "Xem lại bài"}
               </button>
               <button
                 type="button"

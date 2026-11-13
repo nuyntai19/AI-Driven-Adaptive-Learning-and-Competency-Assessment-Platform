@@ -29,13 +29,18 @@ export const StudentAcademicContext = () => {
     navigate(studentScopeChangeUrl(location.pathname, p));
   };
   const classes = studentClassesInView(query.data?.classes ?? [], history);
+  // The switch only matters to a student who has left a class or whose class has ended; otherwise it is noise.
+  const hasPastClasses = (query.data?.classes ?? []).some(c => c.isHistorical);
+  const showModeSwitch = history || hasPastClasses;
+  const onlyClass = !history && classes.length === 1 ? classes[0] : null;
   return <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-2 border-t border-[var(--student-border)] text-sm space-y-2" data-testid="student-academic-context">
     <div className="flex flex-wrap items-center gap-3">
-      <div className="inline-flex rounded-lg border border-[var(--student-border)] p-1 gap-1">
-        <button type="button" aria-pressed={!history} onClick={() => changeMode(false)} className={`rounded-md px-3 py-1 font-semibold ${!history ? "bg-[var(--student-brand)] text-white" : "text-[var(--student-ink)]"}`}>Đang học</button>
-        <button type="button" aria-pressed={history} onClick={() => changeMode(true)} className={`rounded-md px-3 py-1 font-semibold ${history ? "bg-[var(--student-brand)] text-white" : "text-[var(--student-ink)]"}`}>Xem lịch sử</button>
-      </div>
-      {subject && <label className="flex items-center gap-2 min-w-0">Lớp:
+      {showModeSwitch && <div className="inline-flex rounded-lg border border-[var(--student-border)] p-1 gap-1" role="group" aria-label="Chọn lớp đang học hoặc lớp đã kết thúc">
+        <button type="button" aria-pressed={!history} title="Lớp em đang theo học: làm bài, học lộ trình như bình thường" onClick={() => changeMode(false)} className={`rounded-md px-3 py-1 font-semibold ${!history ? "bg-[var(--student-brand)] text-white" : "text-[var(--student-ink)]"}`}>Lớp đang học</button>
+        <button type="button" aria-pressed={history} title="Lớp đã kết thúc hoặc em đã rời: chỉ xem lại bài làm và kết quả cũ" onClick={() => changeMode(true)} className={`rounded-md px-3 py-1 font-semibold ${history ? "bg-[var(--student-brand)] text-white" : "text-[var(--student-ink)]"}`}>Lớp đã kết thúc</button>
+      </div>}
+      {subject && onlyClass && <p className="min-w-0">Lớp: <strong className="font-semibold">{onlyClass.className}{onlyClass.gradeLevel ? ` · Khối ${onlyClass.gradeLevel}` : ""}</strong></p>}
+      {subject && !onlyClass && <label className="flex items-center gap-2 min-w-0">Lớp:
         <select aria-label="Lớp học đang xem" disabled={query.isPending || query.isError || classes.length === 0}
           value={classId || query.data?.selectedClassId || ""} onChange={e => { const p = new URLSearchParams(params); p.set("classId", e.target.value); navigate(studentScopeChangeUrl(location.pathname, p)); }}
           className="max-w-full sm:max-w-[360px] rounded-lg border border-[var(--student-border)] bg-[var(--student-surface)] px-3 py-1.5 font-semibold">

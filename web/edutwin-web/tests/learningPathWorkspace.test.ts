@@ -8,7 +8,9 @@ test("the mission player offers the same tools as the assignment player", () => 
   const source = read("components/learningPathV4/MissionPlayerModal.tsx");
   assert.match(source, /<WorkToolbar /);
   assert.match(source, /<SideAssistantWorkspace /);
-  assert.match(source, /<RichMathEditor /);
+  // Math subjects get the formula editor through WorkTextBox; language subjects a plain text box.
+  assert.match(source, /<WorkTextBox math=\{mathInput\}/);
+  assert.match(read("components/learning/WorkTextBox.tsx"), /if \(math\) return <RichMathEditor /);
   assert.match(source, /<ScratchpadInlinePanel /);
   assert.match(source, /<BookmarkButton /);
 });

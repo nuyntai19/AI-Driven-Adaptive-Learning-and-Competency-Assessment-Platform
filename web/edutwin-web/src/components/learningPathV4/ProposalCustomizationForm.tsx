@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { CustomizePathProposalRequest, PathProposalDto, ProposedMilestoneDto } from "../../types/learningPath";
 import { TimeBudgetSlider } from "./TimeBudgetSlider";
-import { MIN_GOAL_STUDY_MINUTES } from "../../utils/studyTime";
+import { MAX_STUDY_MINUTES, MIN_GOAL_STUDY_MINUTES, formatStudyMinutes } from "../../utils/studyTime";
 import { DateInput } from "../DateInput";
 
 function todayIso() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
@@ -50,6 +50,24 @@ export function ProposalCustomizationForm({ proposal, availableMilestones: allMi
   const suggestedDate = suggestedPart ? new Date(`${suggestedPart}T00:00:00`) : null;
   const tight = !infeasible && !!chosen && !!suggestedDate && chosen < suggestedDate;
   const input = "mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 dark:bg-slate-900";
+  // Same rule as the goal form: a new date or a new number of study days refills the minutes per day needed.
+  const studyDaysWeekdays = proposal.schedule?.studyDays?.length ? proposal.schedule.studyDays : [1, 2, 3, 4, 5, 6, 0];
+  const [autoNote, setAutoNote] = useState("");
+  const refillMinutes = (end: string, perWeek: number) => {
+    if (!end || requiredMinutes <= 0) { setAutoNote(""); return; }
+    const weekdays = studyDaysWeekdays.slice(0, Math.max(1, perWeek));
+    const day = new Date(); day.setHours(0, 0, 0, 0);
+    const last = new Date(`${end}T00:00:00`);
+    let count = 0;
+    for (; day <= last; day.setDate(day.getDate() + 1)) if (weekdays.includes(day.getDay())) count++;
+    if (count === 0) { setAutoNote(""); return; }
+    const perDay = Math.ceil(requiredMinutes / count);
+    const next = Math.min(MAX_STUDY_MINUTES, Math.max(MIN_GOAL_STUDY_MINUTES, Math.ceil(perDay / 5) * 5));
+    setMinutes(next);
+    setAutoNote(perDay > MAX_STUDY_MINUTES
+      ? `Để kịp mốc này cần khoảng ${formatStudyMinutes(perDay)}/ngày, vượt mức tối đa. Hãy dời mốc hoặc thêm ngày học.`
+      : `Đã tự tính ${formatStudyMinutes(next)}/ngày (khoảng ${requiredMinutes} phút trong ${count} ngày học). Em vẫn có thể kéo thanh để đổi.`);
+  };
   return <form className="mt-6 space-y-5" onSubmit={event => {
     event.preventDefault();
     const counts = Object.fromEntries(targets.map(id => [id, Number(questionsBySkill[id])]));
@@ -72,10 +90,11 @@ export function ProposalCustomizationForm({ proposal, availableMilestones: allMi
       </dl>
     </div>}
     <fieldset disabled={pending} className="space-y-5 disabled:opacity-60">
-      <TimeBudgetSlider label="Tổng thời gian học mỗi ngày" minValue={MIN_GOAL_STUDY_MINUTES} value={minutes} onChange={setMinutes} summary="Tối thiểu 10 phút/ngày để đủ làm một bộ luyện. Đây là tổng quỹ thời gian cho cả tuyến; hệ thống xếp các phần học vào quỹ này theo tiến độ và mức độ cần củng cố." />
+      <TimeBudgetSlider label="Tổng thời gian học mỗi ngày" minValue={MIN_GOAL_STUDY_MINUTES} value={minutes} onChange={value => { setMinutes(value); setAutoNote(""); }} summary="Tối thiểu 10 phút/ngày để đủ làm một bộ luyện. Đổi mốc thời gian hoặc số ngày học thì thời gian mỗi ngày được tự tính lại; em vẫn có thể kéo thanh." />
+      {autoNote && <p role="status" className="rounded-lg bg-indigo-50 p-3 text-sm text-indigo-950 dark:bg-indigo-950/40 dark:text-indigo-100">{autoNote}</p>}
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="text-sm">Ngày mỗi tuần<select className={input} value={days} onChange={event => setDays(Number(event.target.value))}>{[1, 2, 3, 4, 5, 6, 7].map(day => <option key={day}>{day}</option>)}</select></label>
-        <label className="text-sm">Mốc thời gian (nếu có)<DateInput min={todayIso()} className={input} value={deadline} onChange={setDeadline} />
+        <label className="text-sm">Ngày mỗi tuần<select className={input} value={days} onChange={event => { const next = Number(event.target.value); setDays(next); refillMinutes(deadline, next); }}>{[1, 2, 3, 4, 5, 6, 7].map(day => <option key={day}>{day}</option>)}</select></label>
+        <label className="text-sm">Mốc thời gian (nếu có)<DateInput min={todayIso()} className={input} value={deadline} onChange={value => { setDeadline(value); refillMinutes(value, days); }} />
           {proposal.suggestedDeadline && <button type="button" className="mt-1 text-xs font-semibold text-indigo-700 underline" onClick={() => setDeadline(suggestedPart)}>Dùng ngày đề xuất ({formatIsoDate(proposal.suggestedDeadline)})</button>}</label>
       </div>
       {infeasible && earliestApprox && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">Không có lộ trình phù hợp với mốc này: cần tối thiểu khoảng {daysNeeded} ngày học, sớm nhất khoảng {formatDate(earliestApprox)} theo lịch vừa chọn (ước tính lại; hệ thống kiểm tra chính xác khi cập nhật). Hãy dời mốc, tăng phút/ngày hoặc ngày/tuần.</p>}

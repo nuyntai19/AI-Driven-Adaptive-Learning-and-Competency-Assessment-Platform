@@ -77,6 +77,10 @@ public class LearningGoalEstimateDto
     public uint MinimumStudyDays { get; set; }
     public string FeasibilityStatus { get; set; } = "Feasible"; // Feasible, TightBudget, InsufficientTime
     public string? FeasibilityMessage { get; set; }
+    /// <summary>Study days from today through the deadline, on the chosen weekdays (excluded dates left out).</summary>
+    public uint? StudyDaysUntilDeadline { get; set; }
+    /// <summary>Minutes per study day needed to finish the required study by the deadline.</summary>
+    public uint? MinutesPerDayForDeadline { get; set; }
 }
 
 public class UpdateLearningGoalRequest

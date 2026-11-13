@@ -3,7 +3,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adaptivePracticeApi } from "../api/adaptivePracticeApi";
 import { RichMathText } from "../components/math/RichMathText";
-import { RichMathEditor } from "../components/math/RichMathEditor";
 import { ScratchpadInlinePanel, type ScratchpadInlinePanelHandle } from "../components/math/ScratchpadInlinePanel";
 import { transcribeHandwriting } from "../api/handwritingApi";
 import { readScratchpadPhoto } from "../utils/scratchpadPngImport";
@@ -13,6 +12,8 @@ import { QuestionImage } from "../components/QuestionImage";
 import { WorkToolbar } from "../components/learning/WorkToolbar";
 import { BookmarkButton } from "../components/learning/BookmarkButton";
 import { GradedAnswerPreview } from "../components/learning/GradedAnswerPreview";
+import { useWorkInputMode } from "../hooks/useWorkInputMode";
+import { WorkTextBox } from "../components/learning/WorkTextBox";
 import type {
   AdaptivePracticeHint,
   AdaptivePracticeAnswerFeedback,
@@ -66,17 +67,6 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
 
   // Ba phương thức nhập: bàn phím / vẽ trên A4 / ảnh chụp — tất cả cùng
   // ghi vào một ô bài làm duy nhất như trang làm bài tập.
-  type InputMode = "keyboard" | "draw" | "photo";
-  const [inputMode, setInputModeState] = useState<InputMode>(() => {
-    try {
-      const v = localStorage.getItem("edutwin-input-mode");
-      return v === "draw" || v === "photo" ? v : "keyboard";
-    } catch { return "keyboard"; }
-  });
-  const setInputMode = (mode: InputMode) => {
-    setInputModeState(mode);
-    try { localStorage.setItem("edutwin-input-mode", mode); } catch { /* ignore */ }
-  };
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [scanNotice, setScanNotice] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -97,6 +87,8 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
     refetchOnWindowFocus: false,
   });
   const session = sessionQuery.data;
+  // Remembered per subject, keyboard first (see useWorkInputMode).
+  const [inputMode, setInputMode] = useWorkInputMode(session?.subjectId);
 
   // 2. Fetch Current Question
   const questionQuery = useQuery({
@@ -154,7 +146,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
       // One single work box: the submitted answer is derived from the work
       // — the whole text for essays and language subjects, its last non-empty line otherwise.
       const derivedAnswer = deriveFinalAnswer(reasoningText, question.questionType, question.answerEvaluationMode, !usesMathInput(session?.subjectName));
-      const finalAnswer = question.questionType === "MultipleChoice" ? selectedOption : derivedAnswer;
+      const finalAnswer = question.questionType === "MultipleChoice" && question.options.length > 0 ? selectedOption : derivedAnswer;
       const timeSpent = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000));
 
       return await adaptivePracticeApi.submitAnswer(sessionId, {
@@ -325,10 +317,11 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
     );
   }
 
-  const answerEntered = question?.questionType === "MultipleChoice" ? !!selectedOption : reasoningText.trim().length > 0;
-
   const mathInput = usesMathInput(session?.subjectName);
   const isMcq = question?.questionType === "MultipleChoice" && question.options.length > 0;
+  // Follow what is on screen: a multiple-choice question that arrives without options shows the text box, so the
+  // typed answer must be enough to submit (otherwise the button stays disabled forever).
+  const answerEntered = isMcq ? !!selectedOption : reasoningText.trim().length > 0;
   // The A4 sheet takes the whole right column, so the typed work moves beside it.
   const boardBeside = inputMode === "draw" && !isMcq && !feedback;
   const correctOption = isMcq
@@ -341,9 +334,10 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
       <label htmlFor="work-text" className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
         {inputMode === "keyboard" ? "Bài làm của bạn" : "Bài làm của bạn (kết quả quét, hãy kiểm tra lại)"}
       </label>
-      <RichMathEditor
+      <WorkTextBox
+        math={mathInput}
         id="work-text"
-        variant="student"
+        label="Bài làm của bạn"
         value={reasoningText}
         onChange={setReasoningText}
         placeholder={answerWorkPlaceholder(mathInput)}
@@ -512,7 +506,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
                   </fieldset>
                   <div className="space-y-2">
                     <span className="block text-sm font-semibold text-slate-700 dark:text-slate-300">Giải thích vì sao em chọn đáp án này (không bắt buộc)</span>
-                    <RichMathEditor variant="student" value={reasoningText} onChange={setReasoningText} placeholder={answerReasoningPlaceholder(mathInput)} minHeight="120px" />
+                    <WorkTextBox math={mathInput} label="Giải thích vì sao em chọn đáp án này" value={reasoningText} onChange={setReasoningText} placeholder={answerReasoningPlaceholder(mathInput)} minHeight="120px" />
                   </div>
                   {actionBar}
                 </>

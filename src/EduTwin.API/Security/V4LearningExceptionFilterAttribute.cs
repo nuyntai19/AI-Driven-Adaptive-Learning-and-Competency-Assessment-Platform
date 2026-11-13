@@ -28,7 +28,10 @@ public sealed class V4LearningExceptionFilterAttribute : ExceptionFilterAttribut
         };
         if (status == 0) return;
         var problem = new ProblemDetails { Status = status, Title = "Không thể thực hiện hoạt động học",
-            Detail = status == 404 ? "Không tìm thấy dữ liệu trong phạm vi của bạn." : context.Exception.Message,
+            Detail = status == 404 ? "Không tìm thấy dữ liệu trong phạm vi của bạn."
+                // EF's own text is English and technical; the student only needs to know that retrying is safe.
+                : context.Exception is DbUpdateConcurrencyException ? "Bài làm vừa được cập nhật ở một thao tác khác (lưu nháp, gợi ý hoặc mở ở tab khác). Nội dung em nhập vẫn còn; hãy bấm nộp lại."
+                : context.Exception.Message,
             Extensions = { ["traceId"] = context.HttpContext.TraceIdentifier } };
         if (context.Exception is LearningMissionInProgressException ongoing)
         {

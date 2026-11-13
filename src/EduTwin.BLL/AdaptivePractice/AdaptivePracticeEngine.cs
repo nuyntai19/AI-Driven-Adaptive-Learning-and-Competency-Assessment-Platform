@@ -86,7 +86,10 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
                 && q.Status == QuestionStatus.Active
                 && q.QuestionType != QuestionType.Essay
                 && q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual
-                && !q.IsDeleted)
+                && !q.IsDeleted
+                // A multiple-choice question without its options cannot be answered (no choice to pick).
+                && (q.QuestionType != QuestionType.MultipleChoice
+                    || _dbContext.QuestionOptions.Count(o => o.CenterId == q.CenterId && o.QuestionId == q.QuestionId && !o.IsDeleted) >= 2))
             .Select(q => new { q.QuestionId, q.PrimaryTopicNodeId, q.GradeLevel })
             .ToListAsync(ct);
 
@@ -301,9 +304,12 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
                 .Where(q => q.CenterId == centerId && q.SubjectId == request.SubjectId
                     && q.PrimaryTopicNodeId == request.TopicNodeId
                     && q.Status == QuestionStatus.Active
-                    && q.QuestionType != QuestionType.Essay
+                && q.QuestionType != QuestionType.Essay
                     && q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual
-                    && !q.IsDeleted)
+                    && !q.IsDeleted
+                    // A multiple-choice question without its options cannot be answered (no choice to pick).
+                    && (q.QuestionType != QuestionType.MultipleChoice
+                        || _dbContext.QuestionOptions.Count(o => o.CenterId == q.CenterId && o.QuestionId == q.QuestionId && !o.IsDeleted) >= 2))
                 .Select(q => new { q.QuestionId, q.GradeLevel })
                 .ToListAsync(ct))
             .Count(q => scope.IncludesQuestion(request.TopicNodeId, q.GradeLevel)
@@ -597,7 +603,10 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
                 && q.Status == QuestionStatus.Active
                 && q.QuestionType != QuestionType.Essay
                 && q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual
-                && !q.IsDeleted)
+                && !q.IsDeleted
+                // A multiple-choice question without its options cannot be answered (no choice to pick).
+                && (q.QuestionType != QuestionType.MultipleChoice
+                    || _dbContext.QuestionOptions.Count(o => o.CenterId == q.CenterId && o.QuestionId == q.QuestionId && !o.IsDeleted) >= 2))
             .ToListAsync(ct))
             .Where(q => questionScope.IncludesQuestion(nodeId, q.GradeLevel))
             .ToList();

@@ -163,6 +163,22 @@ public class V4SessionEvaluationResultDto
     /// <summary>Passed, but some evidence still waits for a teacher.</summary>
     public bool IsProvisional { get; set; }
     public string? NextStep { get; set; }
+    /// <summary>AI's overall view of the answers together with their explanations. Reference only: it never changes the score above.</summary>
+    public AiReasoningReviewDto? AiReasoningReview { get; set; }
+}
+
+public class AiReasoningReviewDto
+{
+    /// <summary>Average AI reasoning quality on a 0-10 scale; a missing or empty explanation counts as 0.</summary>
+    public decimal Score { get; set; }
+    public uint AnalyzedAnswers { get; set; }
+    public uint TotalAnswers { get; set; }
+    public uint ValidExplanations { get; set; }
+    public uint WeakExplanations { get; set; }
+    public uint InvalidExplanations { get; set; }
+    /// <summary>Correct answer whose explanation the AI judged wrong or missing.</summary>
+    public uint CorrectButUnexplained { get; set; }
+    public string Summary { get; set; } = string.Empty;
 }
 
 public class MissionRunDto

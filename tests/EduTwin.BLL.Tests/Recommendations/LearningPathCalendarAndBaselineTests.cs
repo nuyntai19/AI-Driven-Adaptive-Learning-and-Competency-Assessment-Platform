@@ -104,6 +104,8 @@ public sealed class LearningPathCalendarAndBaselineTests
         var forecast = await LearningGoalForecast.ReadAsync(f.Db, f.Center, f.Student, f.English, null,
             DateTime.UtcNow, ["101"], default);
         Assert.Equal(10m, forecast.Score);
+        // Right after placement the estimate is the placement score itself (same points-based formula).
+        Assert.Equal(agenda.PlacementReport.ScoreOutOfTen, forecast.Score);
         Assert.Equal("Low", forecast.Confidence);
         var incomplete = await LearningGoalForecast.ReadAsync(f.Db, f.Center, f.Student, f.English, null,
             DateTime.UtcNow, ["101", "102"], default);

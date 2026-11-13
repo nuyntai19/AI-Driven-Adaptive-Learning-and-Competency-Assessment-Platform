@@ -100,6 +100,31 @@ public sealed class LearningPathHandoffTests
         Assert.True(recheck.IsProbe); Assert.True(recheck.AvailableFrom > DateTime.UtcNow.AddDays(1));
     }
 
+    [Fact]
+    public async Task Dated_route_turns_an_inconclusive_recheck_into_the_single_end_of_stage_check()
+    {
+        using var f = new LearningPathV4Fixture();
+        f.Db.Questions.RemoveRange(f.Db.Questions.Where(q => q.PrimaryTopicNodeId == 101 && q.QuestionId > 10103)); await f.Db.SaveChangesAsync();
+        var placementGoal = await f.Planner.CreateOrUpdateGoalAsync(f.Center, f.Student, new() { SubjectId = f.English, StartWithPlacement = true,
+            TargetSkillIds = ["101", "102", "103"], AvailableMinutesPerDay = 120, Schedule = new() { QuestionReuseDelayDays = 0 } });
+        var baseline = await f.Planner.GeneratePathProposalAsync(f.Center, f.Student, new() { SubjectId = f.English, GoalId = placementGoal.GoalId });
+        await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, baseline.ProposalId);
+        foreach (var mission in baseline.Milestones.SelectMany(m => m.Missions))
+        {
+            var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId));
+            await Submit(f, run, mission.SkillId == "101" ? 3 : mission.SkillId == "102" ? 1 : 3);
+            await f.Evaluator.EvaluateMissionRunAsync(f.Center, f.Student, run.SessionRunId);
+        }
+        var goal = await f.Planner.CreateOrUpdateGoalAsync(f.Center, f.Student, new() { SubjectId = f.English, TargetSkillIds = ["101", "102", "103"],
+            AvailableMinutesPerDay = 120, DeadlineDate = DateTime.UtcNow.AddDays(60), Schedule = new() { QuestionReuseDelayDays = 0 } });
+        var plan = await f.Planner.GeneratePathProposalAsync(f.Center, f.Student, new() { SubjectId = f.English, GoalId = goal.GoalId });
+        // 103 was inconclusive (3/5): its re-check is the end-of-stage check, not a second check next to it.
+        var checks = plan.Milestones.Single(m => m.SkillIds.Contains("103")).Missions.Where(m => m.Purpose == "IndependentCheck").ToList();
+        var stageCheck = Assert.Single(checks);
+        Assert.True(stageCheck.IsMilestoneExam);
+        Assert.Contains("kiểm tra lại", stageCheck.SelectionReason);
+    }
+
     [Theory]
     [InlineData(5, 3)]
     [InlineData(9, 4)]

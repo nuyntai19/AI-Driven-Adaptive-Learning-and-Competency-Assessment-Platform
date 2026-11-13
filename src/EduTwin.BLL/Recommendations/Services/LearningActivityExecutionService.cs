@@ -504,15 +504,28 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         {
             if (issued?.QuestionId == null || request.QuestionId != issued.QuestionId) throw new ArgumentException("Câu hỏi không khớp câu đã phát.");
             if (submitAttempt == null) throw new InvalidOperationException("Chưa cấu hình pipeline nộp bài.");
-            var result = await submitAttempt.ExecuteAsync(new SubmitAttemptRequest
+            var attemptRequest = new SubmitAttemptRequest
             {
                 ClientSubmissionId = request.ClientSubmissionId, SessionRunId = a.SessionRunId, QuestionId = issued.QuestionId.Value.ToString(),
                 ClassId = a.SessionRun.Session.ClassId, FinalAnswer = request.FinalAnswer, ReasoningText = request.ReasoningText,
                 Skipped = request.Skipped,
                 AnswerDisplayLatex = request.AnswerDisplayLatex, DrawingUploadToken = request.DrawingUploadToken,
                 TimeSpentSeconds = (uint)Math.Clamp(request.TimeSpentSeconds, 0, 86400)
-            }, $"mission:{a.SessionRunId}", cancellationToken);
+            };
+            // The activity, its issued item and the run were read before the student lock. A draft save, a hint or a
+            // reopened mission committed in between makes those copies stale and the update would match 0 rows
+            // ("expected to affect 1 row"). Let the pipeline read them again under the lock; one retry covers a write
+            // that does not take the lock (draft/hint). The client submission id keeps the retry idempotent.
+            db.ChangeTracker.Clear();
+            SubmitAttemptResult result;
+            try { result = await submitAttempt.ExecuteAsync(attemptRequest, $"mission:{a.SessionRunId}", cancellationToken); }
+            catch (DbUpdateConcurrencyException)
+            {
+                db.ChangeTracker.Clear();
+                result = await submitAttempt.ExecuteAsync(attemptRequest, $"mission:{a.SessionRunId}", cancellationToken);
+            }
             if (!result.IsSuccess) throw new InvalidOperationException($"Không thể lưu bài làm: {result.ErrorCode}.");
+            a = await LoadAsync(centerId, studentId, activityRunId, cancellationToken);
             await AppendPrerequisiteProbeAsync(a, ulong.Parse(result.Data!.AttemptId), cancellationToken);
             // The canonical submit transaction links IssuedItem + ActivityRun before committing.
             return await SubmissionResponseAsync(a, ulong.Parse(result.Data!.AttemptId), cancellationToken);
@@ -546,6 +559,8 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         if (attempt.IsCorrect != false) return;
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await StudentLockHelper.AcquireStudentLockAsync(db, activity.CenterId, run.StudentId, ct);
+        // The run was read before the lock; refresh it so the update below does not use a stale row version.
+        await db.Entry(run).ReloadAsync(ct);
         if (await db.IssuedItems.AnyAsync(i => i.CenterId == activity.CenterId && i.ActivityRun.SessionRunId == run.SessionRunId &&
             i.QuestionId != null && db.Questions.Any(q => q.CenterId == activity.CenterId && q.QuestionId == i.QuestionId && q.PrimaryTopicNodeId != run.Session.TopicNodeId), ct)) return;
         var map = await LearningPathV4Data.MapAsync(db, activity.CenterId, run.StudentId, run.Session.LearningPath.SubjectId, run.Session.ClassId, Now, ct);

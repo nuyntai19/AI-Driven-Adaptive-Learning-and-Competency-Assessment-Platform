@@ -8,7 +8,7 @@ import { recommendLearningGoal } from "../../utils/learningPathRecommendation";
 import { pathChangeBlockersFromError, type BlockingLearningMission } from "../../utils/learningMission";
 import { ProposalCustomizationForm } from "./ProposalCustomizationForm";
 import { TimeBudgetSlider } from "./TimeBudgetSlider";
-import { MIN_GOAL_STUDY_MINUTES } from "../../utils/studyTime";
+import { MAX_STUDY_MINUTES, MIN_GOAL_STUDY_MINUTES } from "../../utils/studyTime";
 import { formatStudyMinutes } from "../../utils/studyTime";
 import { groupLearningSkills, missingLearningPrerequisites } from "../../utils/learningScope";
 import { SkillScopeSelector } from "./SkillScopeSelector";
@@ -127,6 +127,25 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
     estimateCurrent?.earliestFeasibleDate ? `sớm nhất ${formatIsoDate(estimateCurrent.earliestFeasibleDate)}` : ""].filter(Boolean).join("; ");
   const pickAnotherDeadline = () => { setWarningOpen(false); setTimeout(() => document.getElementById("goal-deadline")?.focus(), 0); };
 
+  // Daily time follows the date: when the student picks a deadline or changes the study days, the minutes per day
+  // needed to finish by that date are filled in (rounded up to the slider's 5-minute steps). Moving the slider
+  // afterwards is the student's own choice and only re-checks the date.
+  const [recalcMinutes, setRecalcMinutes] = useState(false);
+  const [autoMinutesNote, setAutoMinutesNote] = useState("");
+  useEffect(() => {
+    if (!recalcMinutes || !deadlineChosen || !estimateCurrent) return;
+    setRecalcMinutes(false);
+    const perDay = estimateCurrent.minutesPerDayForDeadline;
+    if (!perDay || !estimateCurrent.studyDaysUntilDeadline) { setAutoMinutesNote(""); return; }
+    const next = Math.min(MAX_STUDY_MINUTES, Math.max(MIN_GOAL_STUDY_MINUTES, Math.ceil(perDay / 5) * 5));
+    setMinutes(next);
+    setAutoMinutesNote(perDay > MAX_STUDY_MINUTES
+      ? `Để kịp ${formatIsoDate(deadline)} cần khoảng ${formatStudyMinutes(perDay)}/ngày, vượt mức tối đa ${formatStudyMinutes(MAX_STUDY_MINUTES)}. Hãy dời ngày hoặc thêm ngày học trong tuần.`
+      : `Đã tự tính ${formatStudyMinutes(next)}/ngày để học xong trước ${formatIsoDate(deadline)} (cần khoảng ${estimateCurrent.requiredStudyMinutes ?? 0} phút trong ${estimateCurrent.studyDaysUntilDeadline} ngày học). Em vẫn có thể kéo thanh để đổi.`);
+  }, [recalcMinutes, deadlineChosen, estimateCurrent, deadline]);
+  const changeMinutes = (value: number) => { setMinutes(value); setRecalcMinutes(false); setAutoMinutesNote(""); };
+  const changeStudyDays = (count: number, studyDays: number[]) => { setDays(count); setSchedule(s => ({ ...s, studyDays })); if (deadlineChosen) setRecalcMinutes(true); };
+
   // A route preview is laid out against a real end date, so one is needed first (placement has none).
   const needsDeadline = !placement && !deadline;
   const submitBlockReason = !targets.length ? "Chọn ít nhất một chủ đề hoặc kỹ năng để tiếp tục."
@@ -166,8 +185,6 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
     } });
   if (!isOpen) return null;
   const blockers = pathChangeBlockersFromError(accept.error);
-  const assessedTargets = skills.filter(s => targets.includes(s.skillId) && s.evidenceCount > 0 && s.masteryScore != null);
-  const currentMasteryAverage = assessedTargets.length ? assessedTargets.reduce((sum, s) => sum + (s.masteryScore ?? 0), 0) / assessedTargets.length : null;
   const infeasibleWithTarget = !!proposal && proposal.feasibilityStatus === "InsufficientTime" && proposal.targetScore != null;
   const input = "mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 dark:bg-slate-900";
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
@@ -188,7 +205,11 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
           <label className="flex items-start gap-3 text-sm"><input className="mt-1" type="radio" name="path-start-mode" checked={placement} onChange={() => setPlacement(true)} /><span><strong className="block">Kiểm tra đầu vào · Đề xuất</strong><span className="text-slate-500">Tìm phần đã vững và phần cần học trước khi lập lộ trình.</span></span></label>
           <label className="flex items-start gap-3 text-sm"><input className="mt-1" type="radio" name="path-start-mode" checked={!placement} onChange={() => setPlacement(false)} /><span><strong className="block">Bỏ qua kiểm tra, học ngay</strong><span className="text-slate-500">Lập lộ trình từ dữ liệu hiện có và bổ sung đánh giá trong lúc học.</span></span></label>
         </fieldset>}
-        <SkillScopeSelector skills={skills} selected={targets} onChange={setTargets} placement={placement} />
+        {/* A route built from a placement test only covers the parts that were tested; untested parts are added
+            through "Kiểm tra thêm phần khác" so every part of the route has a measured starting point. */}
+        <SkillScopeSelector skills={skills} selected={targets} onChange={setTargets} placement={placement}
+          allowedIds={fromPlacement && suggestedSkillIds.length ? suggestedSkillIds : undefined}
+          lockedNote="Lộ trình này lập từ kết quả kiểm tra đầu vào nên chỉ gồm các phần em đã kiểm tra (có thể bỏ bớt). Phần chưa kiểm tra không thêm trực tiếp được: sau khi chọn tuyến, bấm “Kiểm tra thêm phần khác” để kiểm tra nhanh, kết quả sẽ được đưa vào lộ trình hiện tại." />
         {missing.length > 0 && <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="note">
           <p>Các phần đã chọn có nền tảng liên quan chưa có kết quả xác nhận trên web: <strong>{missing.map(s => s.skillName).join(", ")}</strong>. Em có thể đã học những phần này ở trường. Hãy chọn cách phù hợp:</p>
           <label className="flex items-start gap-2"><input type="radio" name="prerequisite-choice" checked={acknowledgedScope === scopeKey && prerequisiteChoice === "Skip"} onChange={() => { setAcknowledgedScope(scopeKey); setPrerequisiteChoice("Skip"); }} />Em đã nắm nền tảng này, bỏ qua và chỉ học các phần đã chọn.</label>
@@ -203,13 +224,16 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
         </select></label>
         <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">Điểm muốn đạt (thang 10)<input type="number" placeholder="Ví dụ: 8" min="0" max="10" step="0.1" className={input} value={targetScore} onChange={e => setTargetScore(e.target.value)} /></label>
           <label className="text-sm">Nhịp học<select className={input} value={pace} onChange={e => setPace(e.target.value)}><option value="Gentle">Nhẹ nhàng · bộ ngắn</option><option value="Moderate">Vừa phải</option><option value="Accelerated">Tập trung · bộ dài hơn</option></select></label></div>
-        {targets.length > 0 && (currentMasteryAverage != null
-          ? <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">Điểm ước tính hiện tại (từ bản đồ năng lực, {assessedTargets.length}/{targets.length} phần đã chọn có bằng chứng): <strong>{(currentMasteryAverage / 10).toFixed(1)}/10</strong>. Thời gian học tối thiểu và ngày đích đề xuất được tính ngay ở phần ngày thi bên dưới; mốc quá ngắn sẽ không chọn được tuyến.</p>
-          : <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">Chưa đủ bằng chứng để ước tính điểm hiện tại cho các phần đã chọn — kiểm tra đầu vào sẽ cho con số này, và thời gian tối thiểu sẽ tính theo khối lượng nội dung.</p>)}
-        <TimeBudgetSlider label="Thời gian học mỗi ngày" minValue={MIN_GOAL_STUDY_MINUTES} value={minutes} onChange={setMinutes} summary="Tối thiểu 10 phút/ngày để đủ làm một bộ luyện. Đây là trần thời gian mỗi ngày, dùng để xếp lịch thực tế. Khi không đủ thời gian, hệ thống sẽ chỉ rõ phần cần hoãn hoặc điều chỉnh." />
+        {targets.length > 0 && (fromPlacement && placementReport?.scoreOutOfTen != null
+          ? <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">Điểm hiện tại theo bài kiểm tra đầu vào: <strong>{placementReport.scoreOutOfTen}/10</strong>. Thời gian học tối thiểu và ngày đích đề xuất được tính ngay ở phần ngày thi bên dưới; mốc quá ngắn sẽ không chọn được tuyến.</p>
+          : <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">Điểm hiện tại ước tính (cùng cách tính với bài kiểm tra đầu vào), thời gian học tối thiểu và ngày đích đề xuất được tính ngay ở phần ngày thi bên dưới; mốc quá ngắn sẽ không chọn được tuyến.</p>)}
+        <TimeBudgetSlider label="Thời gian học mỗi ngày" minValue={MIN_GOAL_STUDY_MINUTES} value={minutes} onChange={changeMinutes} summary={deadlineChosen
+          ? "Tự tính theo ngày thi và số ngày học mỗi tuần; đổi ngày hoặc số ngày học thì thời gian được tính lại. Tối thiểu 10 phút/ngày để đủ làm một bộ luyện."
+          : "Tối thiểu 10 phút/ngày để đủ làm một bộ luyện. Chưa chọn ngày thi thì ngày đích được đề xuất theo thời gian này; chọn ngày thi thì thời gian được tự tính lại."} />
+        {autoMinutesNote && <p role="status" className="rounded-lg bg-indigo-50 p-3 text-sm text-indigo-950 dark:bg-indigo-950/40 dark:text-indigo-100">{autoMinutesNote}</p>}
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="text-sm">Ngày mỗi tuần<select className={input} value={days} onChange={e => { setDays(Number(e.target.value)); setSchedule(s => ({...s, studyDays: []})); }}>{[1, 2, 3, 4, 5, 6, 7].map(n => <option key={n}>{n}</option>)}</select></label>
-          <label className="text-sm font-medium">Ngày thi / học tới ngày <span className="text-rose-600" aria-hidden="true">*</span><DateInput id="goal-deadline" required min={today} aria-invalid={needsDeadline || pastDeadline || blockedByDeadline || undefined} aria-describedby="goal-deadline-feedback" className={`${input}${blockedByDeadline || pastDeadline ? " border-rose-400" : needsDeadline ? " border-amber-400" : ""}`} value={deadline} onChange={value => { setDeadline(value); setDeadlineChosen(true); }} /></label></div>
+          <label className="text-sm">Ngày mỗi tuần<select className={input} value={days} onChange={e => changeStudyDays(Number(e.target.value), [])}>{[1, 2, 3, 4, 5, 6, 7].map(n => <option key={n}>{n}</option>)}</select></label>
+          <label className="text-sm font-medium">Ngày thi / học tới ngày <span className="text-rose-600" aria-hidden="true">*</span><DateInput id="goal-deadline" required min={today} aria-invalid={needsDeadline || pastDeadline || blockedByDeadline || undefined} aria-describedby="goal-deadline-feedback" className={`${input}${blockedByDeadline || pastDeadline ? " border-rose-400" : needsDeadline ? " border-amber-400" : ""}`} value={deadline} onChange={value => { setDeadline(value); setDeadlineChosen(true); setRecalcMinutes(true); }} /></label></div>
         <div id="goal-deadline-feedback" aria-live="polite" className="space-y-2">
           {estimating && <p className="text-sm text-slate-500">{deadlineChosen ? "Đang kiểm tra ngày đã chọn…" : "Đang tính ngày đề xuất theo phạm vi và lịch học…"}</p>}
           {estimateError && <p className="text-sm text-amber-700">Chưa tính được ngày đề xuất: {extractProblemDetails(estimateError).message} Em vẫn có thể tự chọn ngày.</p>}
@@ -218,7 +242,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
             : <FeasibilitySummary value={estimateCurrent} />)}
           {estimateCurrent && deadlineChosen && estimateCurrent.suggestedDeadline && estimateCurrent.suggestedDeadline !== deadline && <button type="button" className="text-sm font-semibold text-indigo-700 underline" onClick={applySuggestedDeadline}>Dùng ngày đề xuất {formatIsoDate(estimateCurrent.suggestedDeadline)}</button>}
         </div>
-        <fieldset><legend className="text-sm font-medium">Ngày có thể học</legend><div className="mt-2 flex flex-wrap gap-2">{[1,2,3,4,5,6,0].map((day, i) => { const selectedDays = schedule.studyDays.length ? schedule.studyDays : [1,2,3,4,5,6,0].slice(0,days); return <label key={day} className="rounded-lg border px-3 py-2 text-sm"><input type="checkbox" checked={selectedDays.includes(day)} onChange={() => { const next = selectedDays.includes(day) ? selectedDays.filter(d => d !== day) : [...selectedDays, day]; if (!next.length) return; setDays(next.length); setSchedule(s => ({...s, studyDays: next})); }} /> {i === 6 ? "CN" : `T${i+2}`}</label>; })}</div></fieldset>
+        <fieldset><legend className="text-sm font-medium">Ngày có thể học</legend><div className="mt-2 flex flex-wrap gap-2">{[1,2,3,4,5,6,0].map((day, i) => { const selectedDays = schedule.studyDays.length ? schedule.studyDays : [1,2,3,4,5,6,0].slice(0,days); return <label key={day} className="rounded-lg border px-3 py-2 text-sm"><input type="checkbox" checked={selectedDays.includes(day)} onChange={() => { const next = selectedDays.includes(day) ? selectedDays.filter(d => d !== day) : [...selectedDays, day]; if (!next.length) return; changeStudyDays(next.length, next); }} /> {i === 6 ? "CN" : `T${i+2}`}</label>; })}</div></fieldset>
         <label className="block text-sm">Dự phòng ôn và thi thử<select className={input} value={schedule.reviewReservePercent} onChange={e => setSchedule(s => ({...s, reviewReservePercent: Number(e.target.value)}))}>{[15,20,25,30].map(n => <option key={n} value={n}>{n}% thời gian</option>)}</select></label>
         <label className="block text-sm">Chờ trước khi luyện lại câu đã làm<select className={input} value={schedule.questionReuseDelayDays ?? 2} onChange={e => setSchedule(s => ({...s, questionReuseDelayDays: Number(e.target.value)}))}>{[0,1,2,3,7].map(n => <option key={n} value={n}>{n === 0 ? "Có thể luyện lại ngay" : `${n} ngày`}</option>)}</select><span className="mt-1 block text-xs text-slate-500">Câu đã làm chỉ dùng để luyện/ôn; bài tự kiểm tra vẫn cần câu mới để xác nhận kỹ năng.</span></label>
         <p className="text-xs text-slate-500">Nhịp học và lịch ôn luôn nằm trong trần phút/ngày. Khi thiếu thời gian, hệ thống sẽ nêu phần bị hoãn và thời lượng còn thiếu.</p>

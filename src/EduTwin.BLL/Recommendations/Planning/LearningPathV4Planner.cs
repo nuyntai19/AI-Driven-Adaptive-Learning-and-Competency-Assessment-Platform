@@ -45,8 +45,19 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 plan = await BuildProposalAsync(centerId, studentId, goal, cancellationToken);
             }
         }
+        // Minutes/day that fit the required study into the study days left before the deadline, so the form can
+        // fill the daily time when the student picks a date or changes the study days.
+        uint? studyDays = null, perDay = null;
+        if (goal.DeadlineDate.HasValue)
+        {
+            var from = LearningPathCalendar.LocalDate(Now, zone);
+            var through = LearningPathCalendar.LocalDate(goal.DeadlineDate.Value, zone);
+            studyDays = through < from ? 0u : (uint)LearningPathCalendar.Days(from, through, plan.Schedule, plan.AvailableDaysPerWeek).Count;
+            if (studyDays > 0 && plan.RequiredStudyMinutes > 0) perDay = (uint)Math.Ceiling(plan.RequiredStudyMinutes / (decimal)studyDays.Value);
+        }
         return new LearningGoalEstimateDto
         {
+            StudyDaysUntilDeadline = studyDays, MinutesPerDayForDeadline = perDay,
             DeadlineDate = goal.DeadlineDate.HasValue ? LearningPathCalendar.LocalDate(goal.DeadlineDate.Value, zone) : null,
             DeadlineSuggested = !requested.HasValue && goal.DeadlineDate.HasValue,
             EarliestFeasibleDate = plan.EarliestFeasibleDate.HasValue ? DateOnly.FromDateTime(plan.EarliestFeasibleDate.Value) : null,
@@ -586,9 +597,11 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             .Select(i => new { i.ActivityRun.SessionRunId, Answered = i.AttemptId != null, Correct = i.Attempt != null && i.Attempt.IsCorrect == true })
             .ToListAsync(cancellationToken);
         var subjectQuestions = await LearningPathV4Data.QuestionsAsync(db, centerId, studentId, subjectId, map.Skills.Select(s => ulong.Parse(s.SkillId)).ToList(), classId, cancellationToken);
+        result.CheckableQuestionsBySkill = map.Skills.ToDictionary(s => s.SkillId, s => (uint)subjectQuestions.Count(q => q.PrimaryTopicNodeId.ToString() == s.SkillId));
         var usedIds = await db.Attempts.AsNoTracking().Where(a => a.CenterId == centerId && a.StudentId == studentId &&
             a.Question.SubjectId == subjectId).Select(a => a.QuestionId).Distinct().ToListAsync(cancellationToken);
         var cooling = await LearningPathV4Data.RecentQuestionIdsAsync(db, centerId, studentId, Now, plan.Schedule.QuestionReuseDelayDays, cancellationToken);
+        var coolingRelease = await LearningPathV4Data.CoolingReleaseTimesAsync(db, centerId, studentId, Now, plan.Schedule.QuestionReuseDelayDays, cancellationToken);
         var exposedIds = await db.IssuedItems.AsNoTracking().Where(i => i.CenterId == centerId && i.ActivityRun.SessionRun.StudentId == studentId &&
             i.SolutionExposedAt != null && i.QuestionId != null).Select(i => i.QuestionId!.Value).Distinct().ToListAsync(cancellationToken);
         var options = new List<AgendaItemDto>();
@@ -682,8 +695,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             }
             if (m.Purpose is "Practice" or "Review")
             {
-                var relevantQuestions = subjectQuestions.Where(q => m.AssessedSkillIds.Count > 0 ? m.AssessedSkillIds.Contains(q.PrimaryTopicNodeId.ToString()) : q.PrimaryTopicNodeId.ToString() == m.SkillId).ToList();
-                relevantQuestions = relevantQuestions.Where(q => !cooling.Contains(q.QuestionId)).ToList();
+                var allRelevant = subjectQuestions.Where(q => m.AssessedSkillIds.Count > 0 ? m.AssessedSkillIds.Contains(q.PrimaryTopicNodeId.ToString()) : q.PrimaryTopicNodeId.ToString() == m.SkillId).ToList();
+                var relevantQuestions = allRelevant.Where(q => !cooling.Contains(q.QuestionId)).ToList();
                 var pool = m.DifficultyFloor.HasValue ? relevantQuestions.Count(q => q.Difficulty >= m.DifficultyFloor)
                     : LearningPathInsights.PracticePool(relevantQuestions, usedIds.ToHashSet()).Count;
                 poolSizes[m.MissionId] = pool;
@@ -695,7 +708,20 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 var poolSeconds = LearningPathPacing.AverageSecondsPerQuestion(relevantQuestions.Select(q => q.EstimatedTimeSeconds));
                 item.EstimatedSecondsPerQuestion = (uint)Math.Round(poolSeconds);
                 item.EstimatedDurationMinutes = LearningPathPacing.EstimatedMinutes(item.QuestionCount, poolSeconds);
-                if (pool == 0 && cooling.Count > 0) item.RecommendationReason = $"Câu đã dùng cần chờ {plan.Schedule.QuestionReuseDelayDays} ngày trước khi luyện hoặc ôn lại. Có thể học phần khác trong thời gian chờ; câu đã lộ đáp án không trở thành câu kiểm tra mới.";
+                if (pool == 0 && cooling.Count > 0)
+                {
+                    // Say exactly why the set waits: unused questions are kept for the self-check, used ones are cooling down.
+                    var unused = allRelevant.Count(q => !usedIds.Contains(q.QuestionId));
+                    var reserved = unused >= 5 ? 5 : unused >= 3 ? 3 : 0;
+                    var cooled = allRelevant.Where(q => cooling.Contains(q.QuestionId)).ToList();
+                    var release = cooled.Select(q => coolingRelease.GetValueOrDefault(q.QuestionId)).Where(t => t > Now).DefaultIfEmpty(Now).Min();
+                    var releaseText = LearningPathCalendar.LocalDate(release, plan.Schedule.TimeZoneId).ToString("dd/MM/yyyy");
+                    item.RecommendationReason = (reserved > 0
+                            ? $"Phần này còn {reserved} câu chưa làm, được giữ riêng cho bài tự kiểm tra để kết quả khách quan. "
+                            : "Em đã dùng hết câu của phần này. ")
+                        + $"{cooled.Count} câu đã làm sẽ luyện lại được từ {releaseText} (thời gian chờ {plan.Schedule.QuestionReuseDelayDays} ngày em đã chọn ở mục tiêu học; có thể đổi về 0 ngày). "
+                        + "Trong lúc chờ, em có thể học phần khác.";
+                }
             }
             ApplyRetryRule(item, m, session, latest, active, runs, path, fresh, poolSizes.GetValueOrDefault(m.MissionId));
             if (m.Purpose is "Practice" or "Review" && LearningGoalScope.NeedsExternalAssessment(skill, map, vouched))
@@ -1058,12 +1084,47 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             select new { LearningPathId = g.Key, Count = g.Count() }
         ).ToDictionaryAsync(x => x.LearningPathId, x => (uint)x.Count, ct);
 
+        // Finished runs of the older routes, so a student can reopen them read-only (never resume or edit them).
+        // Joined rather than filtered with a list of Guid ids: MySQL cannot translate Contains over a Guid list.
+        var sessionIds = older.SelectMany(p => p.Sessions).Select(s => s.SessionId).ToHashSet();
+        var runs = (await (
+            from p in db.LearningPaths.AsNoTracking()
+            where p.CenterId == centerId && p.StudentId == studentId && p.SubjectId == subjectId &&
+                  p.PlanSchemaVersion == "4.0" && p.LearningPathId != activePathId
+            join s in db.LearningPathSessions.AsNoTracking() on p.LearningPathId equals s.LearningPathId
+            join r in db.LearningPathSessionRuns.AsNoTracking() on s.SessionId equals r.SessionId
+            where r.CenterId == centerId && r.StudentId == studentId &&
+                  r.Status != SessionRunStatus.Abandoned && r.Status != SessionRunStatus.InProgress
+            select r).ToListAsync(ct))
+            .Where(r => sessionIds.Contains(r.SessionId)).OrderBy(r => r.RunNumber).ToList();
+        var runIds = runs.Select(r => r.SessionRunId).ToList();
+        var items = await db.IssuedItems.AsNoTracking().Where(i => i.CenterId == centerId && runIds.Contains(i.ActivityRun.SessionRunId) &&
+                i.QuestionId != null && i.SolutionExposedAt == null)
+            .Select(i => new { i.ActivityRun.SessionRunId, Answered = i.AttemptId != null, Correct = i.Attempt != null && i.Attempt.IsCorrect == true })
+            .ToListAsync(ct);
+        var topicIds = older.SelectMany(p => p.Sessions).Select(s => s.TopicNodeId).Distinct().ToList();
+        var topicNames = await db.KnowledgeNodes.AsNoTracking().Where(n => n.CenterId == centerId && topicIds.Contains(n.NodeId))
+            .ToDictionaryAsync(n => n.NodeId, n => n.NodeName, ct);
+
         return older.Select(p => new PathHistoryItemDto
         {
             LearningPathId = p.LearningPathId, Version = p.Version, Status = p.Status.ToString(), CreatedAt = p.CreatedAt,
             EndedAt = p.Status == LearningPathStatus.Active ? null : p.UpdatedAt, GoalTitle = GoalTitleOf(p.PlanJson) ?? $"Tuyến phiên bản {p.Version}",
             TotalMissions = (uint)p.Sessions.Count, CompletedMissions = (uint)p.Sessions.Count(s => s.Status == LearningPathSessionStatus.Completed),
-            AnsweredQuestions = counts.GetValueOrDefault(p.LearningPathId, 0u)
+            AnsweredQuestions = counts.GetValueOrDefault(p.LearningPathId, 0u),
+            Missions = p.Sessions.OrderBy(s => s.SessionOrder).Where(s => runs.Any(r => r.SessionId == s.SessionId)).Select(s => new PathHistoryMissionDto
+            {
+                MissionId = s.SessionId, Title = s.Title, Purpose = s.Objective, SkillId = s.TopicNodeId.ToString(),
+                SkillName = topicNames.GetValueOrDefault(s.TopicNodeId) ?? s.Title,
+                Runs = runs.Where(r => r.SessionId == s.SessionId).Select(r => new MissionRunSummaryDto
+                {
+                    SessionRunId = r.SessionRunId, RunNumber = r.RunNumber, Status = r.Status.ToString(), Outcome = r.Outcome.ToString(),
+                    StartedAt = r.StartedAt, CompletedAt = r.CompletedAt,
+                    TotalQuestions = (uint)items.Count(i => i.SessionRunId == r.SessionRunId),
+                    AnsweredQuestions = (uint)items.Count(i => i.SessionRunId == r.SessionRunId && i.Answered),
+                    CorrectAnswers = (uint)items.Count(i => i.SessionRunId == r.SessionRunId && i.Correct)
+                }).ToList()
+            }).ToList()
         }).ToList();
     }
 

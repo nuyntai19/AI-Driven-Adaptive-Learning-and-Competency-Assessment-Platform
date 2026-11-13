@@ -4,15 +4,20 @@ import { extendPathWithCheck } from "../../api/learningPathApi";
 import type { SkillCapabilityStatusDto } from "../../types/learningPath";
 import { extractProblemDetails } from "../../utils/problemDetails";
 
+/** Same floor as the server (LearningAssessmentPolicy.MinimumPlacementQuestions). */
+const MIN_CHECK_QUESTIONS = 3;
+
 /** Tests more parts inside the current route; the route and its progress are kept. */
 export function ExtendCheckModal({ subjectId, classId, subjectName, candidates, onClose, onStarted }: {
   subjectId: string; classId?: string; subjectName: string;
-  candidates: (SkillCapabilityStatusDto & { note?: string })[];
+  candidates: (SkillCapabilityStatusDto & { note?: string; checkableQuestions?: number })[];
   onClose: () => void;
   /** Parts that could not be added are named so the page can say so: the modal closes as the first check opens. */
   onStarted: (missionIds: string[], unavailableNames: string[]) => void;
 }) {
-  const [selected, setSelected] = useState(candidates.map(s => s.skillId));
+  // A check needs at least 3 auto-gradable questions; parts below that are shown but cannot be picked.
+  const canCheck = (s: { checkableQuestions?: number }) => s.checkableQuestions == null || s.checkableQuestions >= MIN_CHECK_QUESTIONS;
+  const [selected, setSelected] = useState(candidates.filter(canCheck).map(s => s.skillId));
   const [unavailable, setUnavailable] = useState<string[]>([]);
   const nameOf = (id: string) => candidates.find(s => s.skillId === id)?.skillName ?? id;
   const start = useMutation({
@@ -33,10 +38,11 @@ export function ExtendCheckModal({ subjectId, classId, subjectName, candidates, 
         {unavailable.length > 0 && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Chưa đủ câu hỏi để kiểm tra {unavailable.map(nameOf).join(", ")} (cần ít nhất 3 câu tự chấm được trong phần này). Hãy báo giáo viên bổ sung câu hỏi.</p>}
         {start.error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{extractProblemDetails(start.error).message}</p>}
         <fieldset className="space-y-2"><legend className="text-sm font-semibold">Chọn phần muốn kiểm tra</legend>
-          {candidates.map(s => <label key={s.skillId} className="flex items-start gap-2 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
-            <input type="checkbox" checked={selected.includes(s.skillId)} onChange={e => { setUnavailable([]);
+          {candidates.map(s => <label key={s.skillId} className={`flex items-start gap-2 rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700 ${canCheck(s) ? "" : "opacity-70"}`}>
+            <input type="checkbox" disabled={!canCheck(s)} checked={selected.includes(s.skillId)} onChange={e => { setUnavailable([]);
               setSelected(e.target.checked ? [...selected, s.skillId] : selected.filter(id => id !== s.skillId)); }} />
-            <span><span className="font-medium">{s.skillName}</span>{s.note && <span className="block text-xs text-slate-500">{s.note}</span>}</span>
+            <span><span className="font-medium">{s.skillName}</span>{s.note && <span className="block text-xs text-slate-500">{s.note}</span>}
+              {!canCheck(s) && <span className="block text-xs text-amber-700 dark:text-amber-300">Chưa kiểm tra được: ngân hàng mới có {s.checkableQuestions} câu tự chấm được, cần ít nhất {MIN_CHECK_QUESTIONS}. Hãy báo giáo viên bổ sung câu hỏi.</span>}</span>
           </label>)}
         </fieldset>
         <p className="text-sm text-slate-500">Khoảng {selected.length * 10} phút. Các phần nối tiếp nhau; có thể lưu và làm tiếp sau.</p>

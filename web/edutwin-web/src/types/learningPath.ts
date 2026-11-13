@@ -328,6 +328,10 @@ export interface LearningGoalEstimateDto {
   minimumStudyDays?: number;
   feasibilityStatus: 'Feasible' | 'TightBudget' | 'InsufficientTime' | string;
   feasibilityMessage?: string | null;
+  /** Study days from today through the deadline. */
+  studyDaysUntilDeadline?: number | null;
+  /** Minutes per study day needed to finish by the deadline. */
+  minutesPerDayForDeadline?: number | null;
 }
 
 export interface ProposedMissionDto {
@@ -518,6 +522,17 @@ export interface PathHistoryItemDto {
   totalMissions: number;
   completedMissions: number;
   answeredQuestions: number;
+  /** Work done on the route, for read-only review. */
+  missions?: PathHistoryMissionDto[];
+}
+
+export interface PathHistoryMissionDto {
+  missionId: string;
+  title: string;
+  purpose: string;
+  skillId: string;
+  skillName: string;
+  runs: MissionRunSummaryDto[];
 }
 
 export interface LearningAgendaDto {
@@ -560,6 +575,8 @@ export interface LearningAgendaDto {
   plannedQuestionCount?: number;
   pacingNote?: string | null;
   pathHistory?: PathHistoryItemDto[];
+  /** Auto-gradable questions per skill; "Kiểm tra thêm" needs at least 3. */
+  checkableQuestionsBySkill?: Record<string, number>;
   planOutdated?: boolean;
   progress?: GoalProgressDto | null;
 }
@@ -714,6 +731,19 @@ export interface V4SessionEvaluationResultDto {
   practiceAccuracy?: number | null;
   isProvisional?: boolean;
   nextStep?: string | null;
+  /** AI's reference view of answers + explanations; never changes the score. */
+  aiReasoningReview?: AiReasoningReviewDto | null;
+}
+
+export interface AiReasoningReviewDto {
+  score: number;
+  analyzedAnswers: number;
+  totalAnswers: number;
+  validExplanations: number;
+  weakExplanations: number;
+  invalidExplanations: number;
+  correctButUnexplained: number;
+  summary: string;
 }
 
 export interface CustomizePathProposalRequest {

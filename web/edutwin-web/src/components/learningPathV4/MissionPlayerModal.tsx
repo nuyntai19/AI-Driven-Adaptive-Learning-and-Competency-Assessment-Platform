@@ -14,8 +14,9 @@ import { GradedAnswerPreview } from "../learning/GradedAnswerPreview";
 import { SideAssistantWorkspace, type AssistantToolTab } from "../math/SideAssistantWorkspace";
 import { QuestionImage } from "../QuestionImage";
 import { RichMathText } from "../math/RichMathText";
-import { RichMathEditor } from "../math/RichMathEditor";
-import type { ActivityRunDto, AgendaItemDto, MissionRunDto, ActivitySubmissionResponseDto, QuestionLearningFeedbackDto, AssistanceResponseDto } from "../../types/learningPath";
+import { useWorkInputMode } from "../../hooks/useWorkInputMode";
+import { WorkTextBox } from "../learning/WorkTextBox";
+import type { ActivityRunDto, AgendaItemDto, AiReasoningReviewDto, MissionRunDto, ActivitySubmissionResponseDto, QuestionLearningFeedbackDto, AssistanceResponseDto } from "../../types/learningPath";
 import { extractProblemDetails } from "../../utils/problemDetails";
 import { ongoingMissionFromError } from "../../utils/learningMission";
 
@@ -162,6 +163,7 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
               {evaluation.data.isProvisional && <p className="mt-2 inline-block rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900">Tạm đạt · chờ giáo viên xác nhận</p>}
               {evaluation.data.practiceAccuracy != null && <p className="mt-3 text-3xl font-bold">{Math.round(evaluation.data.practiceAccuracy * 100)}%</p>}
               {evaluation.data.decisionReasons.map((r, i) => <p className="mt-3 text-sm leading-relaxed" key={i}>{r}</p>)}
+              {evaluation.data.aiReasoningReview && <AiReasoningReview review={evaluation.data.aiReasoningReview} />}
               {evaluation.data.nextStep && <p className="mt-3 rounded-lg bg-white p-3 text-sm font-medium dark:bg-slate-900">Bước tiếp theo: {evaluation.data.nextStep}</p>}
               <p className="mt-4 text-sm">{nextLabel ? "Kết quả phần này được dùng để lập lộ trình. Nhận xét chi tiết có trong trang kết quả sau khi làm xong các phần." : "Quay lại tuyến học để xem bước tiếp theo và lịch ôn. Hoàn thành phần luyện chưa thay thế kết quả tự kiểm tra."}</p>
               <button className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-white" onClick={close}>{nextLabel ?? "Về tuyến học"}</button>
@@ -185,6 +187,18 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
       </div>
     </section>
   </div>;
+}
+
+/** AI's overall reading of the answers with their explanations. Shown beside the score, never instead of it. */
+function AiReasoningReview({ review }: { review: AiReasoningReviewDto }) {
+  return <section aria-label="AI đánh giá phần giải thích" className="mt-4 rounded-lg border border-violet-200 bg-white p-4 text-slate-900 dark:border-violet-800 dark:bg-slate-900 dark:text-slate-100">
+    <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <h4 className="text-sm font-semibold">AI đánh giá tổng quát bài làm kèm giải thích</h4>
+      <p className="text-2xl font-bold tabular-nums text-violet-700 dark:text-violet-300">{review.score}/10</p>
+    </div>
+    <p className="mt-2 text-sm leading-relaxed">{review.summary}</p>
+    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Điểm tham khảo do AI chấm phần lập luận. Không thay đổi điểm theo câu đúng ở trên, không dùng để xác nhận năng lực; giáo viên có thể điều chỉnh.</p>
+  </section>;
 }
 
 function clock(seconds: number): string {
@@ -279,11 +293,7 @@ function Activity({ activity: a, subjectId, onSubmitted, paused, activeTool, onA
   // vào ô bài làm duy nhất (đáp án suy ra từ dòng cuối) nên nháp server
   // không đổi.
   const actorUser = useAuthStore(s => s.user);
-  type InputMode = "keyboard" | "draw" | "photo";
-  const [inputMode, setInputModeState] = useState<InputMode>(() => {
-    try { const v = localStorage.getItem("edutwin-input-mode"); return v === "draw" || v === "photo" ? v : "keyboard"; } catch { return "keyboard"; }
-  });
-  const setInputMode = (mode: InputMode) => { setInputModeState(mode); try { localStorage.setItem("edutwin-input-mode", mode); } catch { /* ignore */ } };
+  const [inputMode, setInputMode] = useWorkInputMode(subjectId);
   const [scanning, setScanning] = useState(false);
   const [scanMsg, setScanMsg] = useState("");
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -325,10 +335,11 @@ function Activity({ activity: a, subjectId, onSubmitted, paused, activeTool, onA
     .sort((x, y) => (x.hintLevel ?? 0) - (y.hintLevel ?? 0)));
   const assist = useMutation({ mutationFn: (step: number) => requestActivityAssistance(a.activityRunId, { stepIndex: step }), onSuccess: r => addHints([r]) });
   useEffect(() => {
-    if (conflict || save.isPending || submit.isPending || currentDraft === lastSaved || (!answer && !reasoning && !errorStep)) return;
+    // A hint request writes the same activity row; saving at the same moment would be reported as a conflict.
+    if (conflict || save.isPending || submit.isPending || assist.isPending || currentDraft === lastSaved || (!answer && !reasoning && !errorStep)) return;
     const timer = setTimeout(() => save.mutate(currentDraft), 1200);
     return () => clearTimeout(timer);
-  }, [currentDraft, lastSaved, answer, reasoning, errorStep, conflict, save.isPending, submit.isPending, save.mutate]);
+  }, [currentDraft, lastSaved, answer, reasoning, errorStep, conflict, save.isPending, submit.isPending, assist.isPending, save.mutate]);
   const independent = a.activityType === "IndependentCheck" || a.activityType === "TransferChallenge";
   // Re-open hints already revealed for this activity (e.g. after pausing or reloading); the server does not count them again.
   const restoredHints = useRef(false);
@@ -406,14 +417,14 @@ function Activity({ activity: a, subjectId, onSubmitted, paused, activeTool, onA
         </button>}
       </div>}
       {scanMsg && <p role="status" className="text-xs font-medium text-indigo-700 dark:text-indigo-300">{scanMsg}</p>}
-      {!q?.options?.length && (q ? <div><span className="text-sm font-medium">Bài làm của em</span><div className="mt-2"><RichMathEditor variant="student" value={workText} onChange={handleWorkChange} minHeight="120px" placeholder={answerWorkPlaceholder(mathInput)} /></div><div className="mt-2"><GradedAnswerPreview answer={answer} questionType={q.questionType} evaluationMode={q.answerEvaluationMode} wholeWork={!mathInput} /></div></div>
+      {!q?.options?.length && (q ? <div><span className="text-sm font-medium">Bài làm của em</span><div className="mt-2"><WorkTextBox math={mathInput} label="Bài làm của em" value={workText} onChange={handleWorkChange} minHeight="120px" placeholder={answerWorkPlaceholder(mathInput)} /></div><div className="mt-2"><GradedAnswerPreview answer={answer} questionType={q.questionType} evaluationMode={q.answerEvaluationMode} wholeWork={!mathInput} /></div></div>
         : <label className="block text-sm font-medium">{a.activityType === "FindError" ? "Sửa lại bước sai" : "Em hiểu hoặc rút ra điều gì?"}<textarea required rows={3} className={field} value={answer} onChange={e => setAnswer(e.target.value)} /></label>)}
-      {q?.options?.length ? <div><span className="text-sm font-medium">Giải thích vì sao em chọn đáp án này{q.reasoningRequired ? " (bắt buộc)" : " (nếu có)"}</span><div className="mt-2"><RichMathEditor variant="student" value={reasoning} onChange={setReasoning} minHeight="96px" placeholder={answerReasoningPlaceholder(mathInput)} /></div></div> : null}
+      {q?.options?.length ? <div><span className="text-sm font-medium">Giải thích vì sao em chọn đáp án này{q.reasoningRequired ? " (bắt buộc)" : " (nếu có)"}</span><div className="mt-2"><WorkTextBox math={mathInput} label="Giải thích vì sao em chọn đáp án này" value={reasoning} onChange={setReasoning} minHeight="96px" placeholder={answerReasoningPlaceholder(mathInput)} /></div></div> : null}
       {notice && <p role="status" className="text-sm text-slate-500">{notice}</p>}
       {(submit.error || assist.error) && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{extractProblemDetails(submit.error ?? assist.error).message}</p>}
-      <div className="flex flex-wrap gap-3"><button disabled={submit.isPending || save.isPending || conflict} type="submit" className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white disabled:opacity-40">{submit.isPending ? "Đang lưu bài…" : q ? "Nộp câu trả lời" : "Hoàn thành hoạt động"}</button>
+      <div className="flex flex-wrap gap-3"><button disabled={submit.isPending || save.isPending || assist.isPending || conflict} type="submit" className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white disabled:opacity-40">{submit.isPending ? "Đang lưu bài…" : q ? "Nộp câu trả lời" : "Hoàn thành hoạt động"}</button>
         <button type="button" disabled={save.isPending || conflict} className="rounded-xl border px-4 py-3" onClick={() => save.mutate(currentDraft)}>Lưu bản nháp</button>
-        {q && <button type="button" disabled={submit.isPending || save.isPending || conflict} className="rounded-xl border px-4 py-3" onClick={() => submit.mutate(true)}>Bỏ qua câu này</button>}
+        {q && <button type="button" disabled={submit.isPending || save.isPending || assist.isPending || conflict} className="rounded-xl border px-4 py-3" onClick={() => submit.mutate(true)}>Bỏ qua câu này</button>}
         {!independent && <button type="button" disabled={assist.isPending || !moreHints} className="rounded-xl border border-amber-300 px-4 py-3 text-amber-900 disabled:opacity-50 dark:text-amber-200"
           onClick={() => assist.mutate(hints.length)}>{assist.isPending ? "Đang mở gợi ý…" : hints.length === 0 ? "Gợi ý" : moreHints ? `Gợi ý tiếp (${hints.length + 1}/${lastHint?.totalHints ?? "?"})` : "Đã mở hết gợi ý"}</button>}
       </div>

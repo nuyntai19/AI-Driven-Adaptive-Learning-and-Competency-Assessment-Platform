@@ -53,6 +53,8 @@ public class LearningAgendaDto
     public string? PacingNote { get; set; }
     /// <summary>Earlier routes for this subject. Answers are never deleted when a route is replaced.</summary>
     public List<PathHistoryItemDto> PathHistory { get; set; } = new();
+    /// <summary>Auto-gradable questions per skill; a part can be checked ("Kiểm tra thêm") with at least 3.</summary>
+    public Dictionary<string, uint> CheckableQuestionsBySkill { get; set; } = new();
     /// <summary>The active route was built before the practice loop; the student can rebuild it without losing answers.</summary>
     public bool PlanOutdated { get; set; }
     public GoalProgressDto? Progress { get; set; }
@@ -106,6 +108,18 @@ public class PathHistoryItemDto
     public uint TotalMissions { get; set; }
     public uint CompletedMissions { get; set; }
     public uint AnsweredQuestions { get; set; }
+    /// <summary>Work done on this route, grouped by skill, for read-only review after the route was replaced.</summary>
+    public List<PathHistoryMissionDto> Missions { get; set; } = new();
+}
+
+public class PathHistoryMissionDto
+{
+    public Guid MissionId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Purpose { get; set; } = string.Empty;
+    public string SkillId { get; set; } = string.Empty;
+    public string SkillName { get; set; } = string.Empty;
+    public List<MissionRunSummaryDto> Runs { get; set; } = new();
 }
 
 public class MissionRunSummaryDto

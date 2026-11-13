@@ -26,7 +26,7 @@ test("long topic labels have bounded lines and full names remain in accessible n
 });
 test("student context exposes class/history view and no curriculum assignment control",()=>{
   const source=fs.readFileSync(new URL("../src/components/student/StudentAcademicContext.tsx",import.meta.url),"utf8");
-  assert.match(source,/Lớp học đang xem/); assert.match(source,/Xem lịch sử/); assert.match(source,/Giáo trình do giáo viên áp dụng/);
+  assert.match(source,/Lớp học đang xem/); assert.match(source,/Lớp đã kết thúc/); assert.match(source,/Giáo trình do giáo viên áp dụng/);
   assert.doesNotMatch(source,/httpClient\.(put|post|patch)|curriculumApi|updateClasses|ApplyCurriculumRequest/);
 });
 test("dashboard, Twin and assignment links preserve the selected academic view without mutation fields",()=>{

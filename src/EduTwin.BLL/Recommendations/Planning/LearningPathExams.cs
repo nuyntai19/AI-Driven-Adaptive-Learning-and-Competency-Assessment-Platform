@@ -86,14 +86,20 @@ public sealed partial class LearningPathV4Planner
                 if (milestone.Missions.Any(m => m.IsMilestoneExam && !m.IsProbe)) continue;
                 var check = milestone.Missions.FirstOrDefault(m => m.Purpose == "IndependentCheck" && !m.IsMilestoneExam && m.SkipReason == null);
                 if (check == null || preserved?.Contains(check.MissionId) == true) continue;
-                if (check.IsProbe)
+                // A probe that opens the milestone (starting-point / direct check) stays and gets a separate end-of-stage
+                // check. A later re-check (inconclusive placement) already sits after study/practice: it becomes the
+                // end-of-stage check itself, so the skill does not get two 5-question checks back to back.
+                var leadingProbe = check.IsProbe && milestone.Missions.IndexOf(check) == 0;
+                var recheck = check.IsProbe && !leadingProbe;
+                if (leadingProbe)
                 {
                     check = JsonSerializer.Deserialize<ProposedMissionDto>(JsonSerializer.Serialize(check, LearningPathV4Data.Json), LearningPathV4Data.Json)!;
                     check.MissionId = Guid.NewGuid().ToString();
                 }
                 check.IsMilestoneExam = true; check.TimeLimitMinutes = 10; check.EstimatedMinutes = 10; check.IsProbe = false;
                 check.Title = $"Kiểm tra cuối chặng: {milestone.Title}";
-                check.SelectionReason = "Mốc sau phần học/luyện của kỹ năng, bấm giờ 10 phút; kết quả chỉ khóa phần phụ thuộc, không khóa kỹ năng độc lập.";
+                check.SelectionReason = "Mốc sau phần học/luyện của kỹ năng, bấm giờ 10 phút; kết quả chỉ khóa phần phụ thuộc, không khóa kỹ năng độc lập."
+                    + (recheck ? " Đầu vào chưa kết luận nên bài này cũng là lần kiểm tra lại." : "");
                 milestone.Missions.Remove(check); milestone.Missions.Add(check);
             }
         if (remaining < 0 || remaining > plan.Schedule.MockExamDays || plan.AvailableMinutesPerDay < 10 ||

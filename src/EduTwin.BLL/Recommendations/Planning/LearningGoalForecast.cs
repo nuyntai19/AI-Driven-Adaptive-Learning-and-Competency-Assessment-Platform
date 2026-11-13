@@ -9,7 +9,7 @@ public sealed record LearningGoalForecastResult(decimal? Score, string Confidenc
 /// <summary>A shared, explicitly preliminary observation-based estimate, not a calibrated examination score or a direct Twin mastery write.</summary>
 public static class LearningGoalForecast
 {
-    public const string Version = "weighted-observations-1";
+    public const string Version = "points-observations-2";
 
     public static async Task<LearningGoalForecastResult> ReadAsync(EduTwinDbContext db, Guid center, Guid student, Guid subject,
         Guid? classId, DateTime now, IReadOnlyCollection<string> targets, CancellationToken ct)
@@ -27,7 +27,10 @@ public static class LearningGoalForecast
         var evidence = await db.EvidenceAssessments.AsNoTracking().Where(e => e.CenterId == center && attemptIds.Contains(e.AttemptId)).ToListAsync(ct);
         var latest = evidence.GroupBy(e => e.AttemptId).ToDictionary(g => g.Key, g => g.OrderByDescending(e => e.EvaluatedAt).ThenByDescending(e => e.EvidenceAssessmentId).First());
         var corrections = await db.ReasoningAnalyses.AsNoTracking().Where(a => a.CenterId == center && attemptIds.Contains(a.AttemptId)).ToDictionaryAsync(a => a.AttemptId, ct);
-        var scored = new List<(decimal Score, decimal Weight, int Count)>();
+        // Same scoring as the placement report: points earned over points possible (question max score, teacher
+        // corrections first), so the estimate right after a placement test equals that test's score instead of a
+        // separate "correct answers / answered" figure.
+        var scored = new List<(decimal Earned, decimal Possible, int Count)>();
         foreach (var node in nodes)
         {
             var sample = attempts.Where(a => a.Question.PrimaryTopicNodeId == node.NodeId && scope.IncludesQuestion(a.Question.PrimaryTopicNodeId, a.Question.GradeLevel) &&
@@ -35,14 +38,21 @@ public static class LearningGoalForecast
                 .GroupBy(a => a.QuestionId).Select(g => g.OrderByDescending(a => a.CreatedAt).ThenByDescending(a => a.AttemptId).First())
                 .OrderByDescending(a => a.CreatedAt).ThenByDescending(a => a.AttemptId).Take(5).ToList();
             if (sample.Count < 3) continue;
-            var correct = sample.Count(a => corrections.GetValueOrDefault(a.AttemptId)?.OverrideIsCorrect ?? a.IsCorrect ?? false);
-            scored.Add((10m * correct / sample.Count, node.ExamImportance > 0 ? node.ExamImportance : 1m, sample.Count));
+            var earned = sample.Sum(a =>
+            {
+                var review = corrections.GetValueOrDefault(a.AttemptId);
+                var correct = review?.OverrideIsCorrect ?? a.IsCorrect ?? false;
+                return Math.Clamp(review?.OverrideAwardedScore ?? a.AwardedScore ?? (correct ? a.Question.MaxScore : 0m), 0m, a.Question.MaxScore);
+            });
+            var possible = sample.Sum(a => a.Question.MaxScore);
+            if (possible <= 0) continue;
+            scored.Add((earned, possible, sample.Count));
         }
         if (nodes.Count == 0 || scored.Count != nodes.Count)
             return new(null, "Insufficient", $"Chưa đủ dữ liệu: {scored.Count}/{nodes.Count} kỹ năng có ít nhất 3 câu độc lập hợp lệ. Không coi phần chưa biết là 0 điểm.");
         var confidence = scored.Any(s => s.Count < 5) ? "Low" : "Standard";
-        var value = Math.Round(scored.Sum(s => s.Score * s.Weight) / scored.Sum(s => s.Weight), 1);
-        return new(value, confidence, $"Ước lượng sơ bộ từ câu độc lập gần đây và trọng số nội dung mặc định ({Version}); chưa phải dự báo đã hiệu chuẩn theo đề thi."
+        var value = Math.Round(10m * scored.Sum(s => s.Earned) / scored.Sum(s => s.Possible), 1);
+        return new(value, confidence, $"Ước lượng sơ bộ: điểm đạt/điểm tối đa trên tối đa 5 câu độc lập gần nhất mỗi kỹ năng, cùng cách tính với bài kiểm tra đầu vào ({Version}); chưa phải dự báo đã hiệu chuẩn theo đề thi."
             + (confidence == "Low" ? " Mẫu ít, độ tin cậy thấp." : ""));
     }
 }

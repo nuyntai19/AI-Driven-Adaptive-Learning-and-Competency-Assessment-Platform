@@ -153,6 +153,7 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
             }
         }
         result.DecisionReasons.Add(reason);
+        if (result.Outcome != "PendingGrading") result.AiReasoningReview = ReasoningReview(attempts.Where(a => !a.Skipped).ToList(), analyses);
         var terminal = result.Outcome is "Passed" or "NeedsSupport" or "Inconclusive" or "TimedOut" or "ActivityOnlyCompleted";
         var targetStatus = terminal ? SessionRunStatus.Completed : result.Outcome == "PendingGrading" ? SessionRunStatus.Grading :
             result.Outcome == "PendingTeacherReview" ? SessionRunStatus.NeedsReview : SessionRunStatus.InProgress;
@@ -186,6 +187,27 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
         await tx.CommitAsync(cancellationToken);
         // Next missions come from the real accepted route/agenda. No fabricated math mission and no direct Twin writes.
         return result;
+    }
+
+    /// <summary>
+    /// The AI analyses of a run, summed up as a reference "explanation" score. Only real AI analyses count (rule-based
+    /// fallbacks are not a judgment of the explanation); teacher corrections win. The run outcome above never uses it.
+    /// </summary>
+    internal static AiReasoningReviewDto? ReasoningReview(List<Attempt> answered, List<ReasoningAnalysis> analyses)
+    {
+        var reviewed = answered.Select(a => (Attempt: a, Analysis: analyses.FirstOrDefault(r => r.AttemptId == a.AttemptId)))
+            .Where(x => x.Analysis is { IsFallback: false }).ToList();
+        if (reviewed.Count == 0) return null;
+        decimal Quality(ReasoningAnalysis r) => Math.Clamp(r.OverrideReasoningQuality ?? r.ReasoningQuality ?? 0m, 0m, 100m);
+        var valid = reviewed.Count(x => Quality(x.Analysis!) >= 70m);
+        var invalid = reviewed.Count(x => Quality(x.Analysis!) < 40m);
+        var correctButUnexplained = reviewed.Count(x => (x.Analysis!.OverrideIsCorrect ?? x.Attempt.IsCorrect) == true && Quality(x.Analysis!) < 40m);
+        var score = Math.Round(reviewed.Average(x => Quality(x.Analysis!)) / 10m, 1);
+        var summary = $"AI đã xem {reviewed.Count}/{answered.Count} câu kèm phần giải thích: {valid} câu giải thích tốt, {reviewed.Count - valid - invalid} câu giải thích chưa đủ, {invalid} câu giải thích sai hoặc bỏ trống.";
+        if (correctButUnexplained > 0) summary += $" Có {correctButUnexplained} câu chọn đúng nhưng chưa giải thích được vì sao — nên xem lại lời giải của các câu này.";
+        return new AiReasoningReviewDto { Score = score, AnalyzedAnswers = (uint)reviewed.Count, TotalAnswers = (uint)answered.Count,
+            ValidExplanations = (uint)valid, WeakExplanations = (uint)(reviewed.Count - valid - invalid), InvalidExplanations = (uint)invalid,
+            CorrectButUnexplained = (uint)correctButUnexplained, Summary = summary };
     }
 
     public async Task<V4SessionEvaluationResultDto> EvaluateLateReviewAsync(Guid centerId, ulong attemptId, decimal overrideScore,
