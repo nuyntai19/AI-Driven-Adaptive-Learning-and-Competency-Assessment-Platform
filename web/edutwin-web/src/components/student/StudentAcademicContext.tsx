@@ -33,7 +33,7 @@ export const StudentAcademicContext = () => {
   const hasPastClasses = (query.data?.classes ?? []).some(c => c.isHistorical);
   const showModeSwitch = history || hasPastClasses;
   const onlyClass = !history && classes.length === 1 ? classes[0] : null;
-  return <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-2 text-[13px] flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[var(--student-ink-secondary)]" data-testid="student-academic-context">
+  return <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-2 text-[13px] flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[var(--student-ink-secondary)]" data-testid="student-academic-context">
     <div className="flex flex-wrap items-center gap-3">
       {showModeSwitch && <div className="inline-flex rounded-full bg-[var(--student-surface-subtle)] p-1 gap-1" role="group" aria-label="Chọn lớp đang học hoặc lớp đã kết thúc">
         <button type="button" aria-pressed={!history} title="Lớp em đang theo học: làm bài, học lộ trình như bình thường" onClick={() => changeMode(false)} className={`rounded-full px-3 py-1 font-semibold transition-colors ${!history ? "st-nav-active" : "text-[var(--student-ink-secondary)] hover:text-[var(--student-ink)]"}`}>Lớp đang học</button>

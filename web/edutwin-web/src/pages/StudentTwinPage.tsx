@@ -206,7 +206,7 @@ export const StudentTwinPage: React.FC = () => {
   ];
 
   return (
-    <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4 min-w-0 student-shell">
+    <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4 min-w-0 student-shell">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-3 st-rise">
         <div className="min-w-0">
           <p className="st-eyebrow">Bản sao số năng lực · Digital Twin</p>

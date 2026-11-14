@@ -16,7 +16,7 @@ test("Phase 11: StudentLayout header and main container responsive constraints",
   // Main must have min-w-0 to prevent flex blowout
   assert.match(layoutSource, /<main className="flex-1 w-full min-w-0 pb-12">/);
   // Larger student workspace still has a bounded responsive container.
-  assert.match(layoutSource, /max-w-\[1800px\] mx-auto px-4 sm:px-6 lg:px-8/);
+  assert.match(layoutSource, /max-w-\[1440px\] mx-auto px-4 sm:px-6 lg:px-8/);
   // Header row must have min-w-0; only this slim row stays sticky.
   assert.match(layoutSource, /flex items-center justify-between h-16 gap-3 sm:gap-4 min-w-0/);
   // Left side must have min-w-0 and not rigid shrink-0
@@ -29,7 +29,7 @@ const radarChartSource = readFileSync(new URL("../src/components/student/Student
 const dashboardAndRadarSource = dashboardSource + "\n" + radarChartSource;
 
 test("Phase 11: StudentDashboardPage layout, stat cards, radar and progress responsiveness", () => {
-  assert.match(dashboardSource, /w-full max-w-\[1800px\] mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4 min-w-0/);
+  assert.match(dashboardSource, /w-full max-w-\[1440px\] mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4 min-w-0/);
   // Radar + Progress section must stack properly on tablet/mobile and 2 cols on xl
   assert.match(dashboardSource, /grid-cols-1 xl:grid-cols-\[minmax\(0,3fr\)_minmax\(0,2fr\)\] gap-4/);
   // Chart wrappers must have min-w-0

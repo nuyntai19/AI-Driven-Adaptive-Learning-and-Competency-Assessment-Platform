@@ -117,7 +117,7 @@ export const StudentDashboardPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0">
+      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0">
         <div className="h-24 w-2/3 animate-pulse rounded-2xl bg-[var(--student-surface-subtle)]" />
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           <div className="lg:col-span-8 h-80 animate-pulse rounded-[20px] bg-[var(--student-surface)] border border-[var(--student-border)]" />
@@ -129,7 +129,7 @@ export const StudentDashboardPage: React.FC = () => {
 
   if (isError || !data) {
     return (
-      <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-12 min-w-0">
+      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-12 min-w-0">
         <div className="max-w-xl mx-auto st-card p-8 text-center">
           <h2 className="text-base font-bold text-red-700 dark:text-red-400">
             Không thể tải dữ liệu học tập
@@ -151,7 +151,7 @@ export const StudentDashboardPage: React.FC = () => {
 
   const { student, subject, goal, masteryRadar = [] } = data;
   if (data.academicContext?.message && data.academicContext.curriculums.length === 0) return (
-    <div className="student-shell w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="student-shell w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-2xl font-bold">Hành trình học tập của {student.fullName}</h1>
       <div className="mt-6 rounded-2xl border border-[var(--student-border)] bg-[var(--student-surface)] p-6">
         <h2 className="text-lg font-semibold">{isHistory ? "Phạm vi lịch sử" : "Giáo trình đang học"}</h2>
@@ -227,7 +227,7 @@ export const StudentDashboardPage: React.FC = () => {
   const todayLabel = new Date().toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit" });
 
   return (
-    <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4 min-w-0 student-shell">
+    <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4 min-w-0 student-shell">
       <section aria-label="Hành trình học tập" className="space-y-5">
         {/* Greeting + headline numbers */}
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between st-rise">
@@ -314,10 +314,17 @@ export const StudentDashboardPage: React.FC = () => {
 
             {goal.hasGoal ? (
               <div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-5xl font-extrabold tabular-nums tracking-tight [font-family:var(--student-font-display)]">{goal.hasPrediction === false ? "—" : goal.currentPredictedScore.toFixed(1)}</span>
-                  <span className="text-sm font-semibold text-white/85">dự đoán · mục tiêu {goal.targetScore}</span>
-                </div>
+                {goal.hasPrediction === false ? (
+                  <div>
+                    <p className="text-2xl font-extrabold [font-family:var(--student-font-display)]">Chưa có dự đoán</p>
+                    <p className="mt-1 text-sm text-white/85">Mục tiêu {goal.targetScore}/10 · làm thêm bài để có ước lượng</p>
+                  </div>
+                ) : (
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-5xl font-extrabold tabular-nums tracking-tight [font-family:var(--student-font-display)]">{goal.currentPredictedScore.toFixed(1)}</span>
+                    <span className="text-sm font-semibold text-white/85">dự đoán · mục tiêu {goal.targetScore}</span>
+                  </div>
+                )}
                 <div className="mt-3 h-2 rounded-full bg-white/20" role="img" aria-label={`Dự đoán ${goal.currentPredictedScore} trên 10, mục tiêu ${goal.targetScore}`}>
                   <div className="relative h-full rounded-full bg-white st-bar-fill" style={{ width: `${Math.min(100, Math.max(0, (goal.hasPrediction === false ? 0 : goal.currentPredictedScore) * 10))}%` }} />
                 </div>

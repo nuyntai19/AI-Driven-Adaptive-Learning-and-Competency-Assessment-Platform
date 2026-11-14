@@ -42,6 +42,16 @@ function Reason({ text, className = "" }: { text: string; className?: string }) 
   return <div className={className}><p>{lead}</p>{rest && <details className="mt-1"><summary className="cursor-pointer text-indigo-600">Vì sao?</summary><p className="mt-1">{rest}</p></details>}</div>;
 }
 type PathView = "today" | "stages" | "map" | "history";
+const isRepairMission = (m: AgendaItemDto) => m.title.startsWith("Rèn lại");
+const purposeIcon: Record<string, string> = {
+  Study: "M4 4.5A1.5 1.5 0 0 1 5.5 3H20v15H5.5A1.5 1.5 0 0 0 4 19.5ZM4 19.5A1.5 1.5 0 0 0 5.5 21H20",
+  Practice: "M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12",
+  IndependentCheck: "M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6ZM9 12l2 2 4-4",
+  Review: "M20 11a8 8 0 0 0-14.9-3.9L3 9M3 4v5h5M4 13a8 8 0 0 0 14.9 3.9L21 15M21 20v-5h-5",
+};
+function PathIcon({ d }: { d: string }) {
+  return <svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
+}
 const stateLabels: Record<string, string> = { Unknown: "Chưa đủ bằng chứng", Developing: "Cần củng cố",
   Demonstrated: "Đã có bằng chứng ban đầu", Confirmed: "Đã xác nhận", ReviewDue: "Cần ôn lại" };
 export function StudentLearningPathPage() {
@@ -111,6 +121,7 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
   // The page is split into views so a student never scrolls past the whole route to reach one part.
   const [view, setView] = useState<PathView>("today");
   const [stageKey, setStageKey] = useState<string | undefined>();
+  const [missionKey, setMissionKey] = useState<string | undefined>();
   const map = useQuery({ queryKey: ["learning-paths", "capability-map", actor?.centerId, actor?.userId, subjectId, access.classId],
     queryFn: () => getCapabilityMap(subjectId, access.classId), enabled: !!subjectId && access.writable });
   const agenda = useQuery({ queryKey: ["learning-agenda", actor?.centerId, actor?.userId, subjectId, access.classId, minutes],
@@ -189,7 +200,7 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
   ];
   if (access.pending) return <p role="status" className="p-6">Đang kiểm tra môn học và giáo trình…</p>;
   if (access.readOnly) return <StudentLearningReadOnlyNotice reason={access.reason} />;
-  return <div className="mx-auto w-full max-w-[1800px] space-y-5 px-4 py-6 sm:px-6 lg:px-8 text-[var(--student-ink)]">
+  return <div className="mx-auto w-full max-w-[1440px] space-y-5 px-4 py-6 sm:px-6 lg:px-8 text-[var(--student-ink)]">
     {acceptedNotice && <div role="status" className="flex items-start justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"><p>{acceptedNotice}</p><button aria-label="Đóng thông báo đã chọn tuyến" onClick={() => setAcceptedNotice("")}>×</button></div>}
     <header className="flex flex-wrap items-end justify-between gap-4 st-rise">
       <div><p className="st-eyebrow">Mục tiêu của bạn · Tiến bộ từ bằng chứng thật</p>
@@ -203,12 +214,14 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
       <div className="flex flex-wrap gap-3">{agenda.data?.learningPathId && !agenda.data.isPlacement && <button className={action} onClick={() => openSetup("Update", agenda.data?.targetSkillIds)} disabled={!map.data?.skills.length}>Điều chỉnh mục tiêu</button>}
         {extendCandidates.length > 0 && <button className={secondary} onClick={() => setShowExtend(true)}>Kiểm tra thêm phần khác</button>}</div>
     </header>
-    <nav className="sticky top-[4.5rem] z-30 flex w-fit max-w-full gap-1 overflow-x-auto rounded-full border border-[var(--student-border)] bg-[color-mix(in_srgb,var(--student-surface)_90%,transparent)] p-1 backdrop-blur-xl st-rise" aria-label="Các phần của lộ trình" role="tablist">
+    <div className="sticky top-16 z-30 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 py-2 bg-[color-mix(in_srgb,var(--student-canvas)_94%,transparent)] backdrop-blur-xl">
+    <nav className="flex w-fit max-w-full gap-1 overflow-x-auto rounded-full border border-[var(--student-border)] bg-[var(--student-surface)] p-1 shadow-[var(--student-shadow)]" aria-label="Các phần của lộ trình" role="tablist">
       {views.map(([key, label, count]) => <button key={key} type="button" role="tab" aria-selected={view === key} onClick={() => setView(key)}
         className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold whitespace-nowrap transition-colors ${view === key ? "st-nav-active" : "text-[var(--student-ink-secondary)] hover:bg-[var(--student-surface-subtle)] hover:text-[var(--student-ink)]"}`}>
         {label}{count != null && <span className={`rounded-full px-1.5 text-[11px] font-bold leading-5 ${view === key ? "bg-white/25" : "bg-[var(--student-surface-subtle)]"}`}>{count}</span>}
       </button>)}
     </nav>
+    </div>
     <div className="space-y-5" hidden={view !== "today"}>
     {agenda.data?.scheduleSummary && !agenda.data.isPlacement && <section className={`${panel} ${agenda.data.scheduleSummary.missingMinutes > 0 ? "border-amber-300" : "border-indigo-200"}`} aria-label="Lịch học và ngân sách">
       <div className="flex flex-wrap justify-between gap-3"><h2 className="text-xl font-bold">Lịch học theo mục tiêu</h2><span className="text-sm text-indigo-700 dark:text-indigo-300">{agenda.data.scheduleSummary.phase === "MockExam" ? "Giai đoạn thi thử và vá lỗ hổng" : agenda.data.scheduleSummary.phase === "ShortChecks" ? "Giai đoạn tăng kiểm tra ngắn" : "Học, luyện và ôn cân bằng"}</span></div>
@@ -328,7 +341,8 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
       {agenda.data.reviewDueTasks.map(r => <div key={r.missionId} className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-indigo-50 p-4 dark:bg-indigo-950/40"><p className="text-sm">{r.title} · {r.availableFrom ? new Date(r.availableFrom).toLocaleDateString("vi-VN") : "Đến lượt ôn"}</p><button disabled={!r.canStart} className={action} onClick={() => setMission(r)}>{r.canStart ? "Ôn ngay" : "Đã hẹn lịch"}</button></div>)}
     </section>}
     </div>
-    <section className="space-y-4" hidden={view !== "stages"}><div><h2 className="text-xl font-bold">{agenda.data?.isPlacement ? "Các phần kiểm tra đầu vào" : "Các chặng trong tuyến của bạn"}</h2><p className="mt-1 text-sm text-[var(--student-muted)]">{agenda.data?.isPlacement ? "Kiểm tra theo từng kỹ năng. Hoàn thành phần đang làm rồi chuyển sang phần tiếp theo; có thể lưu và quay lại sau." : "Mỗi chặng gắn với một kỹ năng. Phần đã có bằng chứng sẽ được giảm luyện lặp; nội dung còn thiếu được nêu rõ."}</p></div>
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start" hidden={view !== "stages"}>
+    <section className="min-w-0 space-y-4"><div><h2 className="text-xl font-bold">{agenda.data?.isPlacement ? "Các phần kiểm tra đầu vào" : "Các chặng trong tuyến của bạn"}</h2><p className="mt-1 text-sm text-[var(--student-muted)]">{agenda.data?.isPlacement ? "Kiểm tra theo từng kỹ năng. Hoàn thành phần đang làm rồi chuyển sang phần tiếp theo; có thể lưu và quay lại sau." : "Mỗi chặng gắn với một kỹ năng. Phần đã có bằng chứng sẽ được giảm luyện lặp; nội dung còn thiếu được nêu rõ."}</p></div>
       {missions.length === 0 && <p className={panel}>{agenda.data?.isPlacement ? "Các phần đã chọn đã có bằng chứng hợp lệ. Xem đánh giá đầu vào để chọn tuyến học tiếp theo." : "Chọn phần muốn học và tìm điểm xuất phát ở trên để bắt đầu. Các bài làm và tuyến trước được giữ trong lịch sử."}</p>}
       {timeline.length > 0 && <ol className="flex items-stretch gap-1.5 overflow-x-auto pb-2" aria-label="Chọn chặng">{timeline.map((entry, index) => {
         const on = entry.key === activeStage;
@@ -338,7 +352,7 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
         const sub = entry.kind === "exam" ? new Date(entry.exam.examAt).toLocaleDateString("vi-VN") : `${entry.missions.filter(m => m.status === "Completed").length}/${entry.missions.length} nhiệm vụ`;
         return <li key={entry.key} className="flex shrink-0 items-center gap-1.5">
           {index > 0 && <span aria-hidden="true" className="text-[var(--student-muted)]">›</span>}
-          <button type="button" aria-pressed={on} onClick={() => setStageKey(entry.key)}
+          <button type="button" aria-pressed={on} onClick={() => { setStageKey(entry.key); setMissionKey(undefined); }}
             className={`flex w-52 items-center gap-3 rounded-2xl border p-3 text-left transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 ${on ? "border-[var(--student-brand)] bg-[var(--student-surface)] shadow-[0_0_0_3px_var(--student-brand-soft)]" : "border-[var(--student-border)] bg-[var(--student-surface)] hover:border-[var(--student-brand-border)]"}`}>
             <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${entry.kind === "exam" ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" : done ? "bg-emerald-600 text-white" : live ? "text-white bg-[linear-gradient(135deg,var(--student-brand),var(--student-brand-2))] shadow-[var(--student-glow)]" : "bg-[var(--student-surface-subtle)] text-[var(--student-muted)]"}`}>
               {entry.kind === "exam" ? "⚑" : done ? "✓" : index + 1}
@@ -360,34 +374,104 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
           </article>;
         }
         const group = entry.missions; const id = group[0].skillId; const skill = map.data?.skills.find(s => s.skillId === id);
+        // Repair sets ("Rèn lại") are drawn as a side branch that returns to the stage check.
+        const repair = group.filter(isRepairMission);
+        const trunk = group.filter(m => !isRepairMission(m));
+        const current = group.find(m => !!m.activeRunId) ?? group.find(m => m.canStart && m.status !== "Completed" && m.status !== "Skipped" && !m.deferred);
+        const m = group.find(x => x.missionId === missionKey) ?? current ?? group[0];
+        const node = (x: AgendaItemDto, i: number, mini = false) => {
+          const done = x.status === "Completed";
+          const isCurrent = x === current;
+          const locked = !done && !isCurrent && (x.deferred || (!x.canStart && !x.activeRunId && !x.latestRunId));
+          const sel = x.missionId === m.missionId;
+          const size = mini ? "h-11 w-11" : "h-14 w-14";
+          const look = done ? (mini ? "bg-emerald-50 text-emerald-700 border-2 border-emerald-500 dark:bg-emerald-950/50 dark:text-emerald-300" : "bg-emerald-600 text-white")
+            : isCurrent ? (mini ? "st-node-active bg-amber-400 text-stone-900" : "st-node-active text-white bg-[linear-gradient(135deg,var(--student-brand),var(--student-brand-2))] shadow-[var(--student-glow)]")
+            : locked ? "bg-[var(--student-surface-subtle)] text-[var(--student-muted)]"
+            : mini ? "bg-[var(--student-surface)] text-amber-700 border-2 border-amber-400" : "bg-[var(--student-surface)] text-[var(--student-brand)] border-2 border-[var(--student-brand)]";
+          return <button key={x.missionId} type="button" onClick={() => setMissionKey(x.missionId)} aria-pressed={sel}
+            aria-label={`${x.title}, ${done ? "đã xong" : isCurrent ? "đang làm" : locked ? "chưa mở" : "có thể làm"}`}
+            className="group flex w-28 sm:w-32 shrink-0 flex-col items-center text-center st-pop" style={{ ["--d" as string]: i }}>
+            <span className={`relative flex ${size} items-center justify-center rounded-full transition-transform duration-200 group-hover:scale-105 ${look} ${sel ? "outline outline-2 outline-offset-4 outline-[var(--student-ink)]" : ""}`}>
+              {done ? <PathIcon d="m5 12 5 5 9-10" /> : locked ? <PathIcon d="M7 11V7a5 5 0 0 1 10 0v4M5 11h14v10H5Z" /> : <PathIcon d={purposeIcon[x.purpose] ?? purposeIcon.Practice} />}
+            </span>
+            <span className="mt-2 text-[11px] font-bold uppercase tracking-wider text-[var(--student-muted)]">{x.isSelfAssessedCheck ? "Ôn xác nhận" : activityLabels[x.purpose] ?? x.purpose}</span>
+            <span className={`text-sm leading-snug line-clamp-2 ${sel ? "font-bold text-[var(--student-ink)]" : "font-semibold text-[var(--student-ink-secondary)]"}`}>{x.setNumber ? `Bộ ${x.setNumber}` : x.title.split(":")[0]}</span>
+          </button>;
+        };
         return <article className={`${panel} st-rise`} hidden={entry.key !== activeStage} key={entry.key}><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-white bg-[linear-gradient(135deg,var(--student-brand),var(--student-brand-2))]">{index + 1}</span>
-          <div><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-semibold">{group[0].milestoneTitle || group[0].skillName}</h3>
-            {group.every(m => m.isSelfAssessedCheck) && <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">Tự đánh giá đã vững · ôn xác nhận</span>}
-            {group[0].weaknessLevel && weaknessLabels[group[0].weaknessLevel] && <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${weaknessLabels[group[0].weaknessLevel][1]}`}>{weaknessLabels[group[0].weaknessLevel][0]}</span>}</div><p className="mt-1 text-sm text-slate-500">{skill?.description || "Học và tự thực hiện các nhiệm vụ thuộc kỹ năng này."}</p>
+          <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-bold">{group[0].milestoneTitle || group[0].skillName}</h3>
+            {group.every(x => x.isSelfAssessedCheck) && <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">Tự đánh giá đã vững · ôn xác nhận</span>}
+            {group[0].weaknessLevel && weaknessLabels[group[0].weaknessLevel] && <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${weaknessLabels[group[0].weaknessLevel][1]}`}>{weaknessLabels[group[0].weaknessLevel][0]}</span>}</div>
+            <details className="mt-1 text-sm text-[var(--student-muted)]"><summary className="cursor-pointer list-none line-clamp-2 [&::-webkit-details-marker]:hidden">{skill?.description || "Học và tự thực hiện các nhiệm vụ thuộc kỹ năng này."}</summary><p className="mt-1">{skill?.description}</p></details>
             <p className="mt-2 text-xs font-semibold text-indigo-600">{stateLabels[skill?.state ?? "Unknown"]} · {skill?.evidenceCount ?? 0} câu có bằng chứng hợp lệ</p></div></div>
-          <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3">{group.map(m => <div key={m.missionId} className="flex min-w-0 flex-col rounded-2xl border border-[var(--student-border)] p-4 transition-colors hover:border-[var(--student-brand-border)]">
-            <p className="text-xs font-semibold text-indigo-600">{m.isSelfAssessedCheck ? "Ôn xác nhận" : activityLabels[m.purpose] ?? m.purpose}{m.plannedDate ? ` · Dự kiến ${m.plannedDate.split("-").reverse().join("/")}` : ""}</p><h4 className="mt-2 font-medium">{m.title}</h4>
-            {m.skipReason === "MissedStudyDate" && <p className="mt-2 text-xs text-amber-700">Đã bỏ lượt dự kiến; phần chưa học được xếp lại trong lộ trình.</p>}
-            {!!m.remainingUnscheduledMinutes && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Có phần có thể học ngay; còn khoảng {m.remainingUnscheduledMinutes} phút chưa xếp được trước ngày đích.</p>}
-            <Reason className="mt-2 flex-1 text-xs leading-relaxed text-slate-500" text={m.recommendationReason} />
-            {m.questionCount > 0 && <p className="mt-2 text-xs font-medium">{m.setNumber ? `Bộ ${m.setNumber}${m.estimatedSets ? ` (dự kiến ${m.estimatedSets} bộ)` : ""} · ` : ""}{m.questionCount} câu · khoảng {m.questionCount * 2 > 0 && (m.purpose === "Practice" || m.purpose === "Review") ? m.questionCount * 2 : m.estimatedDurationMinutes} phút</p>}
-            {m.advice && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{m.advice}</p>}
-            {m.availableFrom && <p className="mt-2 text-xs text-indigo-600">Hẹn ôn {new Date(m.availableFrom).toLocaleDateString("vi-VN")}</p>}
-            <div className="mt-4 flex flex-wrap gap-2">
+
+          <div className="mt-6 -mx-2 overflow-x-auto px-2 pb-2">
+            <ol className="mx-auto flex w-fit min-w-max items-start" aria-label="Các nhiệm vụ của chặng">{trunk.map((x, i) => <li key={x.missionId} className="flex items-start">
+              {i > 0 && <span aria-hidden="true" className={`mt-[27px] h-[3px] w-8 sm:w-20 lg:w-28 rounded-full ${trunk[i - 1].status === "Completed" ? "bg-emerald-500" : "bg-[repeating-linear-gradient(90deg,var(--atlas-route-dim)_0_6px,transparent_6px_12px)]"}`} />}
+              {node(x, i)}
+            </li>)}</ol>
+            {repair.length > 0 && <div className="mt-4 ml-10 inline-flex min-w-max flex-col gap-2 rounded-[22px] border border-dashed border-amber-400 bg-amber-50/70 px-4 py-3 dark:bg-amber-950/25">
+              <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-100 px-3 py-0.5 text-xs font-bold text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">Nhánh rèn lại · {repair.length} bộ · ưu tiên câu từng sai</span>
+              <ol className="flex items-start">{repair.map((x, i) => <li key={x.missionId} className="flex items-start">
+                {i > 0 && <span aria-hidden="true" className="mt-[21px] h-[3px] w-6 sm:w-10 rounded-full bg-[repeating-linear-gradient(90deg,#f59e0b_0_6px,transparent_6px_12px)]" />}
+                {node(x, trunk.length + i, true)}
+              </li>)}</ol>
+              <span className="text-xs font-semibold text-amber-800 dark:text-amber-200">↩ Xong nhánh rèn lại thì quay lại bài tự kiểm tra của chặng</span>
+            </div>}
+          </div>
+
+          <div key={m.missionId} className="mt-5 grid gap-5 rounded-2xl border border-[var(--student-border)] bg-[var(--student-surface-subtle)] p-4 sm:p-5 md:grid-cols-[minmax(0,1fr)_auto] st-rise">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-indigo-600">{m.isSelfAssessedCheck ? "Ôn xác nhận" : activityLabels[m.purpose] ?? m.purpose}{m.plannedDate ? ` · Dự kiến ${m.plannedDate.split("-").reverse().join("/")}` : ""}</p><h4 className="mt-1 text-lg font-bold">{m.title}</h4>
+              {m.skipReason === "MissedStudyDate" && <p className="mt-2 text-xs text-amber-700">Đã bỏ lượt dự kiến; phần chưa học được xếp lại trong lộ trình.</p>}
+              {!!m.remainingUnscheduledMinutes && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Có phần có thể học ngay; còn khoảng {m.remainingUnscheduledMinutes} phút chưa xếp được trước ngày đích.</p>}
+              <Reason className="mt-2 text-sm leading-relaxed text-[var(--student-ink-secondary)]" text={m.recommendationReason} />
+              {m.questionCount > 0 && <p className="mt-2 text-xs font-medium">{m.setNumber ? `Bộ ${m.setNumber}${m.estimatedSets ? ` (dự kiến ${m.estimatedSets} bộ)` : ""} · ` : ""}{m.questionCount} câu · khoảng {m.questionCount * 2 > 0 && (m.purpose === "Practice" || m.purpose === "Review") ? m.questionCount * 2 : m.estimatedDurationMinutes} phút</p>}
+              {m.advice && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{m.advice}</p>}
+              {m.availableFrom && <p className="mt-2 text-xs text-indigo-600">Hẹn ôn {new Date(m.availableFrom).toLocaleDateString("vi-VN")}</p>}
+              {(m.runs?.length ?? 0) > 0 && <details className="mt-3 text-xs"><summary className="cursor-pointer font-medium text-indigo-600">Lịch sử {m.runs!.length} lượt</summary>
+                <ul className="mt-2 space-y-1">{m.runs!.map(r => <li key={r.sessionRunId} className="flex items-center justify-between gap-2">
+                  <span className="text-slate-600 dark:text-slate-300">{runSummary(r)}</span>
+                  {r.status !== "InProgress" && <button className="shrink-0 underline" onClick={() => setMission({ ...m, latestRunId: r.sessionRunId, reviewOnly: true, retry: false })}>Xem</button>}
+                </li>)}</ul></details>}
+            </div>
+            <div className="flex flex-col items-stretch gap-2 md:min-w-52">
               <button className={action} disabled={m.deferred || (!m.canStart && !m.activeRunId && !m.latestRunId)} onClick={() => setMission({ ...m, reviewOnly: missionAction(m).reviewOnly })}>
                 {m.deferred ? "Đã hoãn · cần điều chỉnh mục tiêu" : missionAction(m).label}</button>
               {!m.activeRunId && m.canRetry && <button className={secondary}
                 onClick={() => setMission({ ...m, retry: true, reviewOnly: false })}>{m.retryLabel ?? "Làm lại"}</button>}
+              {!m.activeRunId && !m.canRetry && m.retryBlockedReason && <p className="max-w-56 text-xs text-slate-500">{m.retryBlockedReason}</p>}
             </div>
-            {!m.activeRunId && !m.canRetry && m.retryBlockedReason && <p className="mt-2 text-xs text-slate-500">{m.retryBlockedReason}</p>}
-            {(m.runs?.length ?? 0) > 0 && <details className="mt-3 text-xs"><summary className="cursor-pointer font-medium text-indigo-600">Lịch sử {m.runs!.length} lượt</summary>
-              <ul className="mt-2 space-y-1">{m.runs!.map(r => <li key={r.sessionRunId} className="flex items-center justify-between gap-2">
-                <span className="text-slate-600 dark:text-slate-300">{runSummary(r)}</span>
-                {r.status !== "InProgress" && <button className="shrink-0 underline" onClick={() => setMission({ ...m, latestRunId: r.sessionRunId, reviewOnly: true, retry: false })}>Xem</button>}
-              </li>)}</ul></details>}
-          </div>)}</div></article>;
+          </div></article>;
       })}
     </section>
+    <aside className="space-y-4 xl:sticky xl:top-36">
+      {!agenda.data?.isPlacement && agenda.data?.progress && agenda.data.progress.totalSkills > 0 && <div className={panel}>
+        <p className="st-eyebrow">Tiến độ mục tiêu</p>
+        <div className="mt-2 flex items-center gap-4">
+          <svg viewBox="0 0 64 64" className="h-16 w-16 shrink-0 -rotate-90" aria-hidden="true"><circle cx="32" cy="32" r="26" fill="none" strokeWidth="7" className="stroke-[var(--student-surface-subtle)]" /><circle cx="32" cy="32" r="26" fill="none" strokeWidth="7" strokeLinecap="round" className="stroke-[var(--student-brand)] st-ring" strokeDasharray="163.4" strokeDashoffset={163.4 * (1 - agenda.data.progress.confirmedSkills / agenda.data.progress.totalSkills)} /></svg>
+          <div><p className="text-2xl font-extrabold tabular-nums [font-family:var(--student-font-display)]">{agenda.data.progress.confirmedSkills}/{agenda.data.progress.totalSkills}</p><p className="text-xs text-[var(--student-muted)]">kỹ năng đã vững{agenda.data.progress.estimatedFinishDate ? ` · dự kiến xong ${new Date(agenda.data.progress.estimatedFinishDate).toLocaleDateString("vi-VN")}` : ""}</p></div>
+        </div>
+      </div>}
+      {primary && <div className={`${panel} st-hero`}>
+        <p className="st-eyebrow inline-flex items-center gap-2"><span className="st-live" aria-hidden="true" />{primary.activeRunId ? "Đang làm" : "Hôm nay học gì?"}</p>
+        <h3 className="mt-2 text-base font-bold">{primary.title}</h3>
+        <p className="mt-1 text-xs text-[var(--student-muted)]">{activityLabels[primary.purpose] ?? primary.purpose} · {sizeLabel(primary)}khoảng {primary.estimatedDurationMinutes} phút</p>
+        <button className={`${action} mt-4 w-full`} onClick={() => setMission(primary)}>{primary.activeRunId ? "Tiếp tục" : "Mở nhiệm vụ"}</button>
+      </div>}
+      <div className={`${panel} text-xs`}>
+        <p className="mb-2 font-bold text-[var(--student-ink)]">Chú thích</p>
+        <div className="grid grid-cols-2 gap-2 text-[var(--student-ink-secondary)]">
+          <span className="flex items-center gap-2"><i className="h-3 w-3 rounded-full bg-emerald-600" />Đã xong</span>
+          <span className="flex items-center gap-2"><i className="h-3 w-3 rounded-full bg-[var(--student-brand)]" />Đang làm</span>
+          <span className="flex items-center gap-2"><i className="h-3 w-3 rounded-full border-2 border-[var(--student-brand)]" />Có thể làm</span>
+          <span className="flex items-center gap-2"><i className="h-3 w-3 rounded-full bg-amber-400" />Nhánh rèn lại</span>
+          <span className="flex items-center gap-2"><i className="h-3 w-3 rounded-full bg-[var(--student-surface-subtle)] border border-[var(--student-border)]" />Chưa mở</span>
+        </div>
+      </div>
+    </aside>
+    </div>
     <section className={panel} hidden={view !== "map"}><h2 className="text-xl font-bold">Bản đồ năng lực · {subject?.subjectName}</h2>
       {!map.data?.skills.length && <p className="mt-3 text-sm text-slate-500">Chưa có kỹ năng khả dụng trong giáo trình. Cần giáo viên bổ sung nội dung; hệ thống không dùng môn khác để thay thế.</p>}
       <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-3">{map.data?.skills.map(s => <div className="min-w-0 rounded-2xl border border-[var(--student-border)] p-4" key={s.skillId}>

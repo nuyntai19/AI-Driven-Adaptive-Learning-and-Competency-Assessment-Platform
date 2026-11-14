@@ -373,3 +373,20 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Learning-path nodes: the current mission spins a conic ring; nodes pop in one after another. */
+@property --st-a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes st-turn { to { --st-a: 360deg; } }
+.st-node-active::before {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: 9999px;
+  background: conic-gradient(from var(--st-a), var(--student-brand), transparent 35%, var(--student-brand-2) 60%, transparent 85%, var(--student-brand));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  animation: st-turn 2.4s linear infinite;
+}
+.st-pop { animation: st-pop 0.5s cubic-bezier(.34, 1.4, .64, 1) backwards; animation-delay: calc(var(--d, 0) * 60ms + 80ms); }
+@keyframes st-pop { from { opacity: 0; translate: 0 10px; scale: 0.6; } }
+.st-ring { transition: stroke-dashoffset 1.2s cubic-bezier(.2, .8, .2, 1); }

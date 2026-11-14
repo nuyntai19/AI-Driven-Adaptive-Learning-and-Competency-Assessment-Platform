@@ -150,7 +150,7 @@ export const StudentLayout: React.FC = () => {
     <div className="student-shell min-h-screen bg-[var(--student-canvas)] text-[var(--student-ink)] flex flex-col antialiased transition-colors duration-200">
       {/* Top navigation: brand, pill tabs (desktop) and account controls; phones use the bottom tab bar. */}
       <header className="sticky top-0 z-40 bg-[color-mix(in_srgb,var(--student-canvas)_86%,transparent)] backdrop-blur-xl backdrop-saturate-150 border-b border-[var(--student-border)]">
-        <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-3 sm:gap-4 min-w-0">
             <div className="flex items-center gap-3 xl:gap-5 min-w-0">
               <Link
@@ -306,7 +306,7 @@ export const StudentLayout: React.FC = () => {
 
       {/* Context row: the one subject picker for every student page, plus class scope. Scrolls away so the sticky bar stays slim. */}
         {!isAccountPage && <div className="pt-2">
-          <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3 min-w-0">
+          <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3 min-w-0">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-[13px] font-semibold text-[var(--student-muted)] shrink-0">
                 <span className="hidden sm:inline">Môn học</span>

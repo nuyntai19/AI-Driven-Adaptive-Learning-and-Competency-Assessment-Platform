@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "web/edutwin-web", "run", "dev", "--", "--port", "5174", "--strictPort"],
       "port": 5174
+    },
+    {
+      "name": "student-web-acceptance",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set EDUTWIN_API_PROXY=http://127.0.0.1:5001&& npm --prefix web/edutwin-web run dev -- --port 5175 --strictPort"],
+      "port": 5175
     }
   ]
 }
