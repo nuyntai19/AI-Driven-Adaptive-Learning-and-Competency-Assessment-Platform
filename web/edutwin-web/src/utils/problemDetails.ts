@@ -158,7 +158,7 @@ export function mapSafeOperationalError(
   return message;
 }
 
-export function mapSafeLoginError(error: unknown): string {
+export function mapSafeLoginError(error: unknown, portal: "center" | "admin" = "center"): string {
   if (axios.isAxiosError(error) && error.response) {
     const status = error.response.status;
     const data = error.response.data as ProblemDetails | undefined;
@@ -168,7 +168,9 @@ export function mapSafeLoginError(error: unknown): string {
       return "Hệ thống ghi nhận quá nhiều lượt thử. Vui lòng đợi và thử lại sau ít phút.";
     }
     if (code === "AUTH_INVALID_CREDENTIALS" || status === 401) {
-      return "Mã trung tâm, tên đăng nhập hoặc mật khẩu không chính xác.";
+      return portal === "admin"
+        ? "Tên đăng nhập hoặc mật khẩu quản trị không chính xác."
+        : "Mã trung tâm, tên đăng nhập hoặc mật khẩu không chính xác.";
     }
     if (code === "AUTH_USER_DISABLED") {
       return "Tài khoản hoặc trung tâm hiện không khả dụng.";

@@ -45,3 +45,15 @@ export function maskDateInput(raw: string, withTime = false): string {
   if (digits.length === 2 || digits.length === 4) out += "/";
   return out;
 }
+
+/** Short "dd/mm" label for a timestamp in the viewer's local time (browsers disagree on vi-VN's separator). */
+export function formatDayMonth(value: string | Date): string {
+  const d = new Date(value);
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** "HH:mm · dd/mm" for a timestamp in the viewer's local time. */
+export function formatTimeDayMonth(value: string | Date): string {
+  const d = new Date(value);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")} · ${formatDayMonth(d)}`;
+}

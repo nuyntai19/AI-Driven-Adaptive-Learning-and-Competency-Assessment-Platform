@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthBootstrap } from "./auth/AuthBootstrap";
 import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
+import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { PermissionRoute } from "./routes/PermissionRoute";
 import { permissions, authorizationUiPermissions } from "./auth/permissions";
 import { AccessDeniedPage } from "./pages/AccessDeniedPage";
@@ -84,6 +85,7 @@ function App() {
         <Suspense fallback={<RouteLoadingFallback />}>
           <Routes>
         <Route path="/dang-nhap" element={<LoginPage />} />
+        <Route path="/admin" element={<AdminLoginPage />} />
 
         <Route element={<ProtectedRoute />}>
           <Route path="/" element={<AuthenticatedHomePage />} />

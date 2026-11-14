@@ -15,6 +15,9 @@ namespace EduTwin.API.Controllers;
 [Route("api/v1/[controller]")]
 public class AuthController : ControllerBase
 {
+    /// <summary>The platform tenant signs in only through the separate admin portal.</summary>
+    public const string PlatformCenterCode = "PLATFORM";
+
     private readonly ILoginUseCase _loginUseCase;
     private readonly IRefreshUseCase _refreshUseCase;
     private readonly ILogoutUseCase _logoutUseCase;
@@ -43,6 +46,42 @@ public class AuthController : ControllerBase
     [Consumes("application/json")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken cancellationToken)
     {
+        // Center users (managers, teachers, students) only. The platform tenant has its own
+        // portal; answer exactly like wrong credentials so this portal reveals nothing about it.
+        if (string.Equals(request.CenterCode, PlatformCenterCode, StringComparison.OrdinalIgnoreCase))
+        {
+            return InvalidCredentials("Mã trung tâm, tên đăng nhập hoặc mật khẩu không hợp lệ.");
+        }
+        return await SignInAsync(request, "Mã trung tâm, tên đăng nhập hoặc mật khẩu không hợp lệ.", cancellationToken);
+    }
+
+    [HttpPost("admin/login")]
+    [AllowAnonymous]
+    [Consumes("application/json")]
+    public async Task<IActionResult> AdminLogin([FromBody] AdminLoginRequest request, CancellationToken cancellationToken)
+    {
+        var platformRequest = new LoginRequest
+        {
+            CenterCode = PlatformCenterCode,
+            Username = request.Username,
+            Password = request.Password
+        };
+        return await SignInAsync(platformRequest, "Tên đăng nhập hoặc mật khẩu quản trị không hợp lệ.", cancellationToken);
+    }
+
+    private IActionResult InvalidCredentials(string detail) => Problem(
+        type: "https://edutwin.local/problems/auth-invalid-credentials",
+        title: "Thông tin đăng nhập không hợp lệ",
+        statusCode: StatusCodes.Status401Unauthorized,
+        detail: detail,
+        instance: HttpContext.Request.Path,
+        extensions: new System.Collections.Generic.Dictionary<string, object?>
+        {
+            { "errorCode", ErrorCodes.AuthInvalidCredentials }
+        });
+
+    private async Task<IActionResult> SignInAsync(LoginRequest request, string invalidDetail, CancellationToken cancellationToken)
+    {
         var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
         var result = await _loginUseCase.ExecuteAsync(request, clientIp, cancellationToken);
 
@@ -50,16 +89,7 @@ public class AuthController : ControllerBase
         {
             if (result.ErrorCode == ErrorCodes.AuthInvalidCredentials)
             {
-                return Problem(
-                    type: "https://edutwin.local/problems/auth-invalid-credentials",
-                    title: "Thông tin đăng nhập không hợp lệ",
-                    statusCode: StatusCodes.Status401Unauthorized,
-                    detail: "Mã trung tâm, tên đăng nhập hoặc mật khẩu không hợp lệ.",
-                    instance: HttpContext.Request.Path,
-                    extensions: new System.Collections.Generic.Dictionary<string, object?>
-                    {
-                        { "errorCode", ErrorCodes.AuthInvalidCredentials }
-                    });
+                return InvalidCredentials(invalidDetail);
             }
             if (result.ErrorCode == ErrorCodes.AuthUserDisabled)
             {

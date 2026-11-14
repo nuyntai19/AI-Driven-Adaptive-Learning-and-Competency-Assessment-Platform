@@ -1,3 +1,4 @@
+import { loginPathFor } from "../auth/loginPortal";
 import { useState } from "react";
 import { useNavigate, Link, Navigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -55,6 +56,7 @@ export const AuthenticatedHomePage = () => {
   }
 
   const handleLogout = async () => {
+    const loginPath = loginPathFor(user.accountType);
     setIsLoggingOut(true);
     try {
       await logout();
@@ -62,7 +64,7 @@ export const AuthenticatedHomePage = () => {
       // Bỏ qua lỗi mạng khi logout để vẫn xóa local session
     } finally {
       queryClient.clear();
-      navigate("/dang-nhap", { replace: true });
+      navigate(loginPath, { replace: true });
     }
   };
 

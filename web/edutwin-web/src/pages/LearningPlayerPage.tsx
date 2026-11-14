@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useStudentTheme } from "../hooks/useStudentTheme";
 import { Link, Navigate, useSearchParams, useParams, useNavigate } from "react-router-dom";
 import {
   getLearningPathSession,
@@ -141,6 +142,7 @@ function loadStoredAssignmentAnswers(scope: AssignmentDraftScope | null): Record
 }
 
 export const LearningPlayerPage = () => {
+  useStudentTheme();
   const [params] = useSearchParams();
   if (params.get("sessionId") && !params.get("assignmentId")) {
     const next = new URLSearchParams(params);
@@ -3354,12 +3356,12 @@ const PracticePlayerPage = () => {
   );
 
   return (
-    <div className="min-h-screen bg-stone-50/50 dark:bg-[#101623] text-stone-800 dark:text-stone-100 flex flex-col antialiased student-shell">
+    <div className="min-h-screen bg-stone-50/50 dark:bg-[var(--student-canvas)] text-stone-800 dark:text-stone-100 flex flex-col antialiased student-shell">
       {pathSession && <div className="p-3" role="status">{pathSession.title} · {pathSession.recommendedQuestionIds.length} câu trong buổi
         {sessionUpdateError && <div role="alert">{sessionUpdateError}<button type="button" onClick={() => void evaluatePathSession()}>Cập nhật lại tiến độ</button></div>}
       </div>}
       {/* Top Header Bar */}
-      <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#151d2f]/95 backdrop-blur-md border-b border-stone-200/80 dark:border-stone-800/80 shadow-xs">
+      <header className="sticky top-0 z-30 bg-white/95 dark:bg-[var(--student-surface)]/95 backdrop-blur-md border-b border-stone-200/80 dark:border-stone-800/80 shadow-xs">
         <div className="max-w-[1700px] mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-2 py-2 min-h-14 sm:min-h-16">
           <div className="flex items-center gap-3">
             <Link

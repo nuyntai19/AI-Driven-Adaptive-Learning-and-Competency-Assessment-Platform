@@ -14,6 +14,8 @@ import { NOTIFY_SELECTOR, notificationText as textOf, readNotification, type Not
 
 
 const ALERT_SELECTOR = '[role="alert"]';
+/** Alerts already shown right where the user is looking (e.g. a sign-in form) opt out of the corner copy. */
+const NO_MIRROR_SELECTOR = '[data-toast-mirror="off"]';
 const HOST_ATTRIBUTE = "data-alert-toast-host";
 const MIRROR_DURATION_MS = 6000;
 const SUCCESS_DURATION_MS = 5000;
@@ -89,7 +91,7 @@ export function AlertToastHost() {
     };
 
     const mirror = (element: Element) => {
-      if (element.closest(NOTIFY_SELECTOR) || element.closest(`[${HOST_ATTRIBUTE}]`)) return;
+      if (element.closest(NOTIFY_SELECTOR) || element.closest(`[${HOST_ATTRIBUTE}]`) || element.closest(NO_MIRROR_SELECTOR)) return;
       const text = textOf(element);
       if (!text || mirrored.current.get(element) === text) return;
       mirrored.current.set(element, text);

@@ -8,6 +8,38 @@ import { practiceEndLabel } from "../utils/adaptivePracticeSummary";
 import { BookmarkedQuestions } from "../components/student/BookmarkedQuestions";
 import type { AdaptivePracticeMode } from "../types/adaptivePractice";
 
+const CARD = "st-card st-spot p-5 sm:p-6";
+const PRIMARY = "st-btn-primary group inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-bold whitespace-nowrap [font-family:var(--student-font-display)]";
+const OUTLINE = "inline-flex items-center justify-center rounded-full border border-[var(--student-border)] bg-[var(--student-surface)] px-4 py-2 text-sm font-semibold text-[var(--student-ink)] transition-colors hover:border-[var(--student-brand)] hover:text-[var(--student-brand-ink)] cursor-pointer disabled:opacity-50";
+const PILL = "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold leading-4";
+
+const Icon = ({ d, className = "h-5 w-5" }: { d: string; className?: string }) => (
+  <svg aria-hidden="true" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>
+);
+const ICON_PLAY = "M7 5v14l11-7z";
+const ICON_TARGET = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-4a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0-4a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z";
+const ICON_ROUTE = "M6 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm12-10a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM8 17h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7";
+const ICON_SEARCH = "m20 20-4.3-4.3M17 10.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z";
+const ICON_REVIEW = "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5";
+const ICON_ARROW = "M5 12h14m-5-5 5 5-5 5";
+const ICON_INFO = "M12 16v-4m0-4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z";
+
+const MODES: { mode: AdaptivePracticeMode; label: string; desc: string; icon: string; tile: string }[] = [
+  { mode: "Weakness", label: "Luyện theo điểm yếu", desc: "Tập trung cải thiện các kỹ năng chưa vững", icon: ICON_TARGET, tile: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300" },
+  { mode: "LearningPath", label: "Theo lộ trình học", desc: "Bám sát mục tiêu chặng đang học", icon: ICON_ROUTE, tile: "bg-[var(--student-brand-soft)] text-[var(--student-brand-ink)]" },
+  { mode: "CustomTopic", label: "Tự chọn chủ đề", desc: "Chủ động chọn chủ đề muốn ôn luyện", icon: ICON_SEARCH, tile: "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300" },
+  { mode: "SpacedReview", label: "Ôn tập kiến thức cũ", desc: "Ôn lại chủ đề đã học khi đến hạn", icon: ICON_REVIEW, tile: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300" },
+];
+
+const DURATIONS = [
+  { minutes: 10, label: "10 phút", desc: "4 – 8 câu" },
+  { minutes: 15, label: "15 phút", desc: "5 – 12 câu · khuyên dùng" },
+  { minutes: 20, label: "20 phút", desc: "6 – 15 câu" },
+];
+
+const modeShortLabel = (mode: AdaptivePracticeMode) =>
+  mode === "Weakness" ? "Điểm yếu" : mode === "LearningPath" ? "Lộ trình" : mode === "CustomTopic" ? "Tự chọn" : "Ôn tập";
+
 export const AdaptivePracticeOverviewPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -94,249 +126,217 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
     }
   };
 
+  const recentQuestions = history.reduce((sum, item) => sum + item.totalQuestions, 0);
+  const recentCorrect = history.reduce((sum, item) => sum + item.correctCount, 0);
+  const recentAccuracy = recentQuestions > 0 ? Math.round((recentCorrect / recentQuestions) * 100) : null;
+
   return (
-    <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8 min-w-0">
+    <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5 min-w-0 student-shell">
       {/* Header */}
-      <div className="pb-4 border-b border-stone-200 dark:border-stone-800">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-              Luyện tập thích ứng
-            </h1>
-            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-              AI-Driven Adaptive Engine 1.0
-            </span>
-          </div>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Tổ chức phiên luyện tập cá nhân hóa có mục tiêu rõ ràng, tự động điều chỉnh độ khó và tổng hợp bằng chứng năng lực.
-          </p>
-        </div>
-      </div>
+      <header className="st-rise">
+        <p className="st-eyebrow">Phiên luyện tập cá nhân hoá</p>
+        <h1 className="mt-1.5 text-2xl font-extrabold tracking-tight sm:text-3xl [font-family:var(--student-font-display)]">
+          Luyện tập <span className="st-grad-text">thích ứng</span>
+        </h1>
+        <p className="mt-1.5 max-w-2xl text-sm text-[var(--student-ink-secondary)]">
+          Độ khó tự điều chỉnh theo từng câu. Mỗi phiên kết thúc bằng báo cáo năng lực.
+        </p>
+      </header>
 
-      {/* Region A: Active Session Banner (if present) */}
+      {/* Active session banner */}
       {activeSession && (
-        <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300 dark:border-amber-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
-                Bạn có phiên luyện tập đang thực hiện
-              </span>
+        <div role="status" style={{ "--d": 1 } as React.CSSProperties} className="st-rise flex flex-col gap-4 rounded-[20px] border border-amber-300 bg-amber-50/80 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 dark:border-amber-700/60 dark:bg-amber-950/30">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+              <Icon d={ICON_PLAY} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-[var(--student-ink)]">Bạn có phiên luyện tập đang làm dở</p>
+              <p className="truncate text-xs text-amber-800 dark:text-amber-300">
+                {activeSession.topicName} ({activeSession.subjectName}) · đã làm {activeSession.questionCount} câu · {activeSession.timeBudgetMinutes} phút · năng lực {activeSession.currentMastery.toFixed(0)}%
+              </p>
             </div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">
-              {activeSession.topicName} ({activeSession.subjectName})
-            </h3>
-            <p className="text-xs text-slate-600 dark:text-slate-400">
-              Tiến độ: Đã làm {activeSession.questionCount} câu · Thời lượng ngân sách: {activeSession.timeBudgetMinutes} phút · Năng lực hiện tại: {activeSession.currentMastery.toFixed(0)}%
-            </p>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <button type="button" onClick={handleResumeSession} className={`${PRIMARY} !px-5 !py-2.5`}>
+              <span>Tiếp tục luyện tập</span>
+              <span className="st-arrow"><Icon d={ICON_ARROW} className="h-4 w-4" /></span>
+            </button>
             <button
               type="button"
               onClick={() => stopActiveSessionMutation.mutate()}
               disabled={stopActiveSessionMutation.isPending}
-              className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              className={OUTLINE}
             >
               {stopActiveSessionMutation.isPending ? "Đang dừng..." : "Dừng phiên này"}
-            </button>
-            <button
-              type="button"
-              onClick={handleResumeSession}
-              className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm cursor-pointer"
-            >
-              Tiếp tục luyện tập
             </button>
           </div>
         </div>
       )}
 
-      {proposalQuery.isError ? (
-        <div role="alert" className="rounded-2xl border border-slate-200 bg-white p-6 text-sm dark:border-slate-800 dark:bg-slate-900">
-          <p className="font-semibold text-slate-900 dark:text-white">Không tải được đề xuất luyện tập.</p>
-          <button type="button" onClick={() => void proposalQuery.refetch()} className="mt-3 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100 cursor-pointer dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
-            Thử lại
-          </button>
-        </div>
-      ) : proposal?.unavailableReason ? (
-        <div role="status" className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-          <h2 className="text-base font-bold text-slate-900 dark:text-white">Chưa có nội dung để luyện tập</h2>
-          <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-400">{proposal.unavailableReason}</p>
-          {selectedMode !== "Weakness" && (
-            <button type="button" onClick={() => setSelectedMode("Weakness")} className="mt-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-xs font-semibold text-white cursor-pointer">
-              Luyện theo điểm yếu
-            </button>
-          )}
-        </div>
-      ) : (
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column (8 cols): Today Mission / Proposal */}
-        <div className="lg:col-span-8 space-y-6">
-          <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-5">
-            {/* Mission Header */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
-                  Mục tiêu luyện tập đề xuất
-                </span>
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">
-                  {proposal ? proposal.topicName : "Đang tải đề xuất..."}
-                </h2>
-              </div>
-
-              {proposal?.isDiagnosticRecommended && (
-                <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
-                  Khuyên dùng: Luyện chẩn đoán
-                </span>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-start">
+        <div className="min-w-0 space-y-5 lg:col-span-8">
+          {proposalQuery.isError ? (
+            <div role="alert" className={CARD}>
+              <p className="font-bold text-[var(--student-ink)]">Không tải được đề xuất luyện tập.</p>
+              <button type="button" onClick={() => void proposalQuery.refetch()} className={`${OUTLINE} mt-3`}>
+                Thử lại
+              </button>
+            </div>
+          ) : proposal?.unavailableReason ? (
+            <div role="status" className={CARD}>
+              <p className="st-eyebrow">Mục tiêu luyện tập đề xuất</p>
+              <h2 className="mt-1 text-lg font-bold">Chưa có nội dung để luyện tập</h2>
+              <p className="mt-1 text-sm leading-relaxed text-[var(--student-ink-secondary)]">{proposal.unavailableReason}</p>
+              {selectedMode !== "Weakness" && (
+                <button type="button" onClick={() => setSelectedMode("Weakness")} className={`${PRIMARY} mt-4 !py-2.5`}>
+                  Luyện theo điểm yếu
+                </button>
               )}
             </div>
-
-            {/* Rationale & Explanation */}
-            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/60 space-y-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
-                <svg className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>Vì sao EduTwin đề xuất nội dung này?</span>
+          ) : (
+            <article className={`${CARD} st-rise`} style={{ "--d": 2 } as React.CSSProperties} aria-labelledby="practice-proposal-title">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="st-eyebrow">Mục tiêu luyện tập đề xuất</p>
+                  <h2 id="practice-proposal-title" className="mt-1 break-words text-xl font-extrabold tracking-tight [font-family:var(--student-font-display)]">
+                    {proposal ? proposal.topicName : "Đang tải đề xuất..."}
+                  </h2>
+                </div>
+                {proposal?.isDiagnosticRecommended && (
+                  <span className={`${PILL} bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300`}>Khuyên dùng: Luyện chẩn đoán</span>
+                )}
               </div>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                {proposal?.selectionReason || "Hệ thống đang tổng hợp dữ liệu từ Digital Twin và kết quả học tập gần đây..."}
-              </p>
-            </div>
 
-            {/* Competency Gap Visualizer */}
-            {proposal && (
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-semibold">
-                  <span className="text-slate-600 dark:text-slate-400">
-                    Năng lực ước lượng: <strong className="text-slate-900 dark:text-white">{proposal.isDiagnosticRecommended ? "Chưa có dữ liệu" : `${proposal.currentMastery.toFixed(0)}%`}</strong>
-                  </span>
-                  <span className="text-indigo-600 dark:text-indigo-400">
-                    Mục tiêu phiên: <strong>{proposal.targetMastery.toFixed(0)}%</strong>
-                  </span>
-                </div>
-                <div className="h-3 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
-                  <div
-                    className="bg-slate-400 dark:bg-slate-600 transition-all duration-500 rounded-l-full"
-                    style={{ width: `${Math.min(100, proposal.currentMastery)}%` }}
-                  />
-                  <div
-                    className="bg-indigo-600 dark:bg-indigo-500 opacity-80 transition-all duration-500"
-                    style={{
-                      width: `${Math.max(0, Math.min(100, proposal.targetMastery) - proposal.currentMastery)}%`,
-                    }}
-                  />
-                </div>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 italic">
-                  *Thanh màu xám: năng lực đã xác nhận · Thanh màu tím: khoảng tiến bộ dự kiến đạt được sau phiên.
+              <details open className="mt-4 rounded-2xl border border-[var(--student-border)] bg-[var(--student-surface-subtle)] px-4 py-3">
+                <summary className="flex cursor-pointer items-center gap-2 text-xs font-bold text-[var(--student-ink)]">
+                  <span className="text-[var(--student-brand)]"><Icon d={ICON_INFO} className="h-4 w-4" /></span>
+                  Vì sao EduTwin đề xuất nội dung này?
+                </summary>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--student-ink-secondary)]">
+                  {proposal?.selectionReason || "Hệ thống đang tổng hợp dữ liệu từ Digital Twin và kết quả học tập gần đây..."}
                 </p>
-              </div>
-            )}
+              </details>
 
-            {/* Time Budget Selector */}
-            <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                Chọn ngân sách thời gian dự kiến:
-              </label>
-              <div className="grid grid-cols-3 gap-3">
-                {[
-                  { minutes: 10, label: "10 phút", desc: "4 – 8 câu" },
-                  { minutes: 15, label: "15 phút", desc: "5 – 12 câu (Khuyên dùng)" },
-                  { minutes: 20, label: "20 phút", desc: "6 – 15 câu" },
-                ].map((item) => (
+              {proposal && (
+                <div className="mt-5 space-y-2">
+                  <div className="flex flex-wrap justify-between gap-2 text-sm font-semibold">
+                    <span className="text-[var(--student-ink-secondary)]">
+                      Năng lực ước lượng: <b className="text-[var(--student-ink)]">{proposal.isDiagnosticRecommended ? "Chưa có dữ liệu" : `${proposal.currentMastery.toFixed(0)}%`}</b>
+                    </span>
+                    <span className="text-[var(--student-brand-ink)]">Mục tiêu phiên: <b>{proposal.targetMastery.toFixed(0)}%</b></span>
+                  </div>
+                  <div
+                    className="relative h-3 w-full rounded-full bg-[var(--student-surface-subtle)]"
+                    role="img"
+                    aria-label={`Năng lực ${proposal.currentMastery.toFixed(0)}%, mục tiêu phiên ${proposal.targetMastery.toFixed(0)}%`}
+                  >
+                    <div
+                      className="st-bar-fill h-full rounded-full bg-[linear-gradient(90deg,var(--student-brand),var(--student-brand-2))]"
+                      style={{ width: `${Math.min(100, Math.max(0, proposal.currentMastery))}%` }}
+                    />
+                    <span
+                      className="absolute -top-1 h-5 w-0.5 -translate-x-1/2 rounded-full bg-[var(--student-ink)]"
+                      style={{ left: `${Math.min(100, Math.max(0, proposal.targetMastery))}%` }}
+                      title="Mục tiêu phiên"
+                    />
+                  </div>
+                  <p className="text-[11px] text-[var(--student-muted)]">Thanh màu: năng lực đã xác nhận · Vạch đậm: mục tiêu cần đạt sau phiên.</p>
+                </div>
+              )}
+
+              <p className="mb-2 mt-5 text-sm font-bold">Thời lượng phiên</p>
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3" role="radiogroup" aria-label="Thời lượng phiên">
+                {DURATIONS.map((item) => {
+                  const isActive = timeBudget === item.minutes;
+                  return (
+                    <button
+                      key={item.minutes}
+                      type="button"
+                      role="radio"
+                      aria-checked={isActive}
+                      onClick={() => setTimeBudget(item.minutes)}
+                      className={`rounded-2xl border px-4 py-3 text-left transition-all cursor-pointer ${
+                        isActive
+                          ? "border-[var(--student-brand)] bg-[var(--student-brand-soft)] ring-4 ring-[var(--student-brand-soft)]"
+                          : "border-[var(--student-border)] bg-[var(--student-surface)] hover:border-[var(--student-brand)]"
+                      }`}
+                    >
+                      <b className={`block text-sm [font-family:var(--student-font-display)] ${isActive ? "text-[var(--student-brand-ink)]" : ""}`}>{item.label}</b>
+                      <small className="mt-0.5 block text-xs text-[var(--student-muted)]">{item.desc}</small>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {proposal && (proposal.availableQuestionCount ?? 0) > 0 && (
+                <p className="mt-3 text-xs text-[var(--student-muted)]">Chủ đề này hiện có {proposal.availableQuestionCount} câu để luyện tập.</p>
+              )}
+
+              <div className="mt-5 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => createSessionMutation.mutate()}
+                  disabled={createSessionMutation.isPending || !proposal || !!activeSession}
+                  className={`${PRIMARY} w-full sm:w-auto`}
+                >
+                  {createSessionMutation.isPending ? (
+                    <span>Đang khởi tạo phiên...</span>
+                  ) : (
+                    <>
+                      <span>Bắt đầu luyện tập ngay</span>
+                      <span className="st-arrow"><Icon d={ICON_ARROW} className="h-4 w-4" /></span>
+                    </>
+                  )}
+                </button>
+                {activeSession && (
+                  <p className="text-xs text-[var(--student-muted)]">
+                    Mỗi môn chỉ có một phiên đang chạy. Hãy tiếp tục hoặc dừng phiên ở trên trước khi bắt đầu phiên mới.
+                  </p>
+                )}
+              </div>
+            </article>
+          )}
+
+          {/* Practice modes */}
+          <section aria-labelledby="practice-modes-title">
+            <h2 id="practice-modes-title" className="mb-2.5 text-sm font-bold">Hoặc chọn chế độ khác</h2>
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              {MODES.map((item) => {
+                const isActive = selectedMode === item.mode;
+                return (
                   <button
-                    key={item.minutes}
+                    key={item.mode}
                     type="button"
-                    onClick={() => setTimeBudget(item.minutes)}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                      timeBudget === item.minutes
-                        ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 ring-2 ring-indigo-500/20"
-                        : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300"
+                    aria-pressed={isActive}
+                    onClick={() => {
+                      setSelectedMode(item.mode);
+                      if (item.mode !== "CustomTopic") setSelectedTopicId("");
+                    }}
+                    className={`st-card flex items-center gap-3 p-3.5 text-left transition-all cursor-pointer hover:-translate-y-0.5 ${
+                      isActive ? "!border-[var(--student-brand)] ring-4 ring-[var(--student-brand-soft)]" : ""
                     }`}
                   >
-                    <div className="text-sm font-bold">{item.label}</div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{item.desc}</div>
+                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${item.tile}`}><Icon d={item.icon} /></span>
+                    <span className="min-w-0">
+                      <b className="block text-sm">{item.label}</b>
+                      <small className="block text-xs text-[var(--student-muted)]">{item.desc}</small>
+                    </span>
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
 
-            {proposal && (proposal.availableQuestionCount ?? 0) > 0 && (
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Chủ đề này hiện có {proposal.availableQuestionCount} câu để luyện tập.
-              </p>
-            )}
-
-            {/* CTA Button */}
-            <div className="pt-2 space-y-2">
-              <button
-                type="button"
-                onClick={() => createSessionMutation.mutate()}
-                disabled={createSessionMutation.isPending || !proposal || !!activeSession}
-                className="w-full sm:w-auto px-8 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-md hover:shadow-indigo-500/25 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {createSessionMutation.isPending ? (
-                  <span>Đang khởi tạo phiên...</span>
-                ) : (
-                  <>
-                    <span>Bắt đầu luyện tập ngay</span>
-                    <span className="text-base">→</span>
-                  </>
-                )}
-              </button>
-              {activeSession && (
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Mỗi môn chỉ có một phiên đang chạy. Hãy tiếp tục hoặc dừng phiên ở trên trước khi bắt đầu phiên mới.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column (4 cols): Modes & Custom Topic Selector */}
-        <div className="lg:col-span-4 space-y-6">
-          <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
-              Chế độ luyện tập
-            </h3>
-
-            <div className="space-y-2">
-              {[
-                { mode: "Weakness" as AdaptivePracticeMode, label: "Luyện theo điểm yếu", desc: "Tập trung cải thiện các kỹ năng chưa vững" },
-                { mode: "LearningPath" as AdaptivePracticeMode, label: "Theo lộ trình học (LP)", desc: "Bám sát mục tiêu chặng từ Learning Path" },
-                { mode: "CustomTopic" as AdaptivePracticeMode, label: "Tự chọn chủ đề", desc: "Chủ động chọn chủ đề mong muốn ôn luyện" },
-                { mode: "SpacedReview" as AdaptivePracticeMode, label: "Ôn tập kiến thức cũ", desc: "Ôn lại chủ đề đã học khi đến hạn" },
-              ].map((item) => (
-                <button
-                  key={item.mode}
-                  type="button"
-                  onClick={() => {
-                    setSelectedMode(item.mode);
-                    if (item.mode !== "CustomTopic") setSelectedTopicId("");
-                  }}
-                  className={`w-full p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                    selectedMode === item.mode
-                      ? "border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/30 text-indigo-900 dark:text-indigo-200"
-                      : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300"
-                  }`}
-                >
-                  <div className="text-xs font-bold">{item.label}</div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{item.desc}</div>
-                </button>
-              ))}
-            </div>
-
-            {/* Custom Topic Dropdown (shown when CustomTopic mode active) */}
             {selectedMode === "CustomTopic" && proposal?.availableTopics && (
-              <div className="space-y-1.5 pt-3 border-t border-slate-100 dark:border-slate-800">
-                <label htmlFor="topic-dropdown" className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  Chọn chủ đề cụ thể:
+              <div className="st-card mt-3 space-y-1.5 p-4">
+                <label htmlFor="topic-dropdown" className="block text-xs font-bold text-[var(--student-ink)]">
+                  Chọn chủ đề cụ thể
                 </label>
                 <select
                   id="topic-dropdown"
                   value={selectedTopicId || proposal.topicNodeId}
                   onChange={(e) => setSelectedTopicId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg text-xs font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:outline-indigo-500"
+                  className="w-full rounded-xl border border-[var(--student-border)] bg-[var(--student-surface)] px-3 py-2.5 text-sm text-[var(--student-ink)] focus:border-[var(--student-brand)] focus:outline-none focus:ring-4 focus:ring-[var(--student-brand-soft)]"
                 >
                   {proposal.availableTopics.map((top) => (
                     <option key={top.topicNodeId} value={top.topicNodeId}>
@@ -346,94 +346,85 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
                 </select>
               </div>
             )}
-          </div>
+          </section>
         </div>
-      </div>
 
-      )}
+        {/* Right column: recent sessions */}
+        <aside className="min-w-0 space-y-5 lg:col-span-4">
+          <article className="st-card p-5" aria-labelledby="practice-history-title">
+            <div className="flex items-center justify-between gap-2">
+              <h2 id="practice-history-title" className="text-base font-bold">Phiên gần đây</h2>
+              <span className="text-xs text-[var(--student-muted)]">{history.length} phiên đã xong</span>
+            </div>
+
+            {history.length === 0 ? (
+              <p className="py-6 text-center text-sm text-[var(--student-muted)]">
+                Bạn chưa có phiên luyện tập nào hoàn thành trong môn học này. Hãy bắt đầu ngay phiên đầu tiên!
+              </p>
+            ) : (
+              <ul className="mt-3 divide-y divide-[var(--student-border)]">
+                {history.map((item) => {
+                  const ending = item.endingMastery ?? item.startingMastery;
+                  const delta = Math.round(ending - item.startingMastery);
+                  return (
+                    <li key={item.sessionId} className="py-3 first:pt-1 last:pb-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <b className="block break-words text-sm">{item.topicName}</b>
+                          <small className="text-xs text-[var(--student-muted)]">
+                            {modeShortLabel(item.practiceMode)} · {item.completedAt ? new Date(item.completedAt).toLocaleDateString("vi-VN") : "—"} · {Math.max(1, Math.round(item.timeSpentSeconds / 60))} phút
+                          </small>
+                        </div>
+                        <span
+                          className={`${PILL} shrink-0 ${
+                            delta > 0
+                              ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                              : delta < 0
+                                ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"
+                                : "bg-[var(--student-surface-subtle)] text-[var(--student-muted)]"
+                          }`}
+                          title={`${item.startingMastery.toFixed(0)}% → ${ending.toFixed(0)}%`}
+                        >
+                          {delta > 0 ? `+${delta}%` : delta < 0 ? `−${Math.abs(delta)}%` : "±0%"}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                        <small className="text-xs text-[var(--student-ink-secondary)]">
+                          {item.correctCount}/{item.totalQuestions} câu đúng · {practiceEndLabel(item.closeReason)}
+                        </small>
+                        <Link
+                          to={`/hoc-tap/luyen-tap/phien/${item.sessionId}/tong-ket`}
+                          className="st-link inline-flex items-center gap-1 text-xs font-bold text-[var(--student-brand-ink)]"
+                        >
+                          Xem tổng kết <span className="st-arrow"><Icon d={ICON_ARROW} className="h-3.5 w-3.5" /></span>
+                        </Link>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </article>
+
+          {history.length > 0 && (
+            <article className="st-card p-5" aria-labelledby="practice-recent-stats">
+              <h2 id="practice-recent-stats" className="text-base font-bold">Gần đây</h2>
+              <dl className="mt-3 grid grid-cols-2 gap-3">
+                <div className="flex flex-col-reverse rounded-2xl bg-[var(--student-surface-subtle)] p-3">
+                  <dt className="text-xs text-[var(--student-muted)]">phiên luyện tập</dt>
+                  <dd className="text-2xl font-extrabold [font-family:var(--student-font-display)]">{history.length}</dd>
+                </div>
+                <div className="flex flex-col-reverse rounded-2xl bg-[var(--student-surface-subtle)] p-3">
+                  <dt className="text-xs text-[var(--student-muted)]">câu trả lời đúng</dt>
+                  <dd className="text-2xl font-extrabold [font-family:var(--student-font-display)]">{recentAccuracy == null ? "–" : `${recentAccuracy}%`}</dd>
+                </div>
+              </dl>
+            </article>
+          )}
+        </aside>
+      </div>
 
       <BookmarkedQuestions subjectId={effectiveSubjectId} />
-
-      {/* Region D: Recent Practice History */}
-      <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-bold text-slate-900 dark:text-white">
-            Lịch sử luyện tập gần đây
-          </h3>
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            Hiển thị {history.length} phiên đã hoàn tất
-          </span>
-        </div>
-
-        {history.length === 0 ? (
-          <div className="py-8 text-center text-xs text-slate-500 dark:text-slate-400">
-            Bạn chưa có phiên luyện tập nào hoàn thành trong môn học này. Hãy bắt đầu ngay phiên đầu tiên!
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
-                <tr>
-                  <th className="py-3 px-4">Chủ đề & Môn</th>
-                  <th className="py-3 px-4">Chế độ</th>
-                  <th className="py-3 px-4">Số câu & Đúng</th>
-                  <th className="py-3 px-4">Năng lực thay đổi</th>
-                  <th className="py-3 px-4">Kết quả</th>
-                  <th className="py-3 px-4">Thời gian</th>
-                  <th className="py-3 px-4 text-right">Chi tiết</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {history.map((item) => (
-                  <tr key={item.sessionId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
-                    <td className="py-3 px-4 font-semibold text-slate-900 dark:text-slate-100">
-                      <div>{item.topicName}</div>
-                      <div className="text-[10px] text-slate-400 font-normal">{item.subjectName}</div>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
-                      {item.practiceMode === "Weakness" ? "Điểm yếu" : item.practiceMode === "LearningPath" ? "Lộ trình" : item.practiceMode === "CustomTopic" ? "Tự chọn" : "Ôn tập"}
-                    </td>
-                    <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-medium">
-                      {item.correctCount}/{item.totalQuestions} câu đúng
-                    </td>
-                    <td className="py-3 px-4 font-semibold">
-                      <span className="text-slate-400">{item.startingMastery.toFixed(0)}%</span>
-                      <span className="mx-1 text-slate-300">→</span>
-                      <span className={item.endingMastery && item.endingMastery > item.startingMastery ? "text-emerald-600 dark:text-emerald-400" : "text-slate-700 dark:text-slate-300"}>
-                        {item.endingMastery ? item.endingMastery.toFixed(0) : item.startingMastery.toFixed(0)}%
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${
-                          item.closeReason === "GoalAchievedWithEvidence"
-                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
-                            : item.closeReason === "RemediationNeeded"
-                            ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
-                            : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                        }`}
-                      >
-                        {practiceEndLabel(item.closeReason)}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-500 dark:text-slate-400 text-[11px]">
-                      {item.completedAt ? new Date(item.completedAt).toLocaleDateString("vi-VN") : "—"}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <Link
-                        to={`/hoc-tap/luyen-tap/phien/${item.sessionId}/tong-ket`}
-                        className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
-                      >
-                        Xem tổng kết
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
     </div>
   );
 };

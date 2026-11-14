@@ -16,9 +16,12 @@ function verify(baseUrl = BASE_URL) {
 async function login(role) {
   verify();
   const account = roleAccount(role);
-  const response = await fetch(`${BASE_URL}/api/v1/auth/login`, {
+  // The platform tenant signs in only through the admin portal endpoint.
+  const admin = account.centerCode === 'PLATFORM';
+  const response = await fetch(`${BASE_URL}/api/v1/auth/${admin ? 'admin/login' : 'login'}`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ ...account, password: acceptance.testPassword }), signal: AbortSignal.timeout(15000),
+    body: JSON.stringify(admin ? { username: account.username, password: acceptance.testPassword } : { ...account, password: acceptance.testPassword }),
+    signal: AbortSignal.timeout(15000),
   });
   assert.equal(response.status, 200, `Disposable ${role} login failed (${response.status}); no credentials logged.`);
   const body = await response.json();

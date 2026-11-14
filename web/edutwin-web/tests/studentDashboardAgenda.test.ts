@@ -42,6 +42,7 @@ function render({ assignment = false, pending = false, history = false, all = fa
     "../utils/academicDisplay": { goalGapLabel: () => "" },
     "../utils/studentDashboardNudge": { dashboardGreeting: () => "", dashboardNudge: () => "" },
     "../utils/assignmentReviewTiming": assignmentReviewTiming,
+    "../utils/dateInput": { formatDayMonth: () => "01/01", formatTimeDayMonth: () => "00:00 · 01/01" },
   };
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS,
     jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true, target: ts.ScriptTarget.ES2022 } }).outputText,

@@ -51,12 +51,12 @@ export const StudentSubjectRequiredState: React.FC<StudentSubjectRequiredStatePr
             {[1, 2, 3, 4].map((i) => (
               <div
                 key={i}
-                className="h-24 animate-pulse rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/70 dark:border-stone-800/70"
+                className="h-24 animate-pulse rounded-xl bg-white dark:bg-[var(--student-surface)] border border-stone-200/70 dark:border-stone-800/70"
               />
             ))}
           </div>
         ) : subjects.length === 0 ? (
-          <div className="rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/80 dark:border-stone-800/80 p-8 text-center shadow-xs">
+          <div className="rounded-xl bg-white dark:bg-[var(--student-surface)] border border-stone-200/80 dark:border-stone-800/80 p-8 text-center shadow-xs">
             <p className="text-sm font-semibold text-stone-800 dark:text-stone-200">
               Chưa có môn học nào khả dụng
             </p>
@@ -81,7 +81,7 @@ export const StudentSubjectRequiredState: React.FC<StudentSubjectRequiredStatePr
                   key={subj.subjectId}
                   type="button"
                   onClick={() => handleChooseSubject(subj.subjectId)}
-                  className="group relative flex items-center gap-3.5 p-4 rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/90 dark:border-stone-800/90 hover:border-stone-400 dark:hover:border-stone-600 shadow-xs hover:shadow-sm text-left transition-all cursor-pointer overflow-hidden"
+                  className="group relative flex items-center gap-3.5 p-4 rounded-xl bg-white dark:bg-[var(--student-surface)] border border-stone-200/90 dark:border-stone-800/90 hover:border-stone-400 dark:hover:border-stone-600 shadow-xs hover:shadow-sm text-left transition-all cursor-pointer overflow-hidden"
                 >
                   <div
                     className="absolute left-0 top-0 bottom-0 w-1 transition-all group-hover:w-1.5"

@@ -11,6 +11,13 @@ export const login = async (request: LoginRequest): Promise<void> => {
   useAuthStore.getState().setSession(accessToken, user);
 };
 
+/** Platform administrator portal (/admin): the platform tenant is implied server-side. */
+export const loginAdmin = async (request: { username: string; password: string }): Promise<void> => {
+  const response = await publicTransport.post<LoginResponse>("/auth/admin/login", request);
+  const { accessToken, user } = response.data.data;
+  useAuthStore.getState().setSession(accessToken, user);
+};
+
 export const refreshSession = async (): Promise<void> => {
   const response = await publicTransport.post<LoginResponse>("/auth/refresh");
   const { accessToken, user } = response.data.data;

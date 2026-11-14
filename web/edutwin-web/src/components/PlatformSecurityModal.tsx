@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import type { ProblemDetails } from "../types/auth";
 import { useModalAccessibility } from "../utils/useModalAccessibility";
 import { useAuthStore } from "../stores/authStore";
+import { loginPathFor } from "../auth/loginPortal";
 
 interface PlatformSecurityModalProps {
   isOpen: boolean;
@@ -26,7 +27,7 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
     queryClient.removeQueries({ queryKey: profileKey });
     useAuthStore.getState().clearSession();
     onClose();
-    navigate("/dang-nhap", { replace: true });
+    navigate(loginPathFor(user?.accountType), { replace: true });
   };
   const modalRef = useRef<HTMLDivElement>(null);
 

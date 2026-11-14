@@ -19,7 +19,9 @@ test("loading/network failure does not invent activity or reuse a stale number",
 });
 test("student layout uses the same live indicators in desktop and mobile variants", () => {
   const source = fs.readFileSync(new URL("../src/layouts/StudentLayout.tsx", import.meta.url), "utf8");
-  assert.equal((source.match(/workspaceLabels.assignmentCount/g) ?? []).length, 2);
+  // One navigation model feeds the desktop pills, the phone drawer and the phone tab bar.
+  assert.equal((source.match(/workspaceLabels.assignmentCount/g) ?? []).length, 1);
+  assert.ok((source.match(/\{item\.badge\}/g) ?? []).length >= 2);
   assert.equal((source.match(/workspaceLabels.streak\}/g) ?? []).length, 1); // shared context row for all widths
   assert.equal((source.match(/workspaceLabels.shortStreak\}/g) ?? []).length, 1);
   assert.doesNotMatch(source, /Chuỗi 7 ngày|>3<\/span>/);

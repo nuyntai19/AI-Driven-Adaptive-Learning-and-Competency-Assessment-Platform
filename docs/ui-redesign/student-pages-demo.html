@@ -1,0 +1,923 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EduTwin Học Sinh 5 Trang</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: warm paper canvas · one vermilion accent · compact 1280px column · each page leads with "what to do now", detail sits beside or below it */
+:root {
+  --bg: #FEFCF9; --surface: #FFFFFF; --surface-2: #F7F2EA; --line: #EEE7DC; --line-2: #E2D8C9;
+  --ink: #15110E; --ink-2: #4B4138; --muted: #7A6D60;
+  --primary: #CB1C01; --primary-2: #F2581D; --primary-soft: #FDEDE7; --primary-ink: #A81700; --blush: #FBDCCF;
+  --amber: #F9B81F; --amber-soft: #FEF4DA; --amber-ink: #8A5A00;
+  --green: #16A34A; --green-soft: #E4F5EA; --green-ink: #0F7A37;
+  --navy: #0B4A8F; --navy-soft: #E7EFF8; --navy-ink: #0B3D73;
+  --rose-soft: #FDECEF; --rose-ink: #A3122E;
+  --lock: #EFE9E0; --lock-ink: #A29585; --on-accent: #FFFFFF;
+  --shadow: 0 1px 2px rgba(21,17,14,.04), 0 12px 32px -18px rgba(21,17,14,.18);
+  --shadow-lg: 0 30px 60px -28px rgba(21,17,14,.35);
+  --glow: 0 10px 24px -10px rgba(203,28,1,.55);
+  --font-display: "Montserrat", "Be Vietnam Pro", system-ui, sans-serif;
+  --font-body: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ease: cubic-bezier(.2,.8,.2,1); --spring: cubic-bezier(.34,1.4,.64,1);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12100E; --surface: #1C1815; --surface-2: #241F1A; --line: #2E2721; --line-2: #3A322A;
+  --ink: #F6F1EA; --ink-2: #D2C7BA; --muted: #9F9283;
+  --primary: #FF5A36; --primary-2: #FF8A3D; --primary-soft: #3A1810; --primary-ink: #FFB39E; --blush: #3A1C12;
+  --amber: #FFC94A; --amber-soft: #3A2C0C; --amber-ink: #FFD983;
+  --green: #34D17A; --green-soft: #10301D; --green-ink: #8FE8B5;
+  --navy: #6FA8E8; --navy-soft: #13263D; --navy-ink: #B3D3F7;
+  --rose-soft: #3D1520; --rose-ink: #FFB0BE;
+  --lock: #2A241F; --lock-ink: #7D7064;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 12px 32px -18px rgba(0,0,0,.7); --shadow-lg: 0 30px 60px -28px rgba(0,0,0,.8);
+  --glow: 0 10px 24px -10px rgba(255,90,54,.55); color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #12100E; --surface: #1C1815; --surface-2: #241F1A; --line: #2E2721; --line-2: #3A322A;
+  --ink: #F6F1EA; --ink-2: #D2C7BA; --muted: #9F9283;
+  --primary: #FF5A36; --primary-2: #FF8A3D; --primary-soft: #3A1810; --primary-ink: #FFB39E; --blush: #3A1C12;
+  --amber: #FFC94A; --amber-soft: #3A2C0C; --amber-ink: #FFD983;
+  --green: #34D17A; --green-soft: #10301D; --green-ink: #8FE8B5;
+  --navy: #6FA8E8; --navy-soft: #13263D; --navy-ink: #B3D3F7;
+  --rose-soft: #3D1520; --rose-ink: #FFB0BE;
+  --lock: #2A241F; --lock-ink: #7D7064;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 12px 32px -18px rgba(0,0,0,.7); --shadow-lg: 0 30px 60px -28px rgba(0,0,0,.8);
+  --glow: 0 10px 24px -10px rgba(255,90,54,.55); color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 60; background: var(--bg); }
+h1, h2, h3, h4 { font-family: var(--font-display); margin: 0; letter-spacing: -.02em; text-wrap: balance; }
+p { margin: 0; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; }
+a { color: inherit; text-decoration: none; }
+svg.i { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+svg.i.fill { fill: currentColor; stroke: none; }
+:focus-visible { outline: 2.5px solid var(--primary); outline-offset: 3px; border-radius: 10px; }
+.num { font-family: var(--font-display); font-variant-numeric: tabular-nums; }
+.grad { background: linear-gradient(95deg, var(--primary), var(--primary-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.wrap { max-width: 1280px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.eyebrow { font-size: 11.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--primary-ink); }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+
+/* top bar */
+.topbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50; background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(16px) saturate(1.4); border-bottom: 1px solid var(--line); }
+.topbar .wrap { display: flex; align-items: center; gap: 16px; height: 64px; }
+.logo { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 800; font-size: 18px; white-space: nowrap; }
+.logo-mark { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--on-accent); background: linear-gradient(135deg, var(--primary), var(--primary-2)); box-shadow: var(--glow); }
+.logo em { font-style: normal; color: var(--primary); }
+.nav { display: flex; gap: 2px; }
+.nav a { display: flex; align-items: center; gap: 7px; padding: 8px 13px; border-radius: 999px; font-weight: 600; font-size: 14.5px; color: var(--ink-2); white-space: nowrap; transition: background .2s, color .2s; }
+.nav a:hover { background: var(--surface-2); color: var(--ink); }
+.nav a.active { color: var(--on-accent); background: linear-gradient(100deg, var(--primary), var(--primary-2)); box-shadow: var(--glow); }
+.badge { min-width: 19px; height: 19px; padding: 0 5px; border-radius: 99px; background: var(--primary); color: var(--on-accent); font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; }
+.nav a.active .badge { background: var(--on-accent); color: var(--primary); }
+.top-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.streak { display: flex; align-items: center; gap: 5px; padding: 6px 11px; border-radius: 999px; background: var(--amber-soft); color: var(--amber-ink); font-family: var(--font-display); font-weight: 700; font-size: 13.5px; white-space: nowrap; }
+.streak svg { color: var(--primary-2); width: 16px; height: 16px; }
+.icon-btn { width: 38px; height: 38px; border-radius: 99px; display: grid; place-items: center; color: var(--ink-2); position: relative; border: 1px solid var(--line); background: var(--surface); }
+.icon-btn .dot { position: absolute; top: -3px; right: -3px; }
+.me { display: flex; align-items: center; gap: 8px; padding: 3px 12px 3px 3px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); }
+.avatar { width: 32px; height: 32px; border-radius: 99px; display: grid; place-items: center; background: var(--ink); color: var(--bg); font-family: var(--font-display); font-weight: 700; font-size: 12px; }
+.me b { display: block; font-size: 13px; line-height: 1.2; }
+.me small { display: block; font-size: 11.5px; color: var(--muted); }
+@media (max-width: 1180px) { .nav a:not(.active) .t { display: none; } .me .who { display: none; } .me { padding: 3px; } }
+.context { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-block: 10px; font-size: 13px; color: var(--ink-2); }
+.chip-select { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); font-weight: 700; color: var(--ink); }
+.chip-select svg { width: 14px; height: 14px; color: var(--muted); }
+.tabbar { display: none; }
+@media (max-width: 860px) {
+  .nav, .me { display: none; }
+  .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(16px); border-top: 1px solid var(--line); padding: 6px max(8px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px)); }
+  .tabbar a { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; font-size: 11px; font-weight: 600; color: var(--muted); position: relative; }
+  .tabbar a.active { color: var(--primary); }
+  .tabbar a.active::before { content: ""; position: absolute; top: -6px; width: 28px; height: 3px; border-radius: 0 0 3px 3px; background: var(--primary); }
+  main { padding-bottom: 100px !important; }
+}
+@media (max-width: 520px) { .streak .t, #themeBtn { display: none; } }
+
+/* shared */
+main { padding-block: 8px 64px; }
+.view { display: none; }
+.view.active { display: block; }
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 14px 0 20px; }
+.page-head h1 { font-size: clamp(25px, 3vw, 34px); font-weight: 800; margin-top: 6px; }
+.page-head .lead { color: var(--ink-2); margin-top: 6px; }
+.card { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 22px; box-shadow: var(--shadow); min-width: 0; overflow: hidden; isolation: isolate; }
+.spot::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0; transition: opacity .35s; background: radial-gradient(420px circle at var(--mx,50%) var(--my,50%), color-mix(in srgb, var(--primary) 8%, transparent), transparent 60%); }
+.spot:hover::after { opacity: 1; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.card-head h3 { font-size: 17px; font-weight: 700; }
+.tile { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; flex: none; background: var(--primary-soft); color: var(--primary-ink); }
+.t-green { background: var(--green-soft); color: var(--green-ink); } .t-amber { background: var(--amber-soft); color: var(--amber-ink); }
+.t-navy { background: var(--navy-soft); color: var(--navy-ink); } .t-lock { background: var(--surface-2); color: var(--lock-ink); }
+.link { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: 14px; color: var(--primary-ink); white-space: nowrap; }
+.link svg { width: 15px; height: 15px; transition: transform .25s var(--ease); }
+.link:hover svg { transform: translateX(4px); }
+.btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 20px; border-radius: 999px; font-family: var(--font-display); font-weight: 700; font-size: 14.5px; white-space: nowrap; overflow: hidden; transition: transform .2s var(--ease), background-position .5s var(--ease), border-color .2s, color .2s; }
+.btn svg { width: 17px; height: 17px; transition: transform .25s var(--ease); }
+.btn:hover svg.arrow { transform: translateX(4px); }
+.btn-primary { color: var(--on-accent); background: linear-gradient(100deg, var(--primary), var(--primary-2) 50%, var(--primary)); background-size: 200% 100%; box-shadow: var(--glow); }
+.btn-primary:hover { background-position: 100% 0; transform: translateY(-1px); }
+.btn-primary::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,.32) 50%, transparent 65%); background-size: 250% 100%; background-position: 130% 0; animation: sheen 3.6s ease-in-out 1.2s infinite; pointer-events: none; }
+@keyframes sheen { 0%, 70% { background-position: 130% 0; } 100% { background-position: -30% 0; } }
+.btn-outline { border: 1.5px solid var(--line-2); background: var(--surface); color: var(--ink); }
+.btn-outline:hover { border-color: var(--primary); color: var(--primary-ink); }
+.btn-sm { padding: 8px 15px; font-size: 13px; }
+.btn[disabled] { background: var(--lock); color: var(--lock-ink); box-shadow: none; cursor: not-allowed; border: 0; }
+.btn[disabled]::after { display: none; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.pill svg { width: 13px; height: 13px; }
+.p-primary { background: var(--primary-soft); color: var(--primary-ink); } .p-amber { background: var(--amber-soft); color: var(--amber-ink); }
+.p-green { background: var(--green-soft); color: var(--green-ink); } .p-navy { background: var(--navy-soft); color: var(--navy-ink); }
+.p-lock { background: var(--surface-2); color: var(--muted); } .p-line { border: 1px solid var(--line-2); color: var(--ink-2); }
+.p-rose { background: var(--rose-soft); color: var(--rose-ink); }
+.bar { height: 7px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg, var(--primary), var(--primary-2)); transition: width 1s var(--ease); }
+.seg { display: inline-flex; gap: 2px; padding: 4px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); max-width: 100%; overflow-x: auto; }
+.seg button { display: inline-flex; align-items: center; gap: 7px; padding: 8px 15px; border-radius: 999px; font-weight: 600; font-size: 14px; color: var(--ink-2); white-space: nowrap; transition: background .2s, color .2s; }
+.seg button:hover { background: var(--surface-2); color: var(--ink); }
+.seg button.on { color: var(--on-accent); background: linear-gradient(100deg, var(--primary), var(--primary-2)); box-shadow: var(--glow); }
+.seg .c { font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 99px; background: var(--surface-2); line-height: 18px; }
+.seg button.on .c { background: rgba(255,255,255,.25); }
+.rise { animation: rise .6s var(--ease) both; animation-delay: calc(var(--d, 0) * 60ms); }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+.live { width: 7px; height: 7px; border-radius: 99px; background: var(--primary); animation: ping 1.6s infinite; }
+@keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 60%, transparent); } 100% { box-shadow: 0 0 0 9px transparent; } }
+.grid { display: grid; gap: 18px; }
+.g-12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.s8 { grid-column: span 8; } .s7 { grid-column: span 7; } .s5 { grid-column: span 5; } .s4 { grid-column: span 4; } .s3 { grid-column: span 3; } .s12 { grid-column: 1 / -1; }
+@media (max-width: 1100px) { .g-12 { grid-template-columns: 1fr 1fr; } .s8, .s7, .s12 { grid-column: 1 / -1; } .s5, .s4, .s3 { grid-column: span 1; } }
+@media (max-width: 720px) { .g-12 { grid-template-columns: 1fr; } .s5, .s4, .s3 { grid-column: auto; } }
+.demo-note { margin-top: 28px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ===== Tổng quan ===== */
+.stats { display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; }
+.stat { padding: 11px 18px; min-width: 0; }
+.stat + .stat { border-left: 1px solid var(--line); }
+.stat b { display: block; font-family: var(--font-display); font-size: 21px; font-weight: 800; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.stat b span { font-size: 13px; color: var(--muted); font-weight: 600; }
+.stat small { display: block; font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+@media (max-width: 720px) { .stats { width: 100%; display: grid; grid-template-columns: repeat(2, 1fr); } .stat + .stat { border-left: 0; } .stat:nth-child(even) { border-left: 1px solid var(--line); } .stat:nth-child(n+3) { border-top: 1px solid var(--line); } }
+.hero { padding: 26px; background: radial-gradient(70% 90% at 100% 0%, var(--blush), transparent 70%), radial-gradient(40% 60% at 0% 100%, var(--amber-soft), transparent 70%), var(--surface); display: flex; flex-direction: column; gap: 16px; }
+.hero h2 { font-size: clamp(22px, 2.6vw, 30px); font-weight: 800; line-height: 1.2; max-width: 22ch; }
+.hero .desc { color: var(--ink-2); max-width: 56ch; }
+.parts { display: flex; gap: 8px; flex-wrap: wrap; }
+.part { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 116px; padding: 11px 13px; border-radius: 14px; background: color-mix(in srgb, var(--surface) 75%, transparent); border: 1px solid var(--line); text-align: center; transition: transform .25s var(--ease), border-color .2s; }
+.part:hover { transform: translateY(-3px); border-color: var(--primary); }
+.part b { font-size: 13.5px; font-family: var(--font-display); }
+.part small { font-size: 12px; color: var(--muted); font-weight: 600; }
+.parts .arr { align-self: center; color: var(--lock-ink); }
+@media (max-width: 560px) { .parts .arr { display: none; } .part { flex: 1 1 28%; min-width: 0; } }
+.exam { color: var(--on-accent); background: linear-gradient(150deg, var(--primary), var(--primary-2)); border: 0; display: flex; flex-direction: column; gap: 14px; }
+.exam::before { content: ""; position: absolute; right: -40px; bottom: -60px; width: 220px; height: 220px; border-radius: 50%; border: 36px solid rgba(255,255,255,.08); z-index: -1; }
+.exam .eyebrow { color: rgba(255,255,255,.82); }
+.exam .tile { background: rgba(255,255,255,.16); color: var(--on-accent); }
+.exam .big { font-family: var(--font-display); font-size: 54px; font-weight: 800; line-height: 1; letter-spacing: -.04em; }
+.exam-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 13px; border-radius: 12px; background: rgba(255,255,255,.12); font-size: 13.5px; font-weight: 600; }
+.exam-row .pill { background: #fff; color: #A81700; }
+.exam .link { color: var(--on-accent); margin-top: auto; }
+.plan-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 11px 2px; border-top: 1px solid var(--line); }
+.plan-row:first-child { border-top: 0; }
+.plan-row h4 { font-family: var(--font-body); font-size: 14.5px; font-weight: 600; letter-spacing: 0; }
+.plan-row .meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 2px; font-size: 12.5px; color: var(--muted); }
+.st { width: 26px; height: 26px; border-radius: 99px; display: grid; place-items: center; border: 2px solid var(--line-2); color: transparent; }
+.st svg { width: 14px; height: 14px; stroke-width: 3; }
+.st.ok { background: var(--green); border-color: var(--green); color: #fff; }
+.st.now { border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-soft); }
+.plan-row.done h4 { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-2); }
+.weak { display: grid; gap: 12px; }
+.weak-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px 12px; align-items: center; }
+.weak-row b { font-size: 14px; }
+.weak-row .bar { grid-column: 1 / -1; }
+.score b { font-family: var(--font-display); font-size: 44px; font-weight: 800; line-height: 1; letter-spacing: -.04em; }
+.score-bar { position: relative; height: 8px; border-radius: 99px; background: var(--surface-2); margin: 14px 0 6px; }
+.score-bar i { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 99px; background: linear-gradient(90deg, var(--amber), var(--primary-2)); transition: width 1.2s var(--ease); }
+.score-bar em { position: absolute; top: -5px; left: 80%; width: 3px; height: 18px; border-radius: 2px; background: var(--ink); }
+.scale { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.journey { overflow-x: auto; padding-bottom: 4px; }
+.journey ol { display: flex; align-items: flex-start; list-style: none; padding: 0; margin: 0; min-width: max-content; }
+.journey li { display: flex; align-items: flex-start; }
+.journey .seg-line { width: 46px; height: 3px; margin-top: 17px; border-radius: 99px; background: repeating-linear-gradient(90deg, var(--line-2) 0 6px, transparent 6px 12px); }
+.journey .seg-line.ok { background: var(--green); }
+.jstop { width: 116px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; }
+.jdot { width: 36px; height: 36px; border-radius: 99px; display: grid; place-items: center; font-weight: 800; font-size: 13px; font-family: var(--font-display); background: var(--surface); border: 2px solid var(--line-2); color: var(--muted); }
+.jdot.ok { background: var(--green); border-color: var(--green); color: #fff; }
+.jdot.now { color: #fff; border: 0; background: linear-gradient(135deg, var(--primary), var(--primary-2)); box-shadow: var(--glow); }
+.jstop b { font-size: 13px; line-height: 1.3; }
+.jstop small { font-size: 11.5px; color: var(--muted); }
+.delta { width: 58px; flex: none; text-align: center; padding: 5px 0; border-radius: 11px; font-family: var(--font-display); font-weight: 800; font-size: 14px; }
+.feed { display: grid; gap: 11px; }
+.feed-row { display: flex; gap: 12px; align-items: center; }
+.feed-row b { font-size: 14px; display: block; }
+.feed-row small { font-size: 12px; color: var(--muted); }
+
+/* ===== Lộ trình ===== */
+.path-tabs { position: sticky; top: calc(64px + env(safe-area-inset-top, 0px)); z-index: 30; margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px))); padding: 10px max(16px, env(safe-area-inset-left, 0px)); background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(14px); }
+.kpi { display: flex; align-items: center; gap: 12px 14px; flex-wrap: wrap; }
+.ring { position: relative; width: 60px; height: 60px; flex: none; }
+.ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 6; }
+.ring .tr { stroke: var(--surface-2); } .ring .br { stroke: var(--primary); stroke-linecap: round; transition: stroke-dashoffset 1.2s var(--ease); }
+.ring b { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--font-display); font-size: 14px; font-weight: 800; }
+.route { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 980px) { .route { grid-template-columns: 1fr; } }
+.stage-list { display: grid; gap: 10px; position: relative; }
+.stage { position: relative; display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 12px; align-items: center; width: 100%; text-align: left; padding: 14px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); transition: border-color .2s, transform .2s var(--ease), box-shadow .2s; }
+.stage:hover { transform: translateX(3px); border-color: var(--line-2); }
+.stage.on { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft), var(--shadow); }
+.stage .n { width: 40px; height: 40px; border-radius: 99px; display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: 14px; }
+.n-ok { background: var(--green); color: #fff; } .n-now { color: #fff; background: linear-gradient(135deg, var(--primary), var(--primary-2)); box-shadow: var(--glow); }
+.n-open { border: 2px solid var(--primary); color: var(--primary); background: var(--surface); } .n-lock { background: var(--surface-2); color: var(--lock-ink); }
+.n-exam { background: var(--amber-soft); color: var(--amber-ink); border: 2px solid var(--amber); } .n-place { background: var(--navy-soft); color: var(--navy-ink); border: 2px solid var(--navy); }
+.stage b { display: block; font-size: 14.5px; line-height: 1.3; }
+.stage small { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.stage .mini { margin-top: 7px; height: 5px; }
+.stage-list .between { margin: -4px 0 -4px 33px; width: 2px; height: 10px; background: var(--line-2); border-radius: 2px; }
+.detail { position: sticky; top: calc(128px + env(safe-area-inset-top, 0px)); }
+@media (max-width: 980px) { .detail { position: static; } }
+.d-head { display: flex; gap: 14px; align-items: flex-start; }
+.d-head h2 { font-size: 21px; font-weight: 800; margin: 2px 0 6px; }
+.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.steps { display: grid; gap: 0; margin-top: 16px; position: relative; }
+.step { position: relative; display: grid; grid-template-columns: 34px minmax(0,1fr) auto; gap: 14px; align-items: start; padding: 12px 0; }
+.step::before { content: ""; position: absolute; left: 16px; top: 46px; bottom: -12px; width: 2px; background: var(--line-2); }
+.step:last-child::before { display: none; }
+.step.ok::before { background: var(--green); }
+.step .dot { width: 34px; height: 34px; border-radius: 99px; display: grid; place-items: center; position: relative; z-index: 1; }
+.step .dot svg { width: 16px; height: 16px; }
+.d-ok { background: var(--green); color: #fff; } .d-fail { background: var(--rose-soft); color: var(--rose-ink); border: 2px solid var(--rose-ink); }
+.d-now { color: #fff; background: linear-gradient(135deg, var(--primary), var(--primary-2)); box-shadow: var(--glow); }
+.d-now::after { content: ""; position: absolute; inset: -6px; border-radius: 99px; border: 2px solid var(--primary); opacity: .35; animation: pulse 2s ease-out infinite; }
+@keyframes pulse { from { transform: scale(.85); opacity: .5; } to { transform: scale(1.35); opacity: 0; } }
+.d-open { background: var(--surface); color: var(--primary); border: 2px solid var(--primary); } .d-lock { background: var(--surface-2); color: var(--lock-ink); }
+.d-repair { background: var(--amber); color: #15110E; }
+.step h4 { font-family: var(--font-body); font-size: 14.5px; font-weight: 700; letter-spacing: 0; }
+.step .kind { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.step .meta { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.step.repair { margin-left: 22px; padding-left: 12px; border-left: 2px dashed var(--amber); }
+.step.repair::before { display: none; }
+.repair-head { margin: 4px 0 -2px 22px; }
+details.why { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
+details.why summary { cursor: pointer; color: var(--primary-ink); font-weight: 600; list-style: none; }
+details.why summary::before { content: "▸ "; }
+details.why[open] summary::before { content: "▾ "; }
+.place-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-top: 14px; }
+.place { border: 1px solid var(--line); border-radius: 16px; padding: 13px; display: flex; flex-direction: column; gap: 8px; }
+.place.untested { border-style: dashed; background: var(--surface-2); }
+.slider { width: 100%; accent-color: var(--primary); }
+.marks { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.skillmap { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+
+/* ===== Bài tập ===== */
+.sum { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 16px; }
+@media (max-width: 720px) { .sum { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+.sum button { text-align: left; padding: 14px 16px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); transition: border-color .2s, transform .2s var(--ease); }
+.sum button:hover { transform: translateY(-2px); }
+.sum button.on { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft), var(--shadow); }
+.sum b { display: block; font-family: var(--font-display); font-size: 26px; font-weight: 800; line-height: 1.1; }
+.sum small { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.search { position: relative; width: min(320px, 100%); }
+.search input { width: 100%; padding: 10px 16px 10px 38px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; }
+.search input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-soft); }
+.search svg { position: absolute; left: 13px; top: 50%; translate: 0 -50%; color: var(--muted); width: 16px; height: 16px; }
+.group-h { display: flex; align-items: center; gap: 12px; margin: 18px 0 10px; }
+.group-h .rule { flex: 1; height: 1px; background: var(--line); }
+.as { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 16px; align-items: center; padding: 16px 18px; margin-bottom: 10px; transition: transform .2s var(--ease), border-color .2s, box-shadow .2s; }
+.as:hover { transform: translateY(-2px); border-color: var(--line-2); box-shadow: var(--shadow-lg); }
+.as h3 { font-size: 15.5px; font-weight: 700; margin-top: 3px; }
+.as .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 7px; font-size: 12.5px; color: var(--muted); }
+.as .right { display: flex; align-items: center; gap: 16px; }
+.as .prog { width: 150px; }
+.as .prog small { font-size: 12px; color: var(--muted); font-weight: 600; }
+@media (max-width: 760px) { .as { grid-template-columns: auto minmax(0,1fr); } .as .right { grid-column: 1 / -1; justify-content: space-between; } }
+
+/* ===== Luyện tập ===== */
+.rec { padding: 26px; background: radial-gradient(70% 90% at 100% 0%, var(--blush), transparent 70%), var(--surface); }
+.rec h2 { font-size: clamp(22px, 2.6vw, 28px); font-weight: 800; }
+.dur { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+.dur button { padding: 13px; border-radius: 16px; border: 1.5px solid var(--line-2); background: var(--surface); text-align: left; transition: border-color .2s, box-shadow .2s; }
+.dur button b { display: block; font-family: var(--font-display); font-size: 17px; }
+.dur button small { font-size: 12.5px; color: var(--muted); }
+.dur button.on { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.modes { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+@media (max-width: 560px) { .modes, .dur { grid-template-columns: 1fr; } }
+.mode { display: flex; gap: 12px; align-items: flex-start; padding: 15px; border-radius: 18px; border: 1.5px solid var(--line); background: var(--surface); text-align: left; transition: border-color .2s, transform .2s var(--ease), box-shadow .2s; }
+.mode:hover { transform: translateY(-2px); border-color: var(--line-2); }
+.mode.on { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.mode b { display: block; font-size: 14.5px; }
+.mode small { font-size: 12.5px; color: var(--muted); }
+.resume { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 14px 18px; border-radius: 18px; background: var(--amber-soft); border: 1px solid color-mix(in srgb, var(--amber) 55%, transparent); margin-bottom: 18px; }
+.hist { display: grid; gap: 10px; }
+.hist-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 10px; padding: 12px 0; border-top: 1px solid var(--line); }
+.hist-row:first-child { border-top: 0; padding-top: 0; }
+.hist-row b { font-size: 14px; }
+.hist-row small { font-size: 12px; color: var(--muted); }
+
+/* ===== Hồ sơ ===== */
+.habit { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+@media (max-width: 560px) { .habit { grid-template-columns: 1fr; } }
+.habit div { padding: 14px; border-radius: 16px; background: var(--surface-2); }
+.habit b { display: block; font-family: var(--font-display); font-size: 22px; font-weight: 800; }
+.habit small { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.topic { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+.topic:first-child { border-top: 0; }
+.topic b { font-size: 14px; }
+.topic .bar { grid-column: 1 / -1; }
+.chart text { fill: var(--muted); font-size: 11px; font-family: var(--font-body); }
+.chart .grid-l { stroke: var(--line); }
+.chart .area { fill: color-mix(in srgb, var(--primary) 12%, transparent); }
+.chart .line { fill: none; stroke: var(--primary); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.chart .tgt { stroke: var(--ink-2); stroke-dasharray: 5 5; }
+.chart .end { fill: var(--primary); stroke: var(--surface); stroke-width: 3; }
+.log { display: grid; gap: 12px; }
+.log-row { display: flex; gap: 12px; align-items: center; }
+.log-row b { display: block; font-size: 14px; }
+.log-row small { font-size: 12px; color: var(--muted); }
+
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); translate: -50% 0; z-index: 90; padding: 12px 18px; border-radius: 14px; background: var(--ink); color: var(--bg); font-weight: 600; font-size: 14px; box-shadow: var(--shadow-lg); transform: translateY(calc(100% + 140px)); visibility: hidden; transition: transform .45s var(--spring), visibility 0s .45s; max-width: calc(100% - 32px); }
+.toast.show { transform: none; visibility: visible; transition: transform .45s var(--spring), visibility 0s; }
+@media (max-width: 860px) { .toast { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></symbol>
+  <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H17a3.5 3.5 0 0 0 0-7H7a3.5 3.5 0 0 1 0-7h8.5"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 11h6M9 15h4"/></symbol>
+  <symbol id="i-dumbbell" viewBox="0 0 24 24"><path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/></symbol>
+  <symbol id="i-radar" viewBox="0 0 24 24"><path d="M12 3 20.5 9.2 17.3 19.2H6.7L3.5 9.2Z"/><path d="M12 8l3.5 2.6-1.3 4.2H9.8l-1.3-4.2Z"/></symbol>
+  <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 22c4 0 7-2.8 7-6.8 0-4.2-3.2-6.7-4.6-10.7-.3-.8-1.3-.9-1.7-.2-.9 1.6-1 3.4-2.4 4.6C9.6 7.3 9 6 8.6 5.2c-.3-.6-1.2-.6-1.5.1C5.9 7.9 5 10.4 5 15.2 5 19.2 8 22 12 22Z"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19 7"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H20v15H5.5A1.5 1.5 0 0 0 4 19.5Z"/><path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H20"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7Z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6Z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-review" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.9-3.9L3 9"/><path d="M3 4v5h5"/><path d="M4 13a8 8 0 0 0 14.9 3.9L21 15"/><path d="M21 20v-5h-5"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h12l-2 4 2 4H5"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-graph" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M5 6c3 0 4 12 7 12s4-12 7-12"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11Z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5Z"/></symbol>
+</svg>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="logo" href="#tong-quan" aria-label="EduTwin, về Tổng quan"><span class="logo-mark"><svg class="i"><use href="#i-route"/></svg></span><span>Edu<em>Twin</em></span></a>
+    <nav class="nav" aria-label="Điều hướng học tập">
+      <a href="#tong-quan" data-view="tong-quan" title="Tổng quan"><svg class="i"><use href="#i-home"/></svg><span class="t">Tổng quan</span></a>
+      <a href="#lo-trinh" data-view="lo-trinh" title="Lộ trình học tập"><svg class="i"><use href="#i-route"/></svg><span class="t">Lộ trình</span></a>
+      <a href="#bai-tap" data-view="bai-tap" title="Bài tập của tôi"><svg class="i"><use href="#i-clip"/></svg><span class="t">Bài tập</span><span class="badge">3</span></a>
+      <a href="#luyen-tap" data-view="luyen-tap" title="Luyện tập thích ứng"><svg class="i"><use href="#i-dumbbell"/></svg><span class="t">Luyện tập</span></a>
+      <a href="#ho-so" data-view="ho-so" title="Hồ sơ năng lực (Twin)"><svg class="i"><use href="#i-radar"/></svg><span class="t">Hồ sơ năng lực</span></a>
+    </nav>
+    <div class="top-right">
+      <span class="streak" title="Chuỗi ngày học liên tiếp"><svg class="i fill"><use href="#i-flame"/></svg><span class="t">Chuỗi&nbsp;</span>7 ngày</span>
+      <button class="icon-btn" type="button" id="themeBtn" aria-label="Đổi giao diện sáng hoặc tối"><svg class="i"><use href="#i-moon"/></svg></button>
+      <button class="icon-btn" type="button" aria-label="Thông báo, 2 chưa đọc"><svg class="i"><use href="#i-bell"/></svg><span class="badge dot">2</span></button>
+      <span class="me"><span class="avatar">MA</span><span class="who"><b>Minh Anh</b><small>Lớp 10A2 · Học sinh</small></span></span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="context" aria-label="Phạm vi đang xem">
+    <span class="muted">Môn</span>
+    <button class="chip-select" type="button">Toán <svg class="i"><use href="#i-down"/></svg></button>
+    <span class="chip-select" style="font-weight:600">Lớp 10A2 · Khối 10</span>
+    <span class="muted small">Giáo trình: Toán 10 (giáo viên áp dụng)</span>
+  </div>
+
+  <!-- ================= TỔNG QUAN ================= -->
+  <section class="view" id="view-tong-quan" aria-label="Tổng quan">
+    <div class="page-head">
+      <div class="rise">
+        <p class="eyebrow">Thứ Bảy, 14/11 · Toán</p>
+        <h1>Chào buổi tối, <span class="grad">Minh Anh</span></h1>
+        <p class="lead">Còn <b>2 việc</b> trong kế hoạch hôm nay. Làm bài kiểm tra của cô trước nhé.</p>
+      </div>
+      <div class="stats rise" style="--d:1">
+        <div class="stat"><b class="num">7</b><small>ngày liên tiếp</small></div>
+        <div class="stat"><b class="num">2<span>/6</span></b><small>chuyên đề đã vững</small></div>
+        <div class="stat"><b class="num">6.8<span>/8</span></b><small>dự đoán / mục tiêu</small></div>
+        <div class="stat"><b class="num">3</b><small>bài tập đang chờ</small></div>
+      </div>
+    </div>
+
+    <div class="grid g-12">
+      <article class="card hero spot s8 rise" style="--d:2">
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span class="pill p-primary"><span class="live"></span>Ưu tiên cao · Bài tập của cô Hạnh</span>
+          <span class="pill p-line"><svg class="i"><use href="#i-clock"/></svg>Hạn còn&nbsp;<span class="num" id="cd">02:14:37</span></span>
+        </div>
+        <div>
+          <h2>Kiểm tra 15 phút: <span class="grad">Hàm số bậc hai</span></h2>
+          <p class="desc" style="margin-top:6px">10 câu · làm trong 15 phút · nộp trước 21:00 hôm nay. Đã làm 0/10 câu.</p>
+        </div>
+        <div class="parts" aria-label="Nội dung bài">
+          <div class="part"><span class="tile"><svg class="i"><use href="#i-graph"/></svg></span><b>Đồ thị parabol</b><small>4 câu</small></div>
+          <span class="arr"><svg class="i"><use href="#i-chev"/></svg></span>
+          <div class="part"><span class="tile"><svg class="i"><use href="#i-target"/></svg></span><b>Tìm đỉnh, trục</b><small>3 câu</small></div>
+          <span class="arr"><svg class="i"><use href="#i-chev"/></svg></span>
+          <div class="part"><span class="tile"><svg class="i"><use href="#i-up"/></svg></span><b>Sự biến thiên</b><small>3 câu</small></div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <a class="btn btn-primary" href="#bai-tap">Làm bài ngay <svg class="i arrow"><use href="#i-arrow"/></svg></a>
+          <a class="btn btn-outline" href="#lo-trinh">Xem lộ trình</a>
+        </div>
+      </article>
+
+      <article class="card exam s4 rise" style="--d:3">
+        <div style="display:flex;align-items:center;gap:10px"><span class="tile"><svg class="i"><use href="#i-flag"/></svg></span><span class="eyebrow">Sắp thi</span></div>
+        <div>
+          <h3 style="font-size:18px">Thi giữa kỳ · Toán</h3>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px"><span class="big num">11</span><span style="font-weight:700">ngày nữa</span></div>
+          <p style="opacity:.9;font-size:14px">Thứ Ba 25/11 · 7:30 · 90 phút</p>
+        </div>
+        <div style="display:grid;gap:8px">
+          <div class="exam-row"><span>Bài tập: Hàm số bậc hai (2)</span><span class="pill">17/11</span></div>
+          <div class="exam-row"><span>Thi thử chương 1–2</span><span class="pill">20/11</span></div>
+        </div>
+        <a class="link" href="#lo-trinh">Xem lịch ôn thi <svg class="i"><use href="#i-arrow"/></svg></a>
+      </article>
+
+      <article class="card spot s5 rise" style="--d:4">
+        <div class="card-head">
+          <div><p class="eyebrow">Theo lộ trình</p><h3>Kế hoạch hôm nay</h3></div>
+          <span class="pill p-line">1/3 việc · 25 phút</span>
+        </div>
+        <div>
+          <a class="plan-row done" href="#lo-trinh"><span class="st ok"><svg class="i"><use href="#i-check"/></svg></span><div><h4>Ôn nhớ lại: Mệnh đề và tập hợp</h4><div class="meta"><span class="pill p-navy">Đến hạn ôn</span>5 câu · 5 phút</div></div><span class="pill p-green">Xong</span></a>
+          <a class="plan-row" href="#lo-trinh"><span class="st now"></span><div><h4>Rèn lại: Hàm số bậc hai · bộ 3</h4><div class="meta"><span class="pill p-amber">Rèn lại</span>6 câu · 12 phút</div></div><span class="link">Làm <svg class="i"><use href="#i-arrow"/></svg></span></a>
+          <a class="plan-row" href="#lo-trinh"><span class="st"></span><div><h4>Thử nhanh: Bất phương trình bậc hai</h4><div class="meta"><span class="pill p-primary">Thử nhanh</span>4 câu · 8 phút</div></div><span class="link">Mở <svg class="i"><use href="#i-arrow"/></svg></span></a>
+        </div>
+      </article>
+
+      <article class="card spot s4 rise" style="--d:5">
+        <div class="card-head"><div><p class="eyebrow">Ưu tiên luyện</p><h3>Cần chú ý</h3></div></div>
+        <div class="weak" id="weak"></div>
+        <a class="link" href="#luyen-tap" style="margin-top:14px">Mở trang luyện tập <svg class="i"><use href="#i-arrow"/></svg></a>
+      </article>
+
+      <article class="card spot s3 rise" style="--d:6">
+        <div class="card-head" style="margin-bottom:8px"><h3>Mục tiêu giữa kỳ</h3><span class="pill p-primary">8.0</span></div>
+        <div class="score"><b class="num">6.8</b> <span class="muted">dự đoán</span></div>
+        <div class="score-bar"><i data-w="68"></i><em title="Mục tiêu 8.0"></em></div>
+        <div class="scale"><span>0</span><span>Mục tiêu</span><span>10</span></div>
+        <p class="small" style="margin-top:12px;color:var(--ink-2)">Còn thiếu <b>1.2 điểm</b> · nguy cơ chưa đạt <b>42%</b></p>
+        <a class="link" href="#ho-so" style="margin-top:12px">Hồ sơ năng lực <svg class="i"><use href="#i-arrow"/></svg></a>
+      </article>
+
+      <article class="card spot s8 rise" style="--d:7">
+        <div class="card-head"><div><p class="eyebrow">Toán 10</p><h3>Hành trình chuyên đề</h3></div><span class="pill p-green">2/6 đã vững</span></div>
+        <div class="journey" id="journey"></div>
+      </article>
+
+      <article class="card spot s4 rise" style="--d:8">
+        <div class="card-head"><h3>Vừa tiến bộ</h3><svg class="i" style="color:var(--green)"><use href="#i-up"/></svg></div>
+        <div class="feed">
+          <div class="feed-row"><span class="delta p-green">+12%</span><div><b>Hàm số</b><small>Tự kiểm tra · hôm nay 19:40</small></div></div>
+          <div class="feed-row"><span class="delta p-green">+6%</span><div><b>Hàm số bậc hai</b><small>Luyện tập · 13/11</small></div></div>
+          <div class="feed-row"><span class="delta p-rose">−4%</span><div><b>Mệnh đề và tập hợp</b><small>Bài tập: Ôn chương 1 · 12/11</small></div></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ================= LỘ TRÌNH ================= -->
+  <section class="view" id="view-lo-trinh" aria-label="Lộ trình học tập">
+    <div class="page-head">
+      <div class="rise">
+        <p class="eyebrow">Lộ trình cá nhân · Toán 10</p>
+        <h1>Chinh phục <span class="grad">8.0</span> giữa kỳ</h1>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <span class="pill p-line"><svg class="i"><use href="#i-route"/></svg>Học, luyện và ôn cân bằng</span>
+          <span class="pill p-primary"><svg class="i"><use href="#i-flag"/></svg>Ngày đích 25/11</span>
+          <span class="pill p-green"><svg class="i"><use href="#i-check"/></svg>Đúng tiến độ</span>
+        </div>
+      </div>
+      <div class="kpi rise" style="--d:1">
+        <div class="ring"><svg viewBox="0 0 60 60"><circle class="tr" cx="30" cy="30" r="25"/><circle class="br" id="pathRing" cx="30" cy="30" r="25" stroke-dasharray="157" stroke-dashoffset="157"/></svg><b>2/5</b></div>
+        <div><b style="font-family:var(--font-display)">kỹ năng đã vững</b><p class="small muted">Dự kiến xong 22/11</p></div>
+        <button class="btn btn-outline btn-sm" type="button">Điều chỉnh mục tiêu</button>
+        <button class="btn btn-outline btn-sm" type="button" data-go-place>Kiểm tra thêm phần khác</button>
+      </div>
+    </div>
+
+    <div class="path-tabs"><div class="seg" role="tablist" id="pathTabs">
+      <button type="button" class="on" data-ptab="route">Lộ trình <span class="c">5</span></button>
+      <button type="button" data-ptab="today">Hôm nay <span class="c">3</span></button>
+      <button type="button" data-ptab="map">Bản đồ năng lực <span class="c">6</span></button>
+      <button type="button" data-ptab="history">Lịch sử tuyến <span class="c">2</span></button>
+    </div></div>
+
+    <div data-ppane="route" style="margin-top:14px">
+      <div class="route">
+        <div class="stage-list" id="stageList" aria-label="Các chặng"></div>
+        <div class="card detail" id="stageDetail" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div data-ppane="today" hidden style="margin-top:14px">
+      <div class="grid g-12">
+        <article class="card s7 hero">
+          <p class="eyebrow" style="display:flex;align-items:center;gap:8px"><span class="live"></span>Bắt đầu từ đây</p>
+          <h2>Rèn lại: Hàm số bậc hai · bộ 3</h2>
+          <p class="desc">Bài tự kiểm tra chưa đạt (2/5). Bộ này ưu tiên các dạng em vừa sai: xét dấu a và tìm đỉnh. Đạt 2 bộ liên tiếp từ 80% sẽ mở lại bài tự kiểm tra.</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-primary" type="button" data-toast="Mở nhiệm vụ (bản demo)">Mở nhiệm vụ · 6 câu · khoảng 12 phút <svg class="i arrow"><use href="#i-arrow"/></svg></button></div>
+        </article>
+        <article class="card s5">
+          <div class="card-head"><h3>Thời gian hôm nay</h3><b class="num" id="minOut">30 phút</b></div>
+          <input class="slider" id="minSlider" type="range" min="5" max="300" step="5" value="30" aria-label="Thời gian học hôm nay">
+          <div class="marks"><span>5p</span><span>1h</span><span>2h</span><span>3h</span><span>4h</span><span>5h</span></div>
+          <p class="small muted" style="margin-top:10px">Kế hoạch: 3 nhiệm vụ · khoảng 25 phút · ≈ 15 câu</p>
+        </article>
+        <article class="card s12">
+          <div class="card-head"><h3>Các bước tiếp theo hôm nay</h3><span class="pill p-line">Ôn đúng hạn giúp nhớ lâu hơn</span></div>
+          <div>
+            <div class="plan-row"><span class="st"></span><div><h4>Ôn nhớ lại: Mệnh đề và tập hợp</h4><div class="meta"><span class="pill p-navy">Đến hạn ôn</span>5 câu · khoảng 5 phút</div></div><button class="btn btn-outline btn-sm" type="button" data-toast="Mở bài ôn (bản demo)">Ôn ngay</button></div>
+            <div class="plan-row"><span class="st"></span><div><h4>Thử nhanh: Bất phương trình bậc hai</h4><div class="meta"><span class="pill p-primary">Thử nhanh</span>4 câu · đạt thì bỏ qua phần lý thuyết</div></div><button class="btn btn-outline btn-sm" type="button" data-toast="Mở nhiệm vụ (bản demo)">Mở</button></div>
+            <div class="plan-row"><span class="st"></span><div><h4>Còn thời gian: Bài tập Hàm số bậc hai (2)</h4><div class="meta"><span class="pill p-line">Làm thêm</span>12 câu · khoảng 24 phút</div></div><a class="btn btn-outline btn-sm" href="#bai-tap">Mở bài</a></div>
+          </div>
+        </article>
+      </div>
+    </div>
+
+    <div data-ppane="map" hidden style="margin-top:14px">
+      <div class="skillmap" id="skillMap"></div>
+    </div>
+
+    <div data-ppane="history" hidden style="margin-top:14px">
+      <div class="card">
+        <div class="card-head"><h3>Lịch sử tuyến học</h3></div>
+        <p class="small muted">Đổi tuyến không xoá bài làm. Câu trả lời của các tuyến trước vẫn được dùng để xác định phần yếu.</p>
+        <div style="margin-top:12px">
+          <div class="plan-row"><span class="tile t-lock"><svg class="i"><use href="#i-route"/></svg></span><div><h4>Phiên bản 2 · Chinh phục 8.0 giữa kỳ</h4><div class="meta">12/11 – nay · 7/18 nhiệm vụ · 64 câu đã trả lời</div></div><span class="pill p-primary">Đang học</span></div>
+          <div class="plan-row"><span class="tile t-lock"><svg class="i"><use href="#i-route"/></svg></span><div><h4>Phiên bản 1 · Kiểm tra đầu vào</h4><div class="meta">12/11 · 3/3 phần · 12 câu đã trả lời</div></div><button class="btn btn-outline btn-sm" type="button" data-toast="Chỉ xem lại (bản demo)">Xem lại</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= BÀI TẬP ================= -->
+  <section class="view" id="view-bai-tap" aria-label="Bài tập của tôi">
+    <div class="page-head">
+      <div class="rise">
+        <p class="eyebrow">Bài giáo viên giao · theo mốc thời gian</p>
+        <h1>Bài tập <span class="grad">của tôi</span></h1>
+        <p class="lead">Bài gần hạn đứng trước. Bài đã nộp vẫn xem lại được cùng nhận xét của giáo viên.</p>
+      </div>
+    </div>
+    <div class="sum" id="asSum"></div>
+    <div class="toolbar">
+      <div class="seg" id="asSeg"></div>
+      <label class="search"><svg class="i"><use href="#i-search"/></svg><input id="asSearch" type="search" placeholder="Tìm bài tập hoặc chuyên đề" aria-label="Tìm bài tập hoặc chuyên đề"></label>
+    </div>
+    <div id="asList"></div>
+  </section>
+
+  <!-- ================= LUYỆN TẬP ================= -->
+  <section class="view" id="view-luyen-tap" aria-label="Luyện tập thích ứng">
+    <div class="page-head">
+      <div class="rise">
+        <p class="eyebrow">Phiên luyện tập cá nhân hoá</p>
+        <h1>Luyện tập <span class="grad">thích ứng</span></h1>
+        <p class="lead">Độ khó tự điều chỉnh theo từng câu. Mỗi phiên kết thúc bằng báo cáo năng lực.</p>
+      </div>
+    </div>
+    <div class="resume rise" style="--d:1">
+      <div style="display:flex;gap:12px;align-items:center"><span class="tile t-amber"><svg class="i"><use href="#i-play"/></svg></span><div><b>Bạn có phiên đang làm dở</b><p class="small" style="color:var(--amber-ink)">Hàm số · câu 3/8 · còn khoảng 9 phút</p></div></div>
+      <div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" type="button" data-toast="Tiếp tục phiên (bản demo)">Tiếp tục</button><button class="btn btn-outline btn-sm" type="button" data-toast="Đã dừng phiên (bản demo)">Dừng phiên này</button></div>
+    </div>
+    <div class="grid g-12">
+      <div class="s8" style="display:grid;gap:18px">
+        <article class="card rec spot">
+          <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+            <div><p class="eyebrow">Mục tiêu luyện tập đề xuất</p><h2 style="margin-top:4px">Hàm số bậc hai</h2></div>
+            <span class="pill p-amber">Khuyên dùng: Luyện theo điểm yếu</span>
+          </div>
+          <details class="why" open style="margin-top:12px"><summary>Vì sao EduTwin đề xuất nội dung này?</summary><p style="margin-top:4px">Năng lực ước lượng 38%, dưới mục tiêu phiên 60%. 3 câu sai gần nhất đều ở bước xét dấu hệ số a khi lập bảng biến thiên.</p></details>
+          <div style="margin-top:16px">
+            <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600"><span>Năng lực ước lượng: <b>38%</b></span><span style="color:var(--primary-ink)">Mục tiêu phiên: 60%</span></div>
+            <div class="score-bar" style="margin-top:8px"><i data-w="38"></i><em style="left:60%"></em></div>
+          </div>
+          <p class="small" style="margin:16px 0 8px;font-weight:700">Thời lượng phiên</p>
+          <div class="dur" id="dur">
+            <button type="button" data-d="10"><b>10 phút</b><small>4 – 8 câu</small></button>
+            <button type="button" data-d="15" class="on"><b>15 phút</b><small>5 – 12 câu · khuyên dùng</small></button>
+            <button type="button" data-d="20"><b>20 phút</b><small>6 – 15 câu</small></button>
+          </div>
+          <button class="btn btn-primary" type="button" style="margin-top:18px" data-toast="Bắt đầu phiên 15 phút (bản demo)" id="startPractice">Bắt đầu luyện tập ngay <svg class="i arrow"><use href="#i-arrow"/></svg></button>
+        </article>
+        <div>
+          <p class="small" style="font-weight:700;margin-bottom:10px">Hoặc chọn chế độ khác</p>
+          <div class="modes" id="modes">
+            <button class="mode on" type="button" data-m="weak"><span class="tile t-amber"><svg class="i"><use href="#i-target"/></svg></span><span><b>Luyện theo điểm yếu</b><small>Tập trung cải thiện các kỹ năng chưa vững</small></span></button>
+            <button class="mode" type="button" data-m="lp"><span class="tile"><svg class="i"><use href="#i-route"/></svg></span><span><b>Theo lộ trình học</b><small>Bám sát mục tiêu chặng đang học</small></span></button>
+            <button class="mode" type="button" data-m="custom"><span class="tile t-navy"><svg class="i"><use href="#i-search"/></svg></span><span><b>Tự chọn chủ đề</b><small>Chủ động chọn chủ đề muốn ôn luyện</small></span></button>
+            <button class="mode" type="button" data-m="review"><span class="tile t-green"><svg class="i"><use href="#i-review"/></svg></span><span><b>Ôn tập kiến thức cũ</b><small>Ôn lại chủ đề đã học khi đến hạn</small></span></button>
+          </div>
+        </div>
+      </div>
+      <aside class="s4" style="display:grid;gap:18px;align-content:start">
+        <article class="card">
+          <div class="card-head"><h3>Phiên gần đây</h3><a class="link" href="#luyen-tap">Tất cả <svg class="i"><use href="#i-arrow"/></svg></a></div>
+          <div class="hist">
+            <div class="hist-row"><div><b>Hàm số và phương trình bậc hai</b><br><small>Điểm yếu · 14/11 · 18 phút</small></div><span class="pill p-green">+6%</span><small>1/1 câu đúng · Dừng giữa chừng</small></div>
+            <div class="hist-row"><div><b>Hàm số</b><br><small>Lộ trình · 13/11 · 15 phút</small></div><span class="pill p-green">+12%</span><small>9/11 câu đúng · Đạt mục tiêu</small></div>
+            <div class="hist-row"><div><b>Mệnh đề và tập hợp</b><br><small>Ôn tập · 12/11 · 10 phút</small></div><span class="pill p-rose">−4%</span><small>4/7 câu đúng · Cần củng cố</small></div>
+          </div>
+        </article>
+        <article class="card">
+          <h3 style="font-size:16px">Tuần này</h3>
+          <div class="habit" style="grid-template-columns:1fr 1fr;margin-top:12px">
+            <div><b class="num">5</b><small>phiên luyện tập</small></div>
+            <div><b class="num">78%</b><small>câu trả lời đúng</small></div>
+          </div>
+        </article>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ================= HỒ SƠ NĂNG LỰC ================= -->
+  <section class="view" id="view-ho-so" aria-label="Hồ sơ năng lực">
+    <div class="page-head">
+      <div class="rise">
+        <p class="eyebrow">Bản sao số năng lực · Toán · Lớp 10A2</p>
+        <h1>Hồ sơ <span class="grad">năng lực</span></h1>
+        <p class="lead">Chỉ tính các chuyên đề trong giáo trình của lớp đang xem.</p>
+      </div>
+      <div style="display:flex;gap:8px"><button class="btn btn-outline btn-sm" type="button" data-toast="Sửa mục tiêu (bản demo)">Sửa mục tiêu</button><a class="btn btn-primary btn-sm" href="#luyen-tap">Luyện tập ngay</a></div>
+    </div>
+    <div class="grid g-12">
+      <article class="card spot s5 rise" style="--d:1">
+        <div class="card-head"><h3>Tiến tới mục tiêu</h3><span class="pill p-green">+0.4 so với mốc trước</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end">
+          <div><small class="muted">Hiện tại</small><div class="score"><b class="num">6.8</b> <span class="muted">/10</span></div></div>
+          <div style="text-align:right"><small class="muted">Mục tiêu · 25/11</small><div class="score"><b class="num grad">8.0</b></div></div>
+        </div>
+        <div class="score-bar"><i data-w="68"></i><em></em></div>
+        <div class="scale"><span>Còn 11 ngày</span><span>Cần thêm 1.2 điểm</span></div>
+      </article>
+      <article class="card spot s7 rise" style="--d:2">
+        <div class="card-head"><h3>Thói quen làm bài</h3><span class="small muted">42 lượt làm · cả môn</span></div>
+        <div class="habit">
+          <div><b class="num">72 giây</b><small>thời gian trung bình / câu</small></div>
+          <div><b class="num">4%</b><small>tỷ lệ bỏ qua câu</small></div>
+          <div><b class="num">12%</b><small>tỷ lệ đổi đáp án</small></div>
+        </div>
+        <p class="small" style="margin-top:12px;color:var(--ink-2)">Tốc độ xử lý câu hỏi của bạn ở mức cân bằng. Hãy tiếp tục rèn luyện thêm bài tập để củng cố kiến thức.</p>
+      </article>
+      <article class="card s7 rise" style="--d:3">
+        <div class="card-head" style="flex-wrap:wrap"><h3>Năng lực theo chuyên đề</h3><div class="seg" id="topicSeg" style="box-shadow:none"></div></div>
+        <div id="topics"></div>
+      </article>
+      <div class="s5" style="display:grid;gap:18px;align-content:start">
+        <article class="card rise" style="--d:4">
+          <div class="card-head"><h3>Diễn biến năng lực</h3><span class="pill p-line">8 tuần</span></div>
+          <svg class="chart" viewBox="0 0 360 170" role="img" aria-label="Mức thành thạo môn tăng từ 41% lên 62% trong 8 tuần, mục tiêu 80%">
+            <line class="grid-l" x1="34" x2="352" y1="20" y2="20"/><line class="grid-l" x1="34" x2="352" y1="70" y2="70"/><line class="grid-l" x1="34" x2="352" y1="120" y2="120"/>
+            <text x="4" y="24">100</text><text x="10" y="74">50</text><text x="16" y="124">0</text>
+            <line class="tgt" x1="34" x2="352" y1="40" y2="40"/><text x="300" y="34">mục tiêu 80</text>
+            <path class="area" d="M34 79 L79 76 L125 72 L170 73 L215 67 L261 63 L306 61 L352 58 L352 120 L34 120 Z"/>
+            <path class="line" d="M34 79 L79 76 L125 72 L170 73 L215 67 L261 63 L306 61 L352 58"/>
+            <circle class="end" cx="352" cy="58" r="5"/>
+            <text x="34" y="142">T1</text><text x="170" y="142">T4</text><text x="335" y="142">T8</text>
+            <text x="300" y="160">62% hiện tại</text>
+          </svg>
+        </article>
+        <article class="card rise" style="--d:5">
+          <div class="card-head"><h3>Nhật ký thay đổi</h3></div>
+          <div class="log">
+            <div class="log-row"><span class="delta p-green">+12%</span><div><b>Hàm số</b><small>Tự kiểm tra trong lộ trình · 14/11</small></div></div>
+            <div class="log-row"><span class="delta p-navy">GV</span><div><b>Mệnh đề và tập hợp</b><small>Giáo viên xác nhận · 13/11</small></div></div>
+            <div class="log-row"><span class="delta p-rose">−4%</span><div><b>Mệnh đề và tập hợp</b><small>Bài tập: Ôn chương 1 · 12/11</small></div></div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <p class="demo-note">Bản demo giao diện, dữ liệu minh hoạ theo đúng các trường hệ thống đang có. Chưa áp dụng vào hệ thống.</p>
+</main>
+
+<nav class="tabbar" aria-label="Điều hướng nhanh">
+  <a href="#tong-quan" data-view="tong-quan"><svg class="i"><use href="#i-home"/></svg>Tổng quan</a>
+  <a href="#lo-trinh" data-view="lo-trinh"><svg class="i"><use href="#i-route"/></svg>Lộ trình</a>
+  <a href="#bai-tap" data-view="bai-tap"><svg class="i"><use href="#i-clip"/></svg>Bài tập</a>
+  <a href="#luyen-tap" data-view="luyen-tap"><svg class="i"><use href="#i-dumbbell"/></svg>Luyện tập</a>
+  <a href="#ho-so" data-view="ho-so"><svg class="i"><use href="#i-radar"/></svg>Năng lực</a>
+</nav>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const raf2 = fn => requestAnimationFrame(() => requestAnimationFrame(fn));
+  const ico = (id, cls = '') => `<svg class="i ${cls}"><use href="#${id}"/></svg>`;
+  let tt; const toast = m => { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('show'), 2200); };
+  document.addEventListener('click', e => { const b = e.target.closest('[data-toast]'); if (b) toast(b.dataset.toast); });
+  addEventListener('pointermove', e => { const c = e.target.closest && e.target.closest('.spot'); if (!c) return; const r = c.getBoundingClientRect(); c.style.setProperty('--mx', (e.clientX - r.left) + 'px'); c.style.setProperty('--my', (e.clientY - r.top) + 'px'); });
+  const fillBars = root => { $$('[data-w]', root).forEach(i => { i.style.width = '0'; }); raf2(() => $$('[data-w]', root).forEach((i, k) => setTimeout(() => i.style.width = i.dataset.w + '%', k * 70))); };
+
+  /* ---------- shared data (mirrors masteryRadar / agenda / assignments fields) ---------- */
+  const topics = [
+    { n: 'Mệnh đề và tập hợp', v: 86, ev: 14 }, { n: 'Hàm số', v: 78, ev: 11 }, { n: 'Bất phương trình bậc nhất hai ẩn', v: 64, ev: 6 },
+    { n: 'Hàm số bậc hai', v: 38, ev: 9 }, { n: 'Bất phương trình bậc hai', v: 0, ev: 0 }, { n: 'Hệ thức lượng trong tam giác', v: 0, ev: 0 } ];
+  const lvl = t => !t.ev ? ['Chưa làm', 'p-lock', 'var(--lock-ink)'] : t.v >= 75 ? ['Vững', 'p-green', 'var(--green)'] : t.v >= 50 ? ['Đang phát triển', 'p-amber', 'var(--amber)'] : ['Cần rèn', 'p-rose', 'var(--primary)'];
+
+  /* ---------- Tổng quan ---------- */
+  $('#weak').innerHTML = topics.filter(t => t.ev).sort((a, b) => a.v - b.v).slice(0, 3).map(t => { const l = lvl(t); return `
+    <div class="weak-row"><b>${t.n}</b><span class="pill ${l[1]}">${t.v}%</span><div class="bar"><i data-w="${t.v}" style="background:${l[2]}"></i></div>
+    <a class="link small" href="#luyen-tap" style="grid-column:1/-1">Luyện 10 phút ${ico('i-arrow')}</a></div>`; }).join('');
+  const cur = topics.findIndex(t => !(t.ev && t.v >= 75));
+  $('#journey').innerHTML = '<ol>' + topics.map((t, i) => {
+    const ok = t.ev && t.v >= 75, now = i === cur;
+    return `<li>${i ? `<span class="seg-line ${ok ? 'ok' : ''}"></span>` : ''}<div class="jstop"><span class="jdot ${ok ? 'ok' : now ? 'now' : ''}">${ok ? '✓' : i + 1}</span><b>${t.n}</b><small>${ok ? 'Đã vững · ' + t.v + '%' : now ? 'Bạn đang ở đây · ' + t.v + '%' : t.ev ? t.v + '%' : 'Chưa học'}</small></div></li>`;
+  }).join('') + '</ol>';
+  const due = Date.now() + (2 * 3600 + 14 * 60 + 37) * 1000;
+  setInterval(() => { const s = Math.max(0, Math.round((due - Date.now()) / 1000)), p = n => String(n).padStart(2, '0'); $('#cd').textContent = `${p(Math.floor(s / 3600))}:${p(Math.floor(s % 3600 / 60))}:${p(s % 60)}`; }, 1000);
+
+  /* ---------- Lộ trình ---------- */
+  const placement = { date: '12/11', parts: [
+    { n: 'Mệnh đề và tập hợp', r: 'Đã có bằng chứng', c: 'p-green', s: '4/4 câu đúng' },
+    { n: 'Hàm số', r: 'Đã có bằng chứng', c: 'p-green', s: '3/4 câu đúng' },
+    { n: 'Hàm số bậc hai', r: 'Cần củng cố', c: 'p-amber', s: '1/4 câu đúng' },
+    { n: 'Bất phương trình bậc hai', r: 'Chưa kiểm tra', c: 'p-lock', s: 'Có 6 câu mới để kiểm tra', untested: true },
+    { n: 'Hệ thức lượng trong tam giác', r: 'Chưa kiểm tra', c: 'p-lock', s: 'Có 5 câu mới để kiểm tra', untested: true } ] };
+  const stages = [
+    { key: 'place', kind: 'place', t: 'Kiểm tra đầu vào', sub: '3/5 phần đã kiểm tra · 12/11' },
+    { key: 's1', kind: 'stage', st: 'ok', t: 'Hàm số', sub: '4/4 nhiệm vụ · Đã xác nhận', p: 100, chip: ['Khá vững · luyện ngắn', 'p-green'],
+      desc: 'Hàm số là quy tắc cho mỗi x đúng một giá trị y = f(x). Tìm tập xác định, tính f(a) và đọc đồ thị để biết hàm tăng hay giảm.', evidence: 'Đã xác nhận · 8 câu có bằng chứng hợp lệ',
+      steps: [ ['ok', 'i-zap', 'Thử nhanh', 'Thử nhanh: Hàm số', '4 câu · đúng 4/4 → bỏ qua phần lý thuyết', 'Xem lại'],
+               ['ok', 'i-dumbbell', 'Luyện có hướng dẫn', 'Rèn kỹ năng: Hàm số · bộ 1', '6 câu · đạt 83%', 'Xem lại'],
+               ['ok', 'i-shield', 'Tự kiểm tra', 'Kiểm tra cuối chặng: Hàm số', '5 câu mới · đúng 5/5 · đạt', 'Xem lại'],
+               ['ok', 'i-review', 'Ôn nhớ lại', 'Ôn nhớ lại: Hàm số', 'Hẹn ôn tiếp 21/11', 'Xem lại'] ] },
+    { key: 's2', kind: 'stage', st: 'now', t: 'Hàm số bậc hai', sub: '4/7 nhiệm vụ · đang rèn lại', p: 57, chip: ['Phần yếu · học nhiều hơn', 'p-rose'],
+      desc: 'Hàm bậc hai y = ax² + bx + c (a ≠ 0) có đồ thị là parabol, đỉnh tại x = −b/2a. Dấu của a quyết định parabol quay lên hay quay xuống, từ đó suy ra khoảng đồng biến và nghịch biến.', evidence: 'Cần củng cố · 9 câu có bằng chứng hợp lệ',
+      steps: [ ['ok', 'i-zap', 'Thử nhanh', 'Thử nhanh: Hàm số bậc hai', '4 câu · đúng 1/4 → học phần lý thuyết', 'Xem lại'],
+               ['ok', 'i-book', 'Tìm hiểu và ví dụ', 'Tìm hiểu: Hàm số bậc hai', 'Ví dụ từng bước · 8 phút', 'Học lại'],
+               ['ok', 'i-dumbbell', 'Luyện có hướng dẫn', 'Rèn kỹ năng: Hàm số bậc hai · bộ 1', '6 câu · đạt 83%', 'Xem lại'],
+               ['fail', 'i-shield', 'Tự kiểm tra', 'Kiểm tra cuối chặng: Hàm số bậc hai', '5 câu mới · đúng 2/5 · chưa đạt', 'Xem lại'],
+               ['repair-now', 'i-dumbbell', 'Rèn lại', 'Rèn lại: Hàm số bậc hai · bộ 3', '6 câu · ưu tiên câu từng sai · khoảng 12 phút', 'Tiếp tục'],
+               ['repair-lock', 'i-dumbbell', 'Rèn lại', 'Rèn lại: Hàm số bậc hai · bộ 4', 'Mở khi bộ 3 đạt từ 80%', 'Chưa mở'],
+               ['lock', 'i-shield', 'Tự kiểm tra', 'Kiểm tra lại: Hàm số bậc hai', 'Mở sau 2 bộ rèn lại đạt từ 80%', 'Chưa đủ điều kiện'] ] },
+    { key: 's3', kind: 'stage', st: 'open', t: 'Bất phương trình bậc hai', sub: '0/4 nhiệm vụ · Có thể bắt đầu', p: 0, chip: ['Chưa đủ bằng chứng', 'p-lock'],
+      desc: 'Xét dấu tam thức bậc hai f(x) = ax² + bx + c dựa vào dấu của a và biệt thức Δ, rồi dùng bảng xét dấu để giải bất phương trình.', evidence: 'Chưa đủ bằng chứng · 0 câu',
+      steps: [ ['open', 'i-zap', 'Thử nhanh', 'Thử nhanh: Bất phương trình bậc hai', '4 câu · đạt thì bỏ qua phần lý thuyết', 'Bắt đầu'],
+               ['lock', 'i-book', 'Tìm hiểu và ví dụ', 'Tìm hiểu: Bất phương trình bậc hai', 'Ví dụ từng bước · 8 phút', 'Chưa mở'],
+               ['lock', 'i-dumbbell', 'Luyện có hướng dẫn', 'Rèn kỹ năng · bộ 1', '6 câu · dự kiến 4 bộ', 'Chưa mở'],
+               ['lock', 'i-shield', 'Tự kiểm tra', 'Kiểm tra cuối chặng', '5 câu mới · cần đạt 80%', 'Chưa đủ điều kiện'] ] },
+    { key: 'exam', kind: 'exam', t: 'Thi giữa kỳ · Toán', sub: 'Thứ Ba 25/11 · 7:30 · 90 phút' },
+    { key: 's4', kind: 'stage', st: 'lock', t: 'Hệ thức lượng trong tam giác', sub: 'Cần vững Hàm số bậc hai trước', p: 0, chip: ['Chưa mở', 'p-lock'],
+      desc: 'Giá trị lượng giác của góc từ 0° đến 180°, định lý côsin, định lý sin và giải tam giác.', evidence: 'Chưa đủ bằng chứng · 0 câu',
+      steps: [ ['lock', 'i-zap', 'Thử nhanh', 'Thử nhanh: Hệ thức lượng', '4 câu', 'Chưa mở'], ['lock', 'i-book', 'Tìm hiểu và ví dụ', 'Tìm hiểu: Hệ thức lượng', '8 phút', 'Chưa mở'], ['lock', 'i-shield', 'Tự kiểm tra', 'Kiểm tra cuối chặng', '5 câu mới', 'Chưa đủ điều kiện'] ] },
+  ];
+  let selStage = 's2';
+  const nCls = { ok: 'n-ok', now: 'n-now', open: 'n-open', lock: 'n-lock' };
+  function renderStages() {
+    $('#stageList').innerHTML = stages.map((s, i) => {
+      const n = s.kind === 'place' ? `<span class="n n-place">${ico('i-search')}</span>` : s.kind === 'exam' ? `<span class="n n-exam">${ico('i-flag')}</span>`
+        : `<span class="n ${nCls[s.st]}">${s.st === 'ok' ? '✓' : s.st === 'lock' ? ico('i-lock') : stages.filter(x => x.kind === 'stage').indexOf(s) + 1}</span>`;
+      const right = s.kind === 'stage' && s.st === 'now' ? '<span class="pill p-amber">Đang rèn lại</span>' : s.kind === 'place' ? '<span class="pill p-navy">2 phần chưa kiểm tra</span>' : s.kind === 'exam' ? '<span class="pill p-amber">11 ngày</span>' : `${ico('i-chev', 'muted')}`;
+      return `${i ? '<div class="between" aria-hidden="true"></div>' : ''}<button class="stage ${s.key === selStage ? 'on' : ''} rise" style="--d:${i}" type="button" data-stage="${s.key}" aria-pressed="${s.key === selStage}">
+        ${n}<span style="min-width:0"><b>${s.t}</b><small>${s.sub}</small>${s.kind === 'stage' ? `<div class="bar mini"><i data-w="${s.p}" style="${s.st === 'ok' ? 'background:var(--green)' : ''}"></i></div>` : ''}</span>${right}</button>`;
+    }).join('');
+    fillBars($('#stageList'));
+  }
+  const dotCls = { ok: 'd-ok', fail: 'd-fail', now: 'd-now', 'repair-now': 'd-now d-repair', 'repair-lock': 'd-lock', open: 'd-open', lock: 'd-lock' };
+  function renderDetail() {
+    const s = stages.find(x => x.key === selStage), el = $('#stageDetail');
+    if (s.kind === 'place') {
+      el.innerHTML = `<div class="d-head"><span class="tile t-navy">${ico('i-search')}</span><div><p class="eyebrow">Điểm xuất phát của em · ${placement.date}</p><h2>Kiểm tra đầu vào</h2><span class="pill p-navy">3/5 phần đã kiểm tra</span></div></div>
+        <p class="small" style="margin-top:12px;color:var(--ink-2)">Phần chưa kiểm tra giữ trạng thái chưa đánh giá, hệ thống không tự coi là đã vững. Kiểm tra thêm thì lộ trình hiện tại vẫn được giữ.</p>
+        <div class="place-grid">${placement.parts.map(p => `<div class="place ${p.untested ? 'untested' : ''}"><b style="font-size:14px">${p.n}</b><span class="pill ${p.c}" style="width:fit-content">${p.r}</span><small class="muted">${p.s}</small>
+          ${p.untested ? '<button class="btn btn-primary btn-sm" type="button" data-toast="Mở phần kiểm tra (bản demo)">Kiểm tra phần này</button>' : ''}</div>`).join('')}</div>`;
+      return;
+    }
+    if (s.kind === 'exam') {
+      el.innerHTML = `<div class="d-head"><span class="tile t-amber">${ico('i-flag')}</span><div><p class="eyebrow">Mốc thi của lớp</p><h2>${s.t}</h2><span class="pill p-amber">Theo lịch giáo viên</span></div></div>
+        <p style="margin-top:12px">Thứ Ba 25/11/2026, 7:30 · 90 phút</p><p class="small muted" style="margin-top:6px">Phạm vi và cách chấm theo bài giáo viên công bố. Kết quả dùng để điều chỉnh phần cần rèn trong tuyến.</p>
+        <a class="btn btn-outline btn-sm" style="margin-top:14px" href="#bai-tap">Xem bài thi</a>`;
+      return;
+    }
+    let repairShown = false;
+    const steps = s.steps.map(([st, ic, kind, title, meta, act]) => {
+      const repair = st.startsWith('repair');
+      const head = repair && !repairShown ? (repairShown = true, `<div class="repair-head"><span class="pill p-amber">${ico('i-review')}Nhánh rèn lại · ưu tiên câu từng sai</span></div>`) : '';
+      const icon = st === 'ok' ? 'i-check' : st === 'fail' ? 'i-x' : st === 'lock' || st === 'repair-lock' ? 'i-lock' : ic;
+      const pill = st === 'ok' ? '<span class="pill p-green">Xong</span>' : st === 'fail' ? '<span class="pill p-rose">Chưa đạt</span>' : st === 'repair-now' ? '<span class="pill p-amber">Đang làm</span>' : '';
+      const btn = act === 'Chưa mở' || act === 'Chưa đủ điều kiện' ? `<button class="btn btn-sm" type="button" disabled>${act}</button>`
+        : st === 'repair-now' || st === 'open' ? `<button class="btn btn-primary btn-sm" type="button" data-toast="${act} nhiệm vụ (bản demo)">${act}</button>`
+        : `<button class="btn btn-outline btn-sm" type="button" data-toast="${act} (bản demo)">${act}</button>`;
+      return `${head}<div class="step ${st === 'ok' ? 'ok' : ''} ${repair ? 'repair' : ''}"><span class="dot ${dotCls[st]}">${ico(icon)}</span>
+        <div style="min-width:0"><span class="kind">${kind}</span><h4>${title}</h4><p class="meta">${meta}</p>${pill ? `<div style="margin-top:6px">${pill}</div>` : ''}</div><div>${btn}</div></div>`;
+    }).join('');
+    el.innerHTML = `<div class="d-head"><span class="n ${nCls[s.st]}" style="width:44px;height:44px;border-radius:99px;display:grid;place-items:center;font-family:var(--font-display);font-weight:800;flex:none">${s.st === 'ok' ? '✓' : s.st === 'lock' ? ico('i-lock') : stages.filter(x => x.kind === 'stage').indexOf(s) + 1}</span>
+      <div style="min-width:0"><p class="eyebrow">Chặng ${stages.filter(x => x.kind === 'stage').indexOf(s) + 1} · ${s.sub}</p><h2>${s.t}</h2><div style="display:flex;gap:6px;flex-wrap:wrap"><span class="pill ${s.chip[1]}">${s.chip[0]}</span><span class="pill p-line">${s.evidence}</span></div></div></div>
+      <details class="why"><summary>Ý chính của kỹ năng</summary><p style="margin-top:4px">${s.desc}</p></details>
+      <div class="steps">${steps}</div>`;
+  }
+  $('#stageList').addEventListener('click', e => { const b = e.target.closest('[data-stage]'); if (!b) return; selStage = b.dataset.stage; renderStages(); renderDetail(); if (innerWidth <= 980) $('#stageDetail').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' }); });
+  $$('[data-go-place]').forEach(b => b.addEventListener('click', () => { setPtab('route'); selStage = 'place'; renderStages(); renderDetail(); }));
+  function setPtab(k) { $$('#pathTabs button').forEach(b => b.classList.toggle('on', b.dataset.ptab === k)); $$('[data-ppane]').forEach(p => p.hidden = p.dataset.ppane !== k); }
+  $('#pathTabs').addEventListener('click', e => { const b = e.target.closest('[data-ptab]'); if (b) setPtab(b.dataset.ptab); });
+  $('#minSlider').addEventListener('input', e => { const v = +e.target.value; $('#minOut').textContent = v >= 60 ? `${Math.floor(v / 60)} giờ ${v % 60 ? v % 60 + ' phút' : ''}` : `${v} phút`; });
+  const states = { Confirmed: ['Đã xác nhận', 'p-green'], Demonstrated: ['Đã có bằng chứng ban đầu', 'p-navy'], Developing: ['Cần củng cố', 'p-amber'], Unknown: ['Chưa đủ bằng chứng', 'p-lock'] };
+  $('#skillMap').innerHTML = [['Mệnh đề và tập hợp', 'Confirmed', 86, 'Đạt trên 5 câu độc lập trong 30 ngày.'], ['Hàm số', 'Confirmed', 78, 'Đạt bài tự kiểm tra 5/5 ngày 14/11.'],
+    ['Bất phương trình bậc nhất hai ẩn', 'Demonstrated', 64, 'Có 3 câu hợp lệ; cần kiểm tra để xác nhận.'], ['Hàm số bậc hai', 'Developing', 38, 'Bài tự kiểm tra chưa đạt; đang rèn lại.'],
+    ['Bất phương trình bậc hai', 'Unknown', null, 'Chưa có bằng chứng; không coi là năng lực thấp.'], ['Hệ thức lượng trong tam giác', 'Unknown', null, 'Cần vững Hàm số bậc hai hoặc cập nhật mục tiêu.']]
+    .map(([n, s, v, r]) => `<div class="card spot" style="padding:16px"><b style="font-size:14.5px">${n}</b><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><span class="pill ${states[s][1]}">${states[s][0]}</span>${v != null ? `<span class="pill p-line">${v}%</span>` : ''}</div><p class="small muted" style="margin-top:8px">${r}</p></div>`).join('');
+
+  /* ---------- Bài tập ---------- */
+  const as = [
+    { g: 'Hôm nay', t: 'Kiểm tra 15 phút: Hàm số bậc hai', st: 'NotStarted', done: 0, total: 10, due: 'Hạn 21:00 hôm nay', urgent: true, scope: ['Đồ thị parabol', 'Sự biến thiên'], kind: 'Bài kiểm tra · 15 phút' },
+    { g: 'Tuần này', t: 'Bài tập: Hàm số bậc hai (phần 2)', st: 'InProgress', done: 5, total: 12, due: 'Hạn 17/11', scope: ['Hàm số bậc hai'], kind: 'Bài tập về nhà' },
+    { g: 'Tuần này', t: 'Thi thử chương 1–2', st: 'NotStarted', done: 0, total: 20, due: 'Mở 20/11 · 45 phút', scope: ['Mệnh đề', 'Hàm số'], kind: 'Thi thử' },
+    { g: 'Đã quá hạn', t: 'Luyện tập: Hàm số (bổ sung)', st: 'Overdue', done: 3, total: 6, due: 'Quá hạn 10/11', scope: ['Hàm số'], kind: 'Bài tập về nhà' },
+    { g: 'Đã nộp', t: 'Bài tập về nhà: Mệnh đề', st: 'Completed', done: 8, total: 8, due: 'Nộp 09/11', scope: ['Mệnh đề'], kind: 'Bài tập về nhà', result: '8.5/10 · GV đã duyệt', ok: true },
+    { g: 'Đã nộp', t: 'Tập hợp và các phép toán', st: 'Completed', done: 6, total: 6, due: 'Nộp 07/11', scope: ['Tập hợp'], kind: 'Bài tập về nhà', result: '6/6 câu · GV chưa duyệt' } ];
+  const stLabel = { '': 'Tất cả', NotStarted: 'Chưa bắt đầu', InProgress: 'Đang làm', Completed: 'Đã xong', Overdue: 'Quá hạn' };
+  let asFilter = '', asQ = '';
+  function renderAs() {
+    const cnt = k => as.filter(a => a.st === k).length;
+    $('#asSum').innerHTML = [['NotStarted', 'chưa bắt đầu', ''], ['InProgress', 'đang làm', ''], ['Overdue', 'quá hạn', 'color:var(--primary)'], ['Completed', 'đã nộp', 'color:var(--green-ink)']]
+      .map(([k, l, c]) => `<button type="button" class="${asFilter === k ? 'on' : ''}" data-sf="${k}"><b style="${c}">${cnt(k)}</b><small>${l}</small></button>`).join('');
+    $('#asSeg').innerHTML = Object.entries(stLabel).map(([k, l]) => `<button type="button" class="${asFilter === k ? 'on' : ''}" data-sf="${k}">${l}</button>`).join('');
+    const list = as.filter(a => (!asFilter || a.st === asFilter) && (!asQ || (a.t + a.scope.join(' ')).toLowerCase().includes(asQ)));
+    const groups = [...new Set(list.map(a => a.g))];
+    $('#asList').innerHTML = !list.length ? '<div class="card" style="text-align:center;padding:40px"><b>Không có bài phù hợp</b><p class="small muted" style="margin-top:4px">Thử từ khoá khác hoặc bỏ bộ lọc.</p></div>' : groups.map(g => `
+      <div class="group-h"><span class="eyebrow">${g}</span><span class="rule"></span><span class="pill p-lock">${list.filter(a => a.g === g).length} bài</span></div>` +
+      list.filter(a => a.g === g).map((a, i) => {
+        const pct = Math.round(a.done / a.total * 100), done = a.st === 'Completed', over = a.st === 'Overdue';
+        const icon = done ? `<span class="tile t-green">${ico('i-check')}</span>` : over ? `<span class="tile t-lock">${ico('i-clock')}</span>` : `<span class="tile" style="background:linear-gradient(135deg,var(--primary),var(--primary-2));color:#fff">${ico('i-clip')}</span>`;
+        const act = done ? 'Xem lại' : over ? 'Xem (quá hạn)' : a.done ? 'Tiếp tục' : 'Bắt đầu';
+        return `<article class="card spot as rise" style="--d:${i}">${icon}<div style="min-width:0">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><span class="eyebrow" style="color:var(--navy-ink)">Toán</span><span class="small muted">${a.kind} · Cô Hạnh</span>
+          ${done ? `<span class="pill ${a.ok ? 'p-green' : 'p-amber'}">${a.result}</span>` : over ? '<span class="pill p-rose">Quá hạn</span>' : a.urgent ? '<span class="pill p-primary"><span class="live"></span>Gần hạn</span>' : ''}</div>
+          <h3>${a.t}</h3><div class="row">${a.scope.map(s => `<span class="pill p-line">${s}</span>`).join('')}<span>${ico('i-clock')} ${a.due}</span></div></div>
+          <div class="right"><div class="prog"><small>Đã làm ${a.done}/${a.total} câu</small><div class="bar" style="margin-top:5px"><i data-w="${pct}" style="${done ? 'background:var(--green)' : ''}"></i></div></div>
+          <button class="btn ${done || over ? 'btn-outline' : 'btn-primary'} btn-sm" type="button" data-toast="${act} (bản demo)">${act} ${ico('i-arrow', 'arrow')}</button></div></article>`;
+      }).join('')).join('');
+    fillBars($('#asList'));
+  }
+  document.addEventListener('click', e => { const b = e.target.closest('[data-sf]'); if (!b) return; asFilter = asFilter === b.dataset.sf && b.closest('#asSum') ? '' : b.dataset.sf; renderAs(); });
+  $('#asSearch').addEventListener('input', e => { asQ = e.target.value.trim().toLowerCase(); renderAs(); });
+
+  /* ---------- Luyện tập ---------- */
+  $('#dur').addEventListener('click', e => { const b = e.target.closest('[data-d]'); if (!b) return; $$('#dur button').forEach(x => x.classList.toggle('on', x === b)); $('#startPractice').dataset.toast = `Bắt đầu phiên ${b.dataset.d} phút (bản demo)`; });
+  $('#modes').addEventListener('click', e => { const b = e.target.closest('[data-m]'); if (!b) return; $$('#modes .mode').forEach(x => x.classList.toggle('on', x === b)); toast(`Đã chọn: ${$('b', b).textContent}`); });
+
+  /* ---------- Hồ sơ ---------- */
+  let tf = 'all';
+  function renderTopics() {
+    const f = { all: () => true, ok: t => t.ev && t.v >= 75, dev: t => t.ev && t.v >= 50 && t.v < 75, need: t => t.ev && t.v < 50, none: t => !t.ev };
+    $('#topicSeg').innerHTML = [['all', 'Tất cả'], ['ok', 'Vững'], ['dev', 'Đang phát triển'], ['need', 'Cần rèn'], ['none', 'Chưa làm']]
+      .map(([k, l]) => `<button type="button" class="${tf === k ? 'on' : ''}" data-tf="${k}">${l} <span class="c">${topics.filter(f[k]).length}</span></button>`).join('');
+    const list = topics.filter(f[tf]);
+    $('#topics').innerHTML = list.length ? list.map(t => { const l = lvl(t); return `<div class="topic"><b>${t.n}</b><span style="display:flex;gap:8px;align-items:center"><span class="pill ${l[1]}">${l[0]}</span><b class="num" style="min-width:38px;text-align:right">${t.ev ? t.v + '%' : '—'}</b></span>
+      <div class="bar"><i data-w="${t.v}" style="background:${l[2]}"></i></div><small class="muted" style="grid-column:1/-1">${t.ev ? t.ev + ' bằng chứng' : 'Chưa có bài làm'}</small></div>`; }).join('') : '<p class="small muted">Không có chuyên đề nào ở mức này.</p>';
+    fillBars($('#topics'));
+  }
+  $('#topicSeg').addEventListener('click', e => { const b = e.target.closest('[data-tf]'); if (!b) return; tf = b.dataset.tf; renderTopics(); });
+
+  /* ---------- router ---------- */
+  const views = ['tong-quan', 'lo-trinh', 'bai-tap', 'luyen-tap', 'ho-so'];
+  let current = null;
+  function show(name) {
+    if (!views.includes(name)) name = 'tong-quan';
+    if (name === current) return;
+    const apply = () => {
+      current = name;
+      $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+      $$('[data-view]').forEach(a => a.classList.toggle('active', a.dataset.view === name));
+      const v = $('#view-' + name);
+      $$('.rise', v).forEach(el => { el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; });
+      scrollTo({ top: 0 });
+      if (name === 'lo-trinh') { renderStages(); renderDetail(); $('#pathRing').style.strokeDashoffset = 157; raf2(() => $('#pathRing').style.strokeDashoffset = 157 * (1 - 2 / 5)); }
+      if (name === 'bai-tap') renderAs();
+      if (name === 'ho-so') renderTopics();
+      fillBars(v);
+    };
+    if (document.startViewTransition && current && !reduce) document.startViewTransition(apply); else apply();
+  }
+  addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+  $('#themeBtn').addEventListener('click', () => { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; r.dataset.theme = dark ? 'light' : 'dark'; });
+})();
+</script>

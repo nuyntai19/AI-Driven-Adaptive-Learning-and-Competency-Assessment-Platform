@@ -18,6 +18,7 @@ import {
 } from "../utils/studentAcademicScope";
 import { readLastStudentSubject, rememberStudentSubject, resolveStudentSubjectId } from "../utils/studentSubjectScope";
 import { useStudentSubjects } from "../utils/useStudentSubjects";
+import { useStudentTheme } from "../hooks/useStudentTheme";
 
 function getInitials(displayName?: string, username?: string): string {
   if (displayName) {
@@ -36,6 +37,7 @@ function getInitials(displayName?: string, username?: string): string {
 }
 
 export const StudentLayout: React.FC = () => {
+  useStudentTheme();
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -136,117 +138,71 @@ export const StudentLayout: React.FC = () => {
     return p.size ? `${path}?${p}` : path;
   };
 
+  const navItems: { to: string; label: string; short: string; icon: React.ReactNode; active: boolean; badge?: React.ReactNode }[] = [
+    { to: "/hoc-tap/tong-quan", label: "Tổng quan", short: "Tổng quan", icon: <NavIcon d="M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5M10 21v-6h4v6" />, active: location.pathname === "/hoc-tap/tong-quan" },
+    { to: "/hoc-tap/lo-trinh-hoc-tap", label: "Lộ trình học tập", short: "Lộ trình", icon: <NavIcon d="M8.5 19H17a3.5 3.5 0 0 0 0-7H7a3.5 3.5 0 0 1 0-7h8.5M6 21.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM18 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" />, active: location.pathname.startsWith("/hoc-tap/lo-trinh-hoc-tap") },
+    { to: "/hoc-tap/bai-tap", label: "Bài tập của tôi", short: "Bài tập", icon: <NavIcon d="M7 4h10a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2ZM9 4V3h6v1M9 11h6M9 15h4" />, active: location.pathname.startsWith("/hoc-tap/bai-tap"), badge: workspaceLabels.assignmentCount },
+    { to: "/hoc-tap/ho-so-nang-luc", label: "Hồ sơ năng lực (Twin)", short: "Hồ sơ năng lực", icon: <NavIcon d="M12 3 20.5 9.2 17.3 19.2H6.7L3.5 9.2ZM12 8l3.5 2.6-1.3 4.2H9.8l-1.3-4.2Z" />, active: location.pathname.startsWith("/hoc-tap/ho-so-nang-luc") },
+    { to: "/hoc-tap/luyen-tap", label: "Luyện tập thích ứng", short: "Luyện tập", icon: <NavIcon d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12" />, active: location.pathname.startsWith("/hoc-tap/luyen-tap") },
+  ];
+
   return (
     <div className="student-shell min-h-screen bg-[var(--student-canvas)] text-[var(--student-ink)] flex flex-col antialiased transition-colors duration-200">
-      {/* Top Global Navigation Bar - Responsive 2-Tier Layout */}
-      <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#172033]/95 backdrop-blur-md border-b border-[var(--student-border,#E8E6DF)] shadow-2xs">
-        <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Row 1: Brand Logo, Main Nav Tabs (>= 1440px), Core Utilities */}
-          <div className="flex items-center justify-between h-16 sm:h-18 lg:h-20 gap-3 sm:gap-4 min-w-0">
-            {/* Left: Logo and Desktop Nav */}
-            <div className="flex items-center gap-3 xl:gap-6 min-w-0">
+      {/* Top navigation: brand, pill tabs (desktop) and account controls; phones use the bottom tab bar. */}
+      <header className="sticky top-0 z-40 bg-[color-mix(in_srgb,var(--student-canvas)_86%,transparent)] backdrop-blur-xl backdrop-saturate-150 border-b border-[var(--student-border)]">
+        <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16 gap-3 sm:gap-4 min-w-0">
+            <div className="flex items-center gap-3 xl:gap-5 min-w-0">
               <Link
                 to={getTabUrl("/hoc-tap/tong-quan")}
-                className="flex items-center gap-2.5 sm:gap-3 group focus-visible:outline-indigo-600 rounded-xl shrink-0"
+                className="flex items-center gap-2.5 group rounded-xl shrink-0"
+                aria-label="EduTwin, về trang Tổng quan"
               >
-                <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[var(--student-brand,#6546D7)] flex items-center justify-center text-white font-bold text-xs sm:text-sm shadow-xs group-hover:scale-105 transition-transform shrink-0">
-                  ET
-                </div>
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-1.5 sm:gap-2">
-                    <span className="text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-white">
-                      EduTwin
-                    </span>
-                    <span className="hidden sm:inline-flex rounded-md bg-slate-100 dark:bg-slate-800/90 px-1.5 py-0.5 text-[10px] sm:text-xs font-semibold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                      Học thích ứng
-                    </span>
-                  </div>
-                  <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 hidden sm:inline">
-                    Không gian học tập cá nhân
-                  </span>
-                </div>
+                <span className="w-9 h-9 rounded-[11px] flex items-center justify-center text-white shadow-[var(--student-glow)] bg-[linear-gradient(135deg,var(--student-brand),var(--student-brand-2))] transition-transform duration-300 group-hover:-rotate-[10deg] shrink-0">
+                  <NavIcon d="M8.5 19H17a3.5 3.5 0 0 0 0-7H7a3.5 3.5 0 0 1 0-7h8.5M6 21.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM18 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" />
+                </span>
+                <span className="text-[19px] font-extrabold tracking-tight text-[var(--student-ink)] [font-family:var(--student-font-display)]">
+                  Edu<span className="text-[var(--student-brand)]">Twin</span>
+                </span>
               </Link>
 
-              {/* Larger labels use a matching desktop/menu breakpoint. */}
-              <nav className="hidden min-[1440px]:flex items-center gap-1 xl:gap-2 min-w-0">
-                <NavLink
-                  to={getTabUrl("/hoc-tap/tong-quan")}
-                  className={({ isActive }) =>
-                    `relative flex items-center gap-1.5 xl:gap-2 px-3 xl:px-3.5 py-2 rounded-lg text-xs xl:text-sm font-semibold whitespace-nowrap transition-all ${
-                      isActive
-                        ? "text-[var(--student-brand,#6546D7)] dark:text-[#856BEE] font-bold bg-[var(--student-surface-subtle,#F4F3EE)] dark:bg-[var(--student-surface-subtle,#1C2738)] after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:bg-[var(--student-brand,#6546D7)] dark:after:bg-[#856BEE] after:rounded-full"
-                        : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-[var(--student-surface-subtle,#F4F3EE)] dark:hover:bg-[var(--student-surface-subtle,#1C2738)]"
-                    }`
-                  }
-                >
-                  <span>Tổng quan</span>
-                </NavLink>
-
-                <NavLink
-                  to={getTabUrl("/hoc-tap/lo-trinh-hoc-tap")}
-                  className={({ isActive }) =>
-                    `relative flex items-center gap-1.5 xl:gap-2 px-3 xl:px-3.5 py-2 rounded-lg text-xs xl:text-sm font-semibold whitespace-nowrap transition-all ${
-                      isActive || location.pathname.startsWith("/hoc-tap/lo-trinh-hoc-tap")
-                        ? "text-[var(--student-brand,#6546D7)] dark:text-[#856BEE] font-bold bg-[var(--student-surface-subtle,#F4F3EE)] dark:bg-[var(--student-surface-subtle,#1C2738)] after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:bg-[var(--student-brand,#6546D7)] dark:after:bg-[#856BEE] after:rounded-full"
-                        : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-[var(--student-surface-subtle,#F4F3EE)] dark:hover:bg-[var(--student-surface-subtle,#1C2738)]"
-                    }`
-                  }
-                >
-                  <span className="hidden xl:inline">Lộ trình học tập</span>
-                  <span className="inline xl:hidden">Lộ trình</span>
-                </NavLink>
-
-                <NavLink
-                  to={getTabUrl("/hoc-tap/bai-tap")}
-                  className={({ isActive }) =>
-                    `relative flex items-center gap-1.5 xl:gap-2 px-3 xl:px-3.5 py-2 rounded-lg text-xs xl:text-sm font-semibold whitespace-nowrap transition-all ${
-                      isActive || location.pathname.startsWith("/hoc-tap/bai-tap")
-                        ? "text-[var(--student-brand,#6546D7)] dark:text-[#856BEE] font-bold bg-[var(--student-surface-subtle,#F4F3EE)] dark:bg-[var(--student-surface-subtle,#1C2738)] after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:bg-[var(--student-brand,#6546D7)] dark:after:bg-[#856BEE] after:rounded-full"
-                        : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-[var(--student-surface-subtle,#F4F3EE)] dark:hover:bg-[var(--student-surface-subtle,#1C2738)]"
-                    }`
-                  }
-                >
-                  <span className="hidden xl:inline">Bài tập của tôi</span>
-                  <span className="inline xl:hidden">Bài tập</span>
-                  <span className="ml-0.5 rounded-full bg-[var(--student-brand,#6546D7)] dark:bg-[#856BEE] px-1.5 py-0.2 text-[10px] xl:text-xs font-bold text-white leading-tight shrink-0">
-                    {workspaceLabels.assignmentCount}
-                  </span>
-                </NavLink>
-
-                <NavLink
-                  to={getTabUrl("/hoc-tap/ho-so-nang-luc")}
-                  className={({ isActive }) =>
-                    `relative flex items-center gap-1.5 xl:gap-2 px-3 xl:px-3.5 py-2 rounded-lg text-xs xl:text-sm font-semibold whitespace-nowrap transition-all ${
-                      isActive
-                        ? "text-[var(--student-brand,#6546D7)] dark:text-[#856BEE] font-bold bg-[var(--student-surface-subtle,#F4F3EE)] dark:bg-[var(--student-surface-subtle,#1C2738)] after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:bg-[var(--student-brand,#6546D7)] dark:after:bg-[#856BEE] after:rounded-full"
-                        : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-[var(--student-surface-subtle,#F4F3EE)] dark:hover:bg-[var(--student-surface-subtle,#1C2738)]"
-                    }`
-                  }
-                >
-                  <span className="hidden xl:inline">Hồ sơ năng lực (Twin)</span>
-                  <span className="inline xl:hidden">Hồ sơ năng lực</span>
-                </NavLink>
-
-                <NavLink
-                  to={getTabUrl("/hoc-tap/luyen-tap")}
-                  className={({ isActive }) =>
-                    `relative flex items-center gap-1.5 xl:gap-2 px-3 xl:px-3.5 py-2 rounded-lg text-xs xl:text-sm font-semibold whitespace-nowrap transition-all ${
-                      isActive
-                        ? "text-[var(--student-brand,#6546D7)] dark:text-[#856BEE] font-bold bg-[var(--student-surface-subtle,#F4F3EE)] dark:bg-[var(--student-surface-subtle,#1C2738)] after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:bg-[var(--student-brand,#6546D7)] dark:after:bg-[#856BEE] after:rounded-full"
-                        : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-[var(--student-surface-subtle,#F4F3EE)] dark:hover:bg-[var(--student-surface-subtle,#1C2738)]"
-                    }`
-                  }
-                >
-                  <span className="hidden min-[1760px]:inline">Luyện tập thích ứng</span>
-                  <span className="inline min-[1760px]:hidden">Luyện tập</span>
-                </NavLink>
+              <nav className="hidden lg:flex items-center gap-1 min-w-0" aria-label="Điều hướng học tập">
+                {navItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={getTabUrl(item.to)}
+                    title={item.label}
+                    className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-[15px] font-semibold whitespace-nowrap transition-colors ${
+                      item.active
+                        ? "st-nav-active"
+                        : "text-[var(--student-ink-secondary)] hover:bg-[var(--student-surface-subtle)] hover:text-[var(--student-ink)]"
+                    }`}
+                  >
+                    {item.icon}
+                    <span className={item.active ? "" : "hidden xl:inline"}>{item.short}</span>
+                    {item.badge !== undefined && (
+                      <span className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] font-bold leading-5 text-center ${item.active ? "bg-white text-[var(--student-brand)]" : "bg-[var(--student-brand)] text-white"}`}>
+                        {item.badge}
+                      </span>
+                    )}
+                  </NavLink>
+                ))}
               </nav>
             </div>
 
-            {/* Context controls use a separate row at every width to preserve larger readable navigation. */}
-            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              {/* Dark / Light Theme Toggle - Sleek Compact Icon Button */}
-              <ThemeToggle />
+            <div className="flex items-center gap-2 shrink-0">
+              {!isAccountPage && (
+                <div
+                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--atlas-sun-soft)] text-[var(--student-ink)] text-[13px] font-bold whitespace-nowrap"
+                  title={workspaceLabels.streakTitle}
+                >
+                  <svg className="w-4 h-4 text-[var(--student-brand-2)]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 22c4 0 7-2.8 7-6.8 0-4.2-3.2-6.7-4.6-10.7-.3-.8-1.3-.9-1.7-.2-.9 1.6-1 3.4-2.4 4.6C9.6 7.3 9 6 8.6 5.2c-.3-.6-1.2-.6-1.5.1C5.9 7.9 5 10.4 5 15.2 5 19.2 8 22 12 22Z" /></svg>
+                  <span className="hidden xl:inline">{workspaceLabels.streak}</span>
+                  <span className="xl:hidden">{workspaceLabels.shortStreak}</span>
+                </div>
+              )}
+
+              <ThemeToggle className="!rounded-full !border-[var(--student-border)] !bg-[var(--student-surface)]" />
 
               <NotificationBell />
 
@@ -255,32 +211,33 @@ export const StudentLayout: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsProfileDropdownOpen((prev) => !prev)}
-                  className="flex items-center gap-2 p-1 pl-1.5 rounded-xl hover:bg-[var(--student-surface-subtle,#F4F3EE)] dark:hover:bg-[var(--student-surface-subtle,#1C2738)] transition-colors focus-visible:outline-indigo-600 border border-[var(--student-border,#E8E6DF)] cursor-pointer shadow-2xs"
+                  aria-expanded={isProfileDropdownOpen}
+                  aria-label="Mở menu tài khoản"
+                  className="flex items-center gap-2 p-1 rounded-full hover:bg-[var(--student-surface-subtle)] transition-colors border border-[var(--student-border)] bg-[var(--student-surface)] cursor-pointer"
                 >
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[var(--student-brand,#6546D7)] text-white font-bold text-xs flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-[var(--student-ink)] text-[var(--student-canvas)] font-bold text-xs flex items-center justify-center shrink-0 [font-family:var(--student-font-display)]">
                     {getInitials(user?.displayName, user?.username)}
                   </div>
-                  <div className="hidden min-[1760px]:flex flex-col text-left pr-2 max-w-[190px]">
-                    <span className="text-xs font-bold text-slate-900 dark:text-white leading-tight truncate">
+                  <div className="hidden 2xl:flex flex-col text-left pr-3 max-w-[190px]">
+                    <span className="text-[13px] font-bold text-[var(--student-ink)] leading-tight truncate">
                       {user?.displayName || "Học sinh"}
                     </span>
-                    <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 leading-tight truncate" title={profileSubtitle}>
+                    <span className="text-[11px] font-medium text-[var(--student-muted)] leading-tight truncate" title={profileSubtitle}>
                       {profileSubtitle}
                     </span>
                   </div>
                 </button>
 
-                {/* Dropdown Menu */}
                 {isProfileDropdownOpen && (
                   <div
-                    className="absolute right-0 mt-2 w-56 rounded-xl bg-white dark:bg-[#172033] p-2 shadow-lg border border-[var(--student-border,#E8E6DF)] z-50 animate-in fade-in slide-in-from-top-2 duration-150"
+                    className="absolute right-0 mt-2 w-64 rounded-2xl bg-[var(--student-surface)] p-2 shadow-[var(--student-shadow-lg)] border border-[var(--student-border)] z-50 st-rise"
                     onBlur={() => setTimeout(() => setIsProfileDropdownOpen(false), 200)}
                   >
-                    <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 mb-1">
-                      <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{user?.displayName || "Học sinh"}</p>
-                      <p className="text-[11px] text-slate-400 truncate">{user?.username || ""}</p>
+                    <div className="px-3 py-2 border-b border-[var(--student-border)] mb-1">
+                      <p className="text-sm font-bold text-[var(--student-ink)] truncate">{user?.displayName || "Học sinh"}</p>
+                      <p className="text-xs text-[var(--student-muted)] truncate">{user?.username || ""}</p>
                       {classBadge ? (
-                        <p className="mt-1 text-[11px] font-semibold text-[var(--student-brand,#6546D7)] dark:text-[#856BEE] truncate" title={profileSubtitle}>
+                        <p className="mt-1 text-xs font-semibold text-[var(--student-brand)] truncate" title={profileSubtitle}>
                           {profileSubtitle}
                         </p>
                       ) : null}
@@ -292,9 +249,9 @@ export const StudentLayout: React.FC = () => {
                         setIsProfileDropdownOpen(false);
                         setIsSecurityModalOpen(true);
                       }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left cursor-pointer"
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold text-[var(--student-ink-secondary)] hover:bg-[var(--student-surface-subtle)] transition-colors text-left cursor-pointer"
                     >
-                      <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="w-4 h-4 text-[var(--student-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                       </svg>
                       <span>Bảo mật & Đổi mật khẩu</span>
@@ -303,24 +260,24 @@ export const StudentLayout: React.FC = () => {
                     <Link
                       to={getTabUrl("/hoc-tap/ho-so-nang-luc")}
                       onClick={() => setIsProfileDropdownOpen(false)}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left"
+                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold text-[var(--student-ink-secondary)] hover:bg-[var(--student-surface-subtle)] transition-colors text-left"
                     >
-                      <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="w-4 h-4 text-[var(--student-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                       </svg>
                       <span>Hồ sơ năng lực của tôi</span>
                     </Link>
 
-                    <div className="border-t border-slate-100 dark:border-slate-800 mt-1 pt-1">
-                      {user?.permissions.includes("activity.history.read_own") && <Link to="/hoc-tap/nhat-ky-hoat-dong" onClick={() => setIsProfileDropdownOpen(false)} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800">
-                        <svg className="w-4 h-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    <div className="border-t border-[var(--student-border)] mt-1 pt-1">
+                      {user?.permissions.includes("activity.history.read_own") && <Link to="/hoc-tap/nhat-ky-hoat-dong" onClick={() => setIsProfileDropdownOpen(false)} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-semibold text-[var(--student-ink-secondary)] hover:bg-[var(--student-surface-subtle)]">
+                        <svg className="w-4 h-4 shrink-0 text-[var(--student-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         <span>Nhật ký hoạt động</span>
                       </Link>}
                       <button
                         type="button"
                         onClick={handleLogout}
                         disabled={isLoggingOut}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors text-left cursor-pointer disabled:opacity-50"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors text-left cursor-pointer disabled:opacity-50"
                       >
                         <svg className="w-4 h-4 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -332,11 +289,10 @@ export const StudentLayout: React.FC = () => {
                 )}
               </div>
 
-              {/* Mobile Menu Hamburger Button */}
               <button
                 type="button"
                 onClick={() => setIsMobileMenuOpen(true)}
-                className="min-[1440px]:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-indigo-600"
+                className="lg:hidden p-2 rounded-full text-[var(--student-ink-secondary)] hover:bg-[var(--student-surface-subtle)]"
                 aria-label="Mở menu điều hướng"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -346,22 +302,22 @@ export const StudentLayout: React.FC = () => {
             </div>
           </div>
         </div>
+      </header>
 
-        {/* Row 2 Context Sub-bar keeps subject and streak readable without squeezing the navigation. */}
-        {!isAccountPage && <div className="border-t border-slate-200/80 dark:border-slate-800/80 bg-slate-50/90 dark:bg-[#0b1329]/90 backdrop-blur-xs py-2">
-          <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-3 min-w-0">
-            {/* Left: Subject Selector with Icon and Label */}
+      {/* Context row: the one subject picker for every student page, plus class scope. Scrolls away so the sticky bar stays slim. */}
+        {!isAccountPage && <div className="pt-2">
+          <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center gap-x-4 gap-y-2 min-w-0 py-1">
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1.5 shrink-0">
-                <span className="hidden sm:inline">Môn học:</span>
-                <span className="sm:hidden">Môn:</span>
+              <span className="text-[13px] font-semibold text-[var(--student-muted)] shrink-0">
+                <span className="hidden sm:inline">Môn học</span>
+                <span className="sm:hidden">Môn</span>
               </span>
               <div className="relative min-w-0">
                 <select
                   aria-label="Môn học đang xem"
                   value={activeSubjectId}
                   onChange={(e) => handleSubjectChange(e.target.value)}
-                  className="appearance-none rounded-lg border border-[var(--student-border,#E8E6DF)] bg-white dark:bg-[#172033] hover:bg-slate-50 dark:hover:bg-slate-800 pl-3 pr-8 py-1.5 text-xs font-bold text-slate-900 dark:text-slate-100 transition-colors focus:border-[var(--student-brand,#6546D7)] focus:outline-none cursor-pointer shadow-2xs max-w-[160px] sm:max-w-[200px] truncate"
+                  className="appearance-none rounded-full border border-[var(--student-border)] bg-[var(--student-surface)] hover:border-[var(--student-brand)] pl-3.5 pr-8 py-1.5 text-[13px] font-bold text-[var(--student-ink)] transition-colors focus:border-[var(--student-brand)] focus:outline-none cursor-pointer max-w-[180px] sm:max-w-[240px] truncate"
                   title="Chuyển đổi môn học đang theo dõi"
                   data-testid="student-subject-selector-sub"
                 >
@@ -372,51 +328,36 @@ export const StudentLayout: React.FC = () => {
                     </option>
                   ))}
                 </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[var(--student-muted)]">
                   <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
                   </svg>
                 </div>
               </div>
             </div>
-
-            {/* Right: Streak status badge on sub-bar */}
-            <div
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-[var(--student-border,#E8E6DF)] text-slate-700 dark:text-slate-300 text-xs font-semibold shrink-0"
-              title={workspaceLabels.streakTitle}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-[#16835B] dark:bg-[#29AC7B]" />
-              <span className="hidden sm:inline">{workspaceLabels.streak}</span>
-              <span className="sm:hidden">{workspaceLabels.shortStreak}</span>
-            </div>
+            {!isAccountPage && <StudentAcademicContext inline />}
           </div>
         </div>}
-        {!isAccountPage && <StudentAcademicContext />}
-      </header>
 
       {/* Mobile Drawer Navigation */}
       {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-50 min-[1440px]:hidden flex">
+        <div className="fixed inset-0 z-50 lg:hidden flex">
           <div
-            className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
+            className="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
             onClick={() => setIsMobileMenuOpen(false)}
           />
           <div
             ref={drawerRef}
-            className="relative ml-auto w-full max-w-xs bg-[var(--student-surface)] h-full shadow-xl p-6 flex flex-col justify-between text-slate-900 dark:text-white border-l border-[var(--student-border)]"
+            className="relative ml-auto w-full max-w-xs bg-[var(--student-surface)] h-full shadow-xl p-6 flex flex-col justify-between text-[var(--student-ink)] border-l border-[var(--student-border)]"
           >
             <div>
               <div className="flex items-center justify-between pb-4 border-b border-[var(--student-border)]">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-[var(--student-brand)] flex items-center justify-center text-white font-bold text-xs">
-                    ET
-                  </div>
-                  <span className="font-bold text-slate-900 dark:text-white">EduTwin</span>
-                </div>
+                <span className="font-extrabold text-lg [font-family:var(--student-font-display)]">Edu<span className="text-[var(--student-brand)]">Twin</span></span>
                 <button
                   ref={closeButtonRef}
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className="p-1 rounded-lg text-[var(--student-muted)] hover:bg-[var(--student-surface-subtle)]"
+                  aria-label="Đóng menu"
                 >
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -424,10 +365,9 @@ export const StudentLayout: React.FC = () => {
                 </button>
               </div>
 
-              {/* Subject selector in mobile drawer */}
               {!isAccountPage && subjects.length > 0 && (
                 <div className="mt-4">
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 block">Môn học đang chọn:</label>
+                  <label className="text-xs font-semibold text-[var(--student-muted)] mb-1.5 block">Môn học đang chọn:</label>
                   <select
                     aria-label="Môn học trong menu"
                     value={activeSubjectId}
@@ -435,7 +375,7 @@ export const StudentLayout: React.FC = () => {
                       handleSubjectChange(e.target.value);
                       setIsMobileMenuOpen(false);
                     }}
-                    className="w-full rounded-lg border border-[var(--student-border)] p-2 text-xs font-bold text-slate-800 dark:text-white bg-white dark:bg-[#172033]"
+                    className="w-full rounded-xl border border-[var(--student-border)] p-2 text-sm font-bold text-[var(--student-ink)] bg-[var(--student-surface)]"
                   >
                     {!activeSubjectId && <option value="" disabled hidden>Chọn môn học</option>}
                     {subjects.map((sub) => (
@@ -447,50 +387,28 @@ export const StudentLayout: React.FC = () => {
                 </div>
               )}
 
-              {/* Mobile Nav Links */}
-              <nav className="mt-6 flex flex-col gap-1.5">
-                {user?.permissions.includes("activity.history.read_own") && <Link to="/hoc-tap/nhat-ky-hoat-dong" onClick={() => setIsMobileMenuOpen(false)} className="rounded-xl px-3 py-3 text-sm font-semibold text-slate-600 dark:text-slate-300">◷ Nhật ký hoạt động</Link>}
-                <Link
-                  to={getTabUrl("/hoc-tap/tong-quan")}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-[var(--student-surface-subtle)] hover:text-slate-900 dark:hover:text-white"
-                >
-                  <span>Tổng quan</span>
-                </Link>
-                <Link
-                  to={getTabUrl("/hoc-tap/lo-trinh-hoc-tap")}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-[var(--student-surface-subtle)] hover:text-slate-900 dark:hover:text-white"
-                >
-                  <span>Lộ trình học tập</span>
-                </Link>
-                <Link
-                  to={getTabUrl("/hoc-tap/bai-tap")}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center justify-between px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-[var(--student-surface-subtle)] hover:text-slate-900 dark:hover:text-white"
-                >
-                  <span>Bài tập của tôi</span>
-                  <span className="rounded-full bg-[var(--student-brand)] px-2 py-0.5 text-xs text-white">{workspaceLabels.assignmentCount}</span>
-                </Link>
-                <Link
-                  to={getTabUrl("/hoc-tap/ho-so-nang-luc")}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-[var(--student-surface-subtle)] hover:text-slate-900 dark:hover:text-white"
-                >
-                  <span>Hồ sơ năng lực (Twin)</span>
-                </Link>
-                <Link
-                  to={getTabUrl("/hoc-tap/luyen-tap")}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-semibold text-[var(--student-brand)] dark:text-[#856BEE] bg-[var(--student-surface-subtle)]"
-                >
-                  <span>Luyện tập thích ứng</span>
-                </Link>
+              <nav className="mt-6 flex flex-col gap-1.5" aria-label="Điều hướng trong menu">
+                {navItems.map((item) => (
+                  <Link
+                    key={item.to}
+                    to={getTabUrl(item.to)}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold ${item.active ? "st-nav-active" : "text-[var(--student-ink-secondary)] hover:bg-[var(--student-surface-subtle)]"}`}
+                  >
+                    {item.icon}
+                    <span className="flex-1">{item.label}</span>
+                    {item.badge !== undefined && <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${item.active ? "bg-white text-[var(--student-brand)]" : "bg-[var(--student-brand)] text-white"}`}>{item.badge}</span>}
+                  </Link>
+                ))}
+                {user?.permissions.includes("activity.history.read_own") && <Link to="/hoc-tap/nhat-ky-hoat-dong" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold text-[var(--student-ink-secondary)] hover:bg-[var(--student-surface-subtle)]">
+                  <NavIcon d="M12 8v4l3 2m6-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                  <span className="flex-1">Nhật ký hoạt động</span>
+                </Link>}
               </nav>
             </div>
 
             <div className="pt-4 border-t border-[var(--student-border)] flex items-center justify-between">
-              <span className="text-xs text-slate-500 dark:text-slate-400">Chế độ giao diện:</span>
+              <span className="text-xs text-[var(--student-muted)]">Chế độ giao diện:</span>
               <ThemeToggle showText={true} />
             </div>
           </div>
@@ -500,11 +418,35 @@ export const StudentLayout: React.FC = () => {
       {/* Main Content Area */}
       <main className="flex-1 w-full min-w-0 pb-12">
         {isSubjectResolving ? (
-          <div role="status" className="p-8 text-center text-sm text-slate-500 dark:text-slate-400">Đang tải môn học...</div>
+          <div role="status" className="p-8 text-center text-sm text-[var(--student-muted)]">Đang tải môn học...</div>
         ) : (
           <Outlet />
         )}
       </main>
+      {/* Keeps the last content clear of the phone tab bar. */}
+      <div className="h-20 lg:hidden" aria-hidden="true" />
+
+      {/* Phone tab bar */}
+      <nav
+        className="lg:hidden fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-[var(--student-border)] bg-[color-mix(in_srgb,var(--student-surface)_92%,transparent)] backdrop-blur-xl px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom,0px))]"
+        aria-label="Điều hướng nhanh"
+      >
+        {navItems.map((item) => (
+          <Link
+            key={item.to}
+            to={getTabUrl(item.to)}
+            aria-current={item.active ? "page" : undefined}
+            className={`relative flex flex-col items-center gap-0.5 py-1.5 text-[11px] font-semibold ${item.active ? "text-[var(--student-brand)]" : "text-[var(--student-muted)]"}`}
+          >
+            {item.active && <span className="absolute -top-1.5 h-[3px] w-7 rounded-b bg-[var(--student-brand)]" aria-hidden="true" />}
+            <span className="relative">
+              {item.icon}
+              {item.badge !== undefined && Number(item.badge) > 0 && <span className="absolute -top-1 -right-1.5 h-2 w-2 rounded-full bg-[var(--student-brand)]" aria-hidden="true" />}
+            </span>
+            <span className="truncate max-w-full">{item.short === "Hồ sơ năng lực" ? "Năng lực" : item.short}</span>
+          </Link>
+        ))}
+      </nav>
 
       {/* Security Modal */}
       <PlatformSecurityModal
@@ -514,3 +456,11 @@ export const StudentLayout: React.FC = () => {
     </div>
   );
 };
+
+function NavIcon({ d }: { d: string }) {
+  return (
+    <svg className="w-[18px] h-[18px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={d} />
+    </svg>
+  );
+}

@@ -137,6 +137,9 @@ test("Bundle Budget Regression: Verifies initial preload budget, deferred code-s
   const xlsxChunk = assets.find((a) => a.name.startsWith("vendor-xlsx-"));
   assert.ok(xlsxChunk, "XLSX must be isolated in vendor-xlsx chunk");
 
+  // Student pages no longer render Recharts; when any route bundles it again it must stay in its own chunk.
   const rechartsChunk = assets.find((a) => a.name.startsWith("vendor-recharts-"));
-  assert.ok(rechartsChunk, "Recharts must be isolated in vendor-recharts chunk");
+  const rechartsLeak = assets.find((a) => !a.name.startsWith("vendor-recharts-") && /recharts/i.test(a.name));
+  assert.ok(!rechartsLeak, `Recharts must be isolated in vendor-recharts chunk (found ${rechartsLeak?.name})`);
+  if (rechartsChunk) assert.ok(rechartsChunk.sizeKb > 0, "vendor-recharts chunk must not be empty");
 });

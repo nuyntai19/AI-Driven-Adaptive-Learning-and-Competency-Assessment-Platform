@@ -60,7 +60,7 @@ export const PlatformLayout: React.FC = () => {
       // Ignore network errors on logout to allow local session clearance
     } finally {
       queryClient.clear();
-      navigate("/dang-nhap", { replace: true });
+      navigate("/admin", { replace: true });
     }
   };
 

@@ -1,4 +1,5 @@
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { loginPathForRoute } from "../auth/loginPortal";
 import { useAuthStore } from "../stores/authStore";
 
 interface ProtectedRouteProps {
@@ -7,6 +8,7 @@ interface ProtectedRouteProps {
 
 export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const { sessionStatus, user } = useAuthStore();
+  const location = useLocation();
 
   if (sessionStatus === "unknown") {
     return (
@@ -19,7 +21,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   }
 
   if (sessionStatus === "anonymous" || !user) {
-    return <Navigate to="/dang-nhap" replace />;
+    return <Navigate to={loginPathForRoute(location.pathname)} replace />;
   }
 
   return children ? <>{children}</> : <Outlet />;

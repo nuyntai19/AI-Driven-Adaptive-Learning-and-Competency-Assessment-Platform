@@ -6,7 +6,7 @@ for(const [role,username,centerCode,routes] of [
  ['Teacher','teacher.math','EDUTWIN_A',['/auth/me','/classes','/questions','/assignments','/curriculums','/notifications','/notifications/summary','/platform/operations','/platform/centers']],
  ['CenterManager','manager','EDUTWIN_A',['/auth/me','/students','/teachers','/classes','/subjects','/notifications','/notifications/summary','/platform/operations']],
  ['PlatformAdmin','platform.admin','PLATFORM',['/auth/me','/platform/centers','/platform/operations','/platform/ai-usage','/platform/storage','/notifications','/notifications/summary','/students/me/dashboard','/questions','/assignments','/curriculums','/classes']]
-]){const l=await fetch(base+'/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username,centerCode,password:testPassword})});const token=(await l.json()).data?.accessToken;if(!token)throw new Error(`Login ${role}: ${l.status}`);
+]){const admin=centerCode==='PLATFORM';const l=await fetch(base+(admin?'/auth/admin/login':'/auth/login'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(admin?{username,password:testPassword}:{username,centerCode,password:testPassword})});const token=(await l.json()).data?.accessToken;if(!token)throw new Error(`Login ${role}: ${l.status}`);
 for(const route of routes){const r=await fetch(base+route,{headers:{authorization:`Bearer ${token}`},signal:AbortSignal.timeout(20000)});const body=await r.text();results.push({role,route,status:r.status,json:body.trim().startsWith('{')});}
 }
 fs.writeFileSync('scratch/functional-fixes-smoke-results.json',JSON.stringify({results},null,2));

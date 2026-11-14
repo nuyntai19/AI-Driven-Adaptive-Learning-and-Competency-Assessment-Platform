@@ -1,4 +1,5 @@
 import React from "react";
+import { useStudentTheme } from "../hooks/useStudentTheme";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adaptivePracticeApi } from "../api/adaptivePracticeApi";
@@ -8,6 +9,7 @@ const PANEL = "rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 dark:b
 const PRESS = "transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] motion-reduce:transform-none";
 
 export const AdaptivePracticeSummaryPage: React.FC = () => {
+  useStudentTheme();
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -84,7 +86,7 @@ export const AdaptivePracticeSummaryPage: React.FC = () => {
   const practiceUrl = `/hoc-tap/luyen-tap?subjectId=${session.subjectId}`;
 
   return (
-    <div className="min-h-screen bg-stone-50/50 dark:bg-[#101623] text-stone-800 dark:text-stone-100 antialiased student-shell">
+    <div className="min-h-screen bg-stone-50/50 dark:bg-[var(--student-canvas)] text-stone-800 dark:text-stone-100 antialiased student-shell">
       <div className="w-full max-w-[1500px] mx-auto px-4 sm:px-6 py-5 space-y-4">
         <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="min-w-0">
