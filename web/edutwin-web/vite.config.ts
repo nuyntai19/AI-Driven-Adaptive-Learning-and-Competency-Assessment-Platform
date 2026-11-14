@@ -9,7 +9,8 @@ export default defineConfig({
     port: 3000,
     proxy: {
       "/api": {
-        target: "http://localhost:5000",
+        // Lets a dev server point at another API (e.g. the isolated acceptance stack).
+        target: process.env.EDUTWIN_API_PROXY ?? "http://localhost:5000",
         changeOrigin: true,
       },
     },

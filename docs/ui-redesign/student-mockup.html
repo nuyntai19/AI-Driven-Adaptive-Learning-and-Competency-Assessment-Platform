@@ -1,0 +1,1051 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EduTwin Học Sinh</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: warm paper canvas · one vermilion accent · bento dashboard · learning path fits one screen (chapter stepper → horizontal skill tree → inline detail) */
+:root {
+  --bg: #FEFCF9;
+  --bg-2: #F9F4E9;
+  --surface: #FFFFFF;
+  --surface-2: #F7F2EA;
+  --line: #EEE7DC;
+  --line-2: #E2D8C9;
+  --ink: #15110E;
+  --ink-2: #4B4138;
+  --muted: #7A6D60;
+  --primary: #CB1C01;
+  --primary-2: #F2581D;
+  --primary-soft: #FDEDE7;
+  --primary-ink: #A81700;
+  --blush: #FBDCCF;
+  --amber: #F9B81F;
+  --amber-soft: #FEF4DA;
+  --amber-ink: #8A5A00;
+  --green: #16A34A;
+  --green-soft: #E4F5EA;
+  --green-ink: #0F7A37;
+  --navy: #0B4A8F;
+  --navy-soft: #E7EFF8;
+  --navy-ink: #0B3D73;
+  --lock: #EFE9E0;
+  --lock-ink: #A29585;
+  --on-accent: #FFFFFF;
+  --shadow: 0 1px 2px rgba(21, 17, 14, .04), 0 12px 32px -18px rgba(21, 17, 14, .18);
+  --shadow-lg: 0 30px 60px -28px rgba(21, 17, 14, .35);
+  --glow: 0 10px 24px -10px rgba(203, 28, 1, .55);
+
+  --font-display: "Montserrat", "Be Vietnam Pro", system-ui, sans-serif;
+  --font-body: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --r: 20px;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --spring: cubic-bezier(.34, 1.4, .64, 1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12100E; --bg-2: #18140F; --surface: #1C1815; --surface-2: #241F1A; --line: #2E2721; --line-2: #3A322A;
+    --ink: #F6F1EA; --ink-2: #D2C7BA; --muted: #9F9283;
+    --primary: #FF5A36; --primary-2: #FF8A3D; --primary-soft: #3A1810; --primary-ink: #FFB39E; --blush: #3A1C12;
+    --amber: #FFC94A; --amber-soft: #3A2C0C; --amber-ink: #FFD983;
+    --green: #34D17A; --green-soft: #10301D; --green-ink: #8FE8B5;
+    --navy: #6FA8E8; --navy-soft: #13263D; --navy-ink: #B3D3F7;
+    --lock: #2A241F; --lock-ink: #7D7064; --on-accent: #FFFFFF;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 32px -18px rgba(0, 0, 0, .7);
+    --shadow-lg: 0 30px 60px -28px rgba(0, 0, 0, .8);
+    --glow: 0 10px 24px -10px rgba(255, 90, 54, .55);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12100E; --bg-2: #18140F; --surface: #1C1815; --surface-2: #241F1A; --line: #2E2721; --line-2: #3A322A;
+  --ink: #F6F1EA; --ink-2: #D2C7BA; --muted: #9F9283;
+  --primary: #FF5A36; --primary-2: #FF8A3D; --primary-soft: #3A1810; --primary-ink: #FFB39E; --blush: #3A1C12;
+  --amber: #FFC94A; --amber-soft: #3A2C0C; --amber-ink: #FFD983;
+  --green: #34D17A; --green-soft: #10301D; --green-ink: #8FE8B5;
+  --navy: #6FA8E8; --navy-soft: #13263D; --navy-ink: #B3D3F7;
+  --lock: #2A241F; --lock-ink: #7D7064; --on-accent: #FFFFFF;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 12px 32px -18px rgba(0, 0, 0, .7);
+  --shadow-lg: 0 30px 60px -28px rgba(0, 0, 0, .8);
+  --glow: 0 10px 24px -10px rgba(255, 90, 54, .55);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased; transition: background-color .3s, color .3s; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 60; background: var(--bg); }
+h1, h2, h3, h4, h5 { font-family: var(--font-display); margin: 0; letter-spacing: -.025em; text-wrap: balance; }
+p { margin: 0; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; }
+a { color: inherit; text-decoration: none; }
+svg.i { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+svg.i.fill { fill: currentColor; stroke: none; }
+:focus-visible { outline: 2.5px solid var(--primary); outline-offset: 3px; border-radius: 10px; }
+.num { font-family: var(--font-display); font-variant-numeric: tabular-nums; }
+.grad { background: linear-gradient(95deg, var(--primary), var(--primary-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.wrap { max-width: 1280px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.eyebrow { font-size: 11.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--primary-ink); }
+.muted { color: var(--muted); }
+
+/* ---------- top bar ---------- */
+.topbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(16px) saturate(1.4); border-bottom: 1px solid var(--line); }
+.topbar .wrap { display: flex; align-items: center; gap: 18px; height: 64px; }
+.logo { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 800; font-size: 18px; letter-spacing: -.03em; white-space: nowrap; }
+.logo-mark { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--on-accent); background: linear-gradient(135deg, var(--primary), var(--primary-2)); box-shadow: var(--glow); transition: transform .4s var(--spring); }
+.logo:hover .logo-mark { transform: rotate(-10deg); }
+.logo-mark svg { width: 19px; height: 19px; }
+.logo em { font-style: normal; color: var(--primary); }
+.nav { display: flex; gap: 2px; margin-left: 6px; }
+.nav a { display: flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 999px; font-weight: 600; font-size: 14.5px; color: var(--ink-2); white-space: nowrap; transition: background .2s, color .2s; }
+.nav a svg { width: 18px; height: 18px; }
+.nav a:hover { background: var(--surface-2); color: var(--ink); }
+.nav a.active { color: var(--on-accent); background: linear-gradient(100deg, var(--primary), var(--primary-2)); box-shadow: var(--glow); }
+.nav .badge { min-width: 19px; height: 19px; padding: 0 5px; border-radius: 99px; background: var(--primary); color: var(--on-accent); font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.nav a.active .badge { background: var(--on-accent); color: var(--primary); }
+.top-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.subject { display: flex; align-items: center; gap: 8px; padding: 5px 10px 5px 5px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); font-weight: 600; font-size: 14px; white-space: nowrap; transition: border-color .2s; }
+.subject:hover { border-color: var(--primary); }
+.subject .dot { width: 26px; height: 26px; border-radius: 99px; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary-ink); font-family: var(--font-display); font-weight: 800; font-size: 12px; }
+.streak { display: flex; align-items: center; gap: 5px; padding: 6px 11px; border-radius: 999px; background: var(--amber-soft); color: var(--amber-ink); font-family: var(--font-display); font-weight: 700; font-size: 14px; white-space: nowrap; }
+.streak svg { width: 16px; height: 16px; color: var(--primary-2); }
+.icon-btn { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; color: var(--ink-2); position: relative; transition: background .2s; }
+.icon-btn:hover { background: var(--surface-2); }
+.icon-btn .dot { position: absolute; top: 9px; right: 9px; width: 8px; height: 8px; border-radius: 99px; background: var(--primary); box-shadow: 0 0 0 2px var(--bg); }
+.avatar { width: 36px; height: 36px; border-radius: 99px; display: grid; place-items: center; background: var(--ink); color: var(--bg); font-family: var(--font-display); font-weight: 700; font-size: 13px; }
+@media (max-width: 1140px) { .nav a:not(.active) .t { display: none; } .nav a:not(.active) { padding: 9px; } }
+.tabbar { display: none; }
+@media (max-width: 860px) {
+  .nav, .subject .t { display: none; }
+  .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(16px); border-top: 1px solid var(--line); padding: 6px max(8px, env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px)); }
+  .tabbar a { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; font-size: 11px; font-weight: 600; color: var(--muted); position: relative; }
+  .tabbar a.active { color: var(--primary); }
+  .tabbar a.active::before { content: ""; position: absolute; top: -6px; width: 28px; height: 3px; border-radius: 0 0 3px 3px; background: var(--primary); }
+  main { padding-bottom: 96px !important; }
+}
+@media (max-width: 480px) { .icon-btn.theme { display: none; } .topbar .wrap { gap: 10px; } }
+
+/* ---------- shared ---------- */
+main { padding-block: 26px 64px; }
+.view { display: none; }
+.view.active { display: block; }
+.card { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 22px; box-shadow: var(--shadow); min-width: 0; overflow: hidden; isolation: isolate; }
+.spot::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0; transition: opacity .35s; background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--primary) 9%, transparent), transparent 60%); }
+.spot:hover::after { opacity: 1; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.card-head h3 { font-size: 17px; font-weight: 700; }
+.tile { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; flex: none; background: var(--primary-soft); color: var(--primary-ink); }
+.tile svg { width: 19px; height: 19px; }
+.link { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: 14px; color: var(--primary-ink); white-space: nowrap; }
+.link svg { width: 16px; height: 16px; transition: transform .25s var(--ease); }
+.link:hover svg { transform: translateX(4px); }
+
+.btn { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 13px 22px; border-radius: 999px; font-family: var(--font-display); font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; transition: transform .2s var(--ease), box-shadow .25s, background-position .5s var(--ease), border-color .2s, color .2s; }
+.btn:active { transform: scale(.97); }
+.btn svg { width: 18px; height: 18px; transition: transform .25s var(--ease); }
+.btn:hover svg.arrow { transform: translateX(4px); }
+.btn-primary { color: var(--on-accent); background: linear-gradient(100deg, var(--primary) 0%, var(--primary-2) 50%, var(--primary) 100%); background-size: 200% 100%; box-shadow: var(--glow); }
+.btn-primary:hover { background-position: 100% 0; transform: translateY(-1px); }
+.btn-primary::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .35) 50%, transparent 65%); background-size: 250% 100%; background-position: 130% 0; animation: sheen 3.6s ease-in-out 1.2s infinite; pointer-events: none; }
+@keyframes sheen { 0%, 70% { background-position: 130% 0; } 100% { background-position: -30% 0; } }
+.btn-outline { border: 1.5px solid var(--line-2); background: var(--surface); color: var(--ink); }
+.btn-outline:hover { border-color: var(--primary); color: var(--primary-ink); }
+.btn-sm { padding: 9px 16px; font-size: 13.5px; }
+.btn[disabled] { background: var(--lock); color: var(--lock-ink); box-shadow: none; cursor: not-allowed; border: 0; }
+.btn[disabled]::after { display: none; }
+
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+.pill svg { width: 14px; height: 14px; }
+.p-primary { background: var(--primary-soft); color: var(--primary-ink); }
+.p-amber { background: var(--amber-soft); color: var(--amber-ink); }
+.p-green { background: var(--green-soft); color: var(--green-ink); }
+.p-navy { background: var(--navy-soft); color: var(--navy-ink); }
+.p-lock { background: var(--surface-2); color: var(--muted); }
+.p-line { border: 1px solid var(--line-2); color: var(--ink-2); }
+
+.rise { animation: rise .65s var(--ease) both; animation-delay: calc(var(--d, 0) * 70ms); }
+@keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+.bump { animation: bump .5s var(--spring); }
+@keyframes bump { 40% { transform: scale(1.18); } }
+
+/* ---------- dashboard ---------- */
+.dash-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 22px; }
+.dash-head h1 { font-size: clamp(26px, 3.2vw, 36px); font-weight: 800; margin-top: 6px; }
+.dash-head .lead { color: var(--ink-2); margin-top: 6px; font-size: 16px; }
+.stats { display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; }
+.stat { display: flex; align-items: center; gap: 12px; padding: 12px 18px; min-width: 0; }
+.stat + .stat { border-left: 1px solid var(--line); }
+.stat b { display: block; font-family: var(--font-display); font-weight: 800; font-size: 22px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat small { display: block; font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
+.stat .up { color: var(--green-ink); font-size: 12px; font-weight: 700; }
+.mini-ring { width: 40px; height: 40px; flex: none; transform: rotate(-90deg); }
+.mini-ring circle { fill: none; stroke-width: 5; }
+.mini-ring .tr { stroke: var(--surface-2); }
+.mini-ring .br { stroke: var(--primary); stroke-linecap: round; transition: stroke-dashoffset 1.2s var(--ease); }
+@media (max-width: 760px) { .stats { width: 100%; display: grid; grid-template-columns: 1fr 1fr; } .stat + .stat { border-left: 0; } .stat:nth-child(even) { border-left: 1px solid var(--line); } .stat:nth-child(n+3) { border-top: 1px solid var(--line); } }
+
+.bento { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 18px; }
+.s8 { grid-column: span 8; } .s4 { grid-column: span 4; } .s5 { grid-column: span 5; } .s3 { grid-column: span 3; }
+@media (max-width: 1120px) { .bento { grid-template-columns: 1fr 1fr; } .s8 { grid-column: 1 / -1; } .s4, .s5, .s3 { grid-column: span 1; } }
+@media (max-width: 720px) { .bento { grid-template-columns: 1fr; } .s4, .s5, .s3 { grid-column: auto; } }
+
+/* hero */
+.hero { padding: 28px; background: radial-gradient(70% 90% at 100% 0%, var(--blush), transparent 70%), radial-gradient(40% 60% at 0% 100%, var(--amber-soft), transparent 70%), var(--surface); display: flex; flex-direction: column; gap: 18px; }
+.hero .orb { position: absolute; z-index: -1; right: 6%; top: 10%; width: 180px; height: 180px; border-radius: 50%; background: conic-gradient(from 0deg, var(--primary), var(--primary-2), var(--amber), var(--primary)); filter: blur(60px); opacity: .22; animation: orbit 14s linear infinite; }
+@keyframes orbit { to { transform: rotate(360deg) translateX(20px); } }
+.hero-top { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.live { width: 7px; height: 7px; border-radius: 99px; background: var(--primary); animation: ping 1.6s infinite; }
+@keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 60%, transparent); } 100% { box-shadow: 0 0 0 9px transparent; } }
+.countdown { font-family: var(--font-display); font-variant-numeric: tabular-nums; }
+.hero h2 { font-size: clamp(24px, 2.8vw, 34px); font-weight: 800; line-height: 1.18; max-width: 20ch; }
+.hero .desc { color: var(--ink-2); max-width: 54ch; }
+.parts { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; }
+.part { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 112px; padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--surface) 75%, transparent); border: 1px solid var(--line); text-align: center; transition: transform .25s var(--ease), border-color .2s; }
+.part:hover { transform: translateY(-3px); border-color: var(--primary); }
+.part .tile { width: 32px; height: 32px; border-radius: 9px; }
+.part b { font-size: 13.5px; font-weight: 700; font-family: var(--font-display); }
+.part small { font-size: 12px; color: var(--muted); font-weight: 600; }
+.parts .arrow { align-self: center; color: var(--lock-ink); }
+.parts .arrow svg { width: 16px; height: 16px; }
+.hero-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+.tip { display: flex; gap: 10px; align-items: flex-start; margin-left: auto; max-width: 300px; padding: 10px 14px; border-radius: 14px; background: var(--surface); border: 1px dashed var(--line-2); font-size: 13px; color: var(--ink-2); }
+.tip b { color: var(--ink); }
+.tip svg { color: var(--amber-ink); margin-top: 2px; }
+@media (max-width: 900px) { .tip { margin-left: 0; max-width: none; } }
+@media (max-width: 520px) { .parts .arrow { display: none; } .part { flex: 1 1 30%; min-width: 0; } }
+
+/* exam card */
+.exam { color: var(--on-accent); background: linear-gradient(150deg, var(--primary) 0%, var(--primary-2) 100%); border: 0; display: flex; flex-direction: column; gap: 14px; }
+.exam::before { content: ""; position: absolute; inset: auto -40px -60px auto; width: 220px; height: 220px; border-radius: 50%; border: 36px solid rgba(255, 255, 255, .08); z-index: -1; }
+.exam .eyebrow { color: rgba(255, 255, 255, .8); }
+.exam .tile { background: rgba(255, 255, 255, .16); color: var(--on-accent); }
+.exam .days { display: flex; align-items: baseline; gap: 8px; }
+.exam .days b { font-family: var(--font-display); font-size: 56px; font-weight: 800; line-height: 1; letter-spacing: -.04em; }
+.exam .days span { font-weight: 700; font-size: 16px; opacity: .9; }
+.exam p { opacity: .9; font-size: 14px; }
+.exam-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 14px; border-radius: 12px; background: rgba(255, 255, 255, .12); font-size: 14px; font-weight: 600; transition: background .2s; }
+.exam-row:hover { background: rgba(255, 255, 255, .2); }
+.exam-row .pill { background: var(--on-accent); color: #A81700; font-size: 11.5px; }
+.exam .link { color: var(--on-accent); margin-top: auto; }
+
+/* plan */
+.plan-prog { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.thin { height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; flex: 1; min-width: 60px; }
+.thin i { display: block; height: 100%; width: 0; border-radius: 99px; background: linear-gradient(90deg, var(--primary), var(--primary-2)); transition: width .9s var(--ease); }
+.task { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 4px; border-top: 1px solid var(--line); }
+.task:first-of-type { border-top: 0; }
+.chk { width: 26px; height: 26px; border-radius: 99px; border: 2px solid var(--line-2); display: grid; place-items: center; color: transparent; transition: background .25s, border-color .25s, transform .3s var(--spring); }
+.chk svg { width: 15px; height: 15px; stroke-width: 3; stroke-dasharray: 24; stroke-dashoffset: 24; transition: stroke-dashoffset .35s var(--ease) .1s; }
+.chk:hover { border-color: var(--primary); transform: scale(1.08); }
+.task.done .chk { background: var(--green); border-color: var(--green); color: var(--on-accent); }
+.task.done .chk svg { stroke-dashoffset: 0; }
+.task h5 { font-family: var(--font-body); font-size: 14.5px; font-weight: 600; letter-spacing: 0; transition: color .3s; }
+.task .meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 3px; font-size: 12.5px; color: var(--muted); font-weight: 500; }
+.task .meta span { display: inline-flex; align-items: center; gap: 4px; }
+.task .meta svg { width: 13px; height: 13px; }
+.task.done h5 { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-2); }
+.task .go { opacity: 0; transform: translateX(-6px); transition: opacity .2s, transform .25s var(--ease); }
+.task:hover .go, .task:focus-within .go { opacity: 1; transform: none; }
+.task.done .go { display: none; }
+@media (hover: none) { .task .go { opacity: 1; transform: none; } }
+
+/* goal */
+.score { display: flex; align-items: baseline; gap: 10px; }
+.score b { font-family: var(--font-display); font-size: 46px; font-weight: 800; line-height: 1; letter-spacing: -.04em; }
+.score span { color: var(--muted); font-weight: 600; }
+.score-bar { position: relative; height: 8px; border-radius: 99px; background: var(--surface-2); margin: 14px 0 6px; }
+.score-bar i { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 99px; background: linear-gradient(90deg, var(--amber), var(--primary-2)); transition: width 1.2s var(--ease); }
+.score-bar em { position: absolute; top: -5px; left: 80%; width: 3px; height: 18px; border-radius: 2px; background: var(--ink); }
+.score-scale { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.crit { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; margin-top: 12px; font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
+.crit .bar { grid-column: 1 / -1; height: 5px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.crit .bar i { display: block; height: 100%; width: 0; border-radius: 99px; transition: width 1.1s var(--ease); }
+.crit .v { font-family: var(--font-display); font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* mistakes */
+.fix { border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; transition: border-color .2s; }
+.fix:hover { border-color: var(--line-2); }
+.fix .eyebrow { font-size: 10.5px; }
+.fix .wrong { margin-top: 4px; color: var(--muted); text-decoration: line-through; text-decoration-color: var(--primary); text-decoration-thickness: 2px; font-size: 14px; }
+.fix .right { margin-top: 2px; font-weight: 600; font-size: 14px; display: flex; gap: 6px; align-items: flex-start; }
+.fix .right svg { width: 15px; height: 15px; color: var(--green); margin-top: 3px; }
+.fix .right mark { background: var(--green-soft); color: var(--green-ink); border-radius: 5px; padding: 0 4px; }
+
+/* ---------- learning path ---------- */
+.path-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 18px; }
+.path-head h1 { font-size: clamp(26px, 3.2vw, 36px); font-weight: 800; margin-top: 6px; }
+.path-head .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.path-kpi { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.kpi-ring { position: relative; width: 58px; height: 58px; }
+.kpi-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.kpi-ring circle { fill: none; stroke-width: 6; }
+.kpi-ring .tr { stroke: var(--surface-2); }
+.kpi-ring .br { stroke: var(--primary); stroke-linecap: round; transition: stroke-dashoffset 1.2s var(--ease); }
+.kpi-ring b { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--font-display); font-size: 14px; font-weight: 800; }
+.path-kpi small { display: block; color: var(--muted); font-size: 12.5px; font-weight: 600; }
+.path-kpi strong { font-family: var(--font-display); font-size: 15px; }
+
+/* chapter stepper */
+.chapters { display: flex; align-items: stretch; gap: 6px; overflow-x: auto; padding: 4px 4px 10px; margin: 0 -4px 8px; scrollbar-width: thin; scroll-snap-type: x proximity; }
+.chap { position: relative; flex: 1 1 0; min-width: 210px; display: flex; gap: 12px; align-items: flex-start; text-align: left; padding: 14px 16px 18px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); scroll-snap-align: start; transition: border-color .25s, transform .25s var(--ease), box-shadow .25s; }
+.chap:hover { transform: translateY(-2px); border-color: var(--line-2); }
+.chap.on { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft), var(--shadow); }
+.chap .tile { width: 34px; height: 34px; }
+.chap.done .tile { background: var(--green-soft); color: var(--green-ink); }
+.chap.locked .tile { background: var(--surface-2); color: var(--lock-ink); }
+.chap.final { flex: 0 1 auto; min-width: 190px; background: var(--amber-soft); border-color: transparent; }
+.chap.final .tile { background: var(--amber); color: var(--ink); }
+.chap small { display: block; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.chap b { display: block; font-family: var(--font-display); font-size: 14.5px; font-weight: 700; line-height: 1.3; margin-top: 1px; }
+.chap em { display: block; font-style: normal; font-size: 12.5px; color: var(--muted); font-weight: 600; margin-top: 3px; }
+.chap em.warn { color: var(--amber-ink); }
+.chap .bar { position: absolute; left: 16px; right: 16px; bottom: 9px; height: 3px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.chap .bar i { display: block; height: 100%; border-radius: 99px; background: var(--green); width: 0; transition: width 1s var(--ease) .3s; }
+.chap.on .bar i { background: linear-gradient(90deg, var(--primary), var(--primary-2)); }
+.chap-arrow { align-self: center; color: var(--lock-ink); flex: none; }
+.chap-arrow svg { width: 16px; height: 16px; }
+
+.path-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+@media (max-width: 1080px) { .path-layout { grid-template-columns: 1fr; } }
+.tree-panel { padding: 0; }
+.tree-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 18px 22px 6px; }
+.tree-top h3 { font-size: 17px; margin-top: 2px; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 99px; }
+.tree-scroll { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.tree-scroll.h { cursor: grab; -webkit-mask-image: linear-gradient(90deg, transparent, #000 28px, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
+.tree-scroll.dragging { cursor: grabbing; }
+.tree { position: relative; }
+.tree.swap { animation: swapIn .5s var(--ease); }
+@keyframes swapIn { from { opacity: 0; transform: translateX(24px); } }
+.tree svg.edges { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+.edges .e { fill: none; stroke-width: 3; stroke-linecap: round; }
+.edges .e.ok { stroke: var(--green); }
+.edges .e.dim { stroke: var(--line-2); stroke-dasharray: 2 8; }
+.edges .e.br { stroke: var(--amber); stroke-dasharray: 7 7; animation: march 1s linear infinite; }
+@keyframes march { to { stroke-dashoffset: -14; } }
+.tn { position: absolute; transform: translate(-50%, -50%); width: 52px; height: 52px; display: grid; place-items: center; border-radius: 50%; z-index: 2; animation: pop .5s var(--spring) backwards; animation-delay: calc(var(--d, 0) * 55ms + 120ms); transition: transform .25s var(--spring); }
+@keyframes pop { from { transform: translate(-50%, -50%) scale(.3); opacity: 0; } }
+.tn:hover { transform: translate(-50%, -50%) scale(1.08); }
+.tn .face { width: 100%; height: 100%; display: grid; place-items: center; border-radius: inherit; transition: box-shadow .25s; }
+.tn svg { width: 22px; height: 22px; }
+.tn.sq { border-radius: 15px; }
+.tn.mini { width: 40px; height: 40px; }
+.tn.mini svg { width: 18px; height: 18px; }
+.tn.mini.sq { border-radius: 12px; }
+.tn.done .face { background: var(--green); color: var(--on-accent); }
+.tn.review .face { background: var(--navy-soft); color: var(--navy-ink); border: 2px solid var(--navy); }
+.tn.gatefail .face { background: var(--surface); color: var(--primary); border: 2.5px solid var(--primary); }
+.tn.current .face { background: linear-gradient(135deg, var(--primary), var(--primary-2)); color: var(--on-accent); box-shadow: var(--glow); }
+.tn.mini.current .face { background: var(--amber); color: #15110E; box-shadow: 0 8px 18px -8px var(--amber); }
+.tn.open .face { background: var(--surface); color: var(--ink); border: 2px dashed var(--ink-2); }
+.tn.locked .face { background: var(--lock); color: var(--lock-ink); }
+.tn.mini.done .face { background: var(--green-soft); color: var(--green-ink); border: 2px solid var(--green); }
+.tn.current::before { content: ""; position: absolute; inset: -7px; border-radius: inherit; background: conic-gradient(from var(--a, 0deg), var(--primary), transparent 35%, var(--primary-2) 60%, transparent 85%, var(--primary)); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px)); animation: turn 2.4s linear infinite; }
+.tn.mini.current::before { background: conic-gradient(from var(--a, 0deg), var(--amber), transparent 40%, var(--amber) 70%, transparent); }
+@property --a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes turn { to { --a: 360deg; } }
+.tn.sel .face { box-shadow: 0 0 0 4px var(--surface), 0 0 0 6px var(--ink); }
+.tn .flag { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 99px; display: grid; place-items: center; background: var(--primary); color: var(--on-accent); font-family: var(--font-display); font-weight: 800; font-size: 12px; border: 2px solid var(--surface); }
+.tn .flag.navy { background: var(--navy); }
+.tn .flag svg { width: 11px; height: 11px; stroke-width: 3; }
+.tl { position: absolute; transform: translateX(-50%); width: 132px; text-align: center; font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--ink-2); pointer-events: none; animation: rise .5s var(--ease) backwards; animation-delay: calc(var(--d, 0) * 55ms + 250ms); }
+.tl small { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 1px; }
+.tl em { display: block; font-style: normal; font-size: 11.5px; font-weight: 700; margin-top: 2px; color: var(--muted); }
+.warn { color: var(--primary-ink) !important; }
+.amber { color: var(--amber-ink) !important; }
+.navy { color: var(--navy-ink) !important; }
+.tl.mini { width: 112px; font-size: 12px; }
+.lane-tag { position: absolute; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; background: var(--amber-soft); color: var(--amber-ink); border: 1px solid var(--amber); font-size: 12px; font-weight: 700; white-space: nowrap; z-index: 1; animation: rise .5s var(--ease) .6s backwards; }
+.lane-tag svg { width: 13px; height: 13px; }
+.lane-bg { position: absolute; border-radius: 22px; background: color-mix(in srgb, var(--amber-soft) 70%, transparent); border: 1px dashed color-mix(in srgb, var(--amber) 60%, transparent); animation: rise .5s var(--ease) .45s backwards; }
+
+/* vertical tree (phones) */
+.vtree { list-style: none; margin: 0; padding: 6px 16px 4px; }
+.vtree li { position: relative; }
+.vrow { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 10px 8px; border-radius: 14px; cursor: pointer; transition: background .2s; }
+.vrow:hover, .vrow.sel { background: var(--surface-2); }
+.vrow .tn { position: relative; transform: none; animation: none; flex: none; width: 40px; height: 40px; }
+.vrow .tn svg { width: 18px; height: 18px; }
+.vrow .tn:hover { transform: none; }
+.vrow b { display: block; font-size: 14.5px; font-weight: 600; }
+.vrow small { display: block; font-size: 12px; color: var(--muted); font-weight: 600; }
+.vtree > li:not(:last-child)::after { content: ""; position: absolute; left: 27px; top: 54px; bottom: -8px; width: 2px; background: var(--line-2); }
+.vbranch { margin: 2px 0 6px 26px; padding: 8px 0 8px 14px; border-left: 2px dashed var(--amber); }
+.vbranch .lane-tag { position: static; transform: none; margin: 0 0 4px 8px; animation: none; }
+.vback { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.vback svg { width: 15px; height: 15px; transform: scaleX(-1); }
+
+/* detail */
+.detail { border-top: 1px solid var(--line); padding: 20px 22px 22px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; }
+.detail.swap > * { animation: rise .45s var(--ease) backwards; }
+.detail.swap > *:nth-child(2) { animation-delay: .07s; }
+@media (max-width: 760px) { .detail { grid-template-columns: 1fr; } }
+.dt-head { display: flex; gap: 14px; align-items: flex-start; }
+.dt-head .tile { width: 48px; height: 48px; border-radius: 14px; }
+.dt-head .tile svg { width: 22px; height: 22px; }
+.dt-head h3 { font-size: 20px; font-weight: 800; margin: 2px 0 6px; }
+.why { margin-top: 14px; padding: 14px 16px; border-radius: 14px; background: var(--surface-2); font-size: 14px; color: var(--ink-2); }
+.why b { display: block; font-family: var(--font-display); color: var(--ink); margin-bottom: 3px; font-size: 14px; }
+.steps { display: flex; flex-direction: column; gap: 6px; }
+.step { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 13px; border: 1px solid var(--line); }
+.step.next { border-style: dashed; }
+.step .tile { width: 30px; height: 30px; border-radius: 9px; }
+.step .tile svg { width: 16px; height: 16px; }
+.step h5 { font-family: var(--font-body); letter-spacing: 0; font-size: 14px; font-weight: 600; }
+.step p { font-size: 12.5px; color: var(--muted); }
+.step .st { margin-left: auto; }
+.dt-cta { margin-top: 12px; width: 100%; }
+
+.side { display: flex; flex-direction: column; gap: 18px; }
+.today-steps { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 16px; }
+.ts { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; font-size: 14px; font-weight: 600; }
+.ts .c { width: 22px; height: 22px; border-radius: 99px; border: 2px solid var(--line-2); display: grid; place-items: center; flex: none; color: transparent; }
+.ts .c svg { width: 13px; height: 13px; stroke-width: 3; }
+.ts.ok { color: var(--muted); }
+.ts.ok .c { background: var(--green); border-color: var(--green); color: var(--on-accent); }
+.ts.cur { background: var(--amber-soft); color: var(--amber-ink); }
+.ts.cur .c { border-color: var(--amber-ink); }
+.ts .t { margin-left: auto; font-size: 12px; color: var(--muted); }
+.ts.back { color: var(--muted); font-size: 13px; }
+.ts.back svg { width: 16px; height: 16px; transform: scaleX(-1); }
+.seed { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.seed div { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--ink-2); }
+.seed b { font-family: var(--font-display); font-size: 17px; min-width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; }
+.seed-bar { display: flex; height: 8px; border-radius: 99px; overflow: hidden; gap: 3px; margin-top: 14px; }
+.seed-bar i { height: 100%; border-radius: 99px; transform-origin: left; animation: grow 1s var(--ease) .4s backwards; }
+@keyframes grow { from { transform: scaleX(0); } }
+
+/* ---------- quick quiz widget ---------- */
+.quiz { position: fixed; right: max(18px, env(safe-area-inset-right, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 70; width: min(360px, calc(100vw - 32px)); background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow-lg); padding: 16px; transform: translateY(calc(100% + 40px)); visibility: hidden; transition: transform .6s var(--spring), visibility 0s .6s; }
+.quiz.show { transform: none; visibility: visible; transition: transform .6s var(--spring), visibility 0s; }
+.quiz-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; color: var(--primary-ink); }
+.quiz-head .x { margin-left: auto; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+.quiz-head .x:hover { background: var(--surface-2); }
+.quiz-head .x svg { width: 16px; height: 16px; }
+.quiz-timer { height: 3px; border-radius: 99px; background: var(--surface-2); margin: 10px 0 12px; overflow: hidden; }
+.quiz-timer i { display: block; height: 100%; width: 100%; background: var(--primary); transform-origin: left; }
+.quiz-timer i.run { animation: drain 30s linear forwards; }
+@keyframes drain { to { transform: scaleX(0); } }
+.quiz-q { font-family: var(--font-display); font-weight: 700; font-size: 15.5px; line-height: 1.4; }
+.quiz-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.qo { padding: 10px 12px; border-radius: 12px; border: 1.5px solid var(--line-2); font-weight: 600; font-size: 14px; text-align: left; font-variant-numeric: tabular-nums; transition: border-color .2s, background .2s, transform .2s var(--ease); }
+.qo:hover:not([disabled]) { border-color: var(--primary); transform: translateY(-1px); }
+.qo.right { background: var(--green-soft); border-color: var(--green); color: var(--green-ink); }
+.qo.wrong { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-ink); animation: shake .4s; }
+.qo[disabled] { cursor: default; }
+@keyframes shake { 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
+.quiz-fb { margin-top: 10px; font-size: 13px; color: var(--ink-2); min-height: 20px; }
+.quiz-fb b { color: var(--ink); }
+.quiz-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.quiz-foot button { color: var(--primary-ink); font-weight: 700; }
+.quiz-pill { position: fixed; right: max(18px, env(safe-area-inset-right, 0px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 69; display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 999px; font-family: var(--font-display); font-weight: 700; font-size: 13.5px; color: var(--on-accent); background: linear-gradient(100deg, var(--primary), var(--primary-2)); box-shadow: var(--glow); transform: scale(0); transition: transform .4s var(--spring); }
+.quiz-pill.show { transform: scale(1); }
+.quiz-pill svg { width: 16px; height: 16px; }
+@media (max-width: 860px) { .quiz, .quiz-pill { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); } }
+
+.toast { position: fixed; left: 50%; bottom: calc(26px + env(safe-area-inset-bottom, 0px)); translate: -50% 0; z-index: 90; display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-radius: 14px; background: var(--ink); color: var(--bg); font-weight: 600; font-size: 14px; box-shadow: var(--shadow-lg); transform: translateY(calc(100% + 160px)); visibility: hidden; transition: transform .5s var(--spring), visibility 0s .5s; max-width: calc(100% - 32px); }
+.toast.show { transform: none; visibility: visible; transition: transform .5s var(--spring), visibility 0s; }
+.toast svg { color: var(--green); }
+@media (max-width: 860px) { .toast { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); } }
+#burst { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 95; }
+.demo-note { margin-top: 30px; text-align: center; color: var(--muted); font-size: 13px; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .3s; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></symbol>
+  <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19H17a3.5 3.5 0 0 0 0-7H7a3.5 3.5 0 0 1 0-7h8.5"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 11h6M9 15h4"/></symbol>
+  <symbol id="i-dumbbell" viewBox="0 0 24 24"><path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/></symbol>
+  <symbol id="i-radar" viewBox="0 0 24 24"><path d="M12 3 20.5 9.2 17.3 19.2H6.7L3.5 9.2Z"/><path d="M12 8l3.5 2.6-1.3 4.2H9.8l-1.3-4.2Z"/></symbol>
+  <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 22c4 0 7-2.8 7-6.8 0-4.2-3.2-6.7-4.6-10.7-.3-.8-1.3-.9-1.7-.2-.9 1.6-1 3.4-2.4 4.6C9.6 7.3 9 6 8.6 5.2c-.3-.6-1.2-.6-1.5.1C5.9 7.9 5 10.4 5 15.2 5 19.2 8 22 12 22Z"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5 10 17.5 19 7"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9Z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5Z"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 4.5A1.5 1.5 0 0 1 5.5 3H20v15H5.5A1.5 1.5 0 0 0 4 19.5Z"/><path d="M4 19.5A1.5 1.5 0 0 0 5.5 21H20"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7Z"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h12l-2 4 2 4H5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-review" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.9-3.9L3 9"/><path d="M3 4v5h5"/><path d="M4 13a8 8 0 0 0 14.9 3.9L21 15"/><path d="M21 20v-5h-5"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6Z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-graph" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M5 6c3 0 4 12 7 12s4-12 7-12"/></symbol>
+  <symbol id="i-crosshair" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></symbol>
+  <symbol id="i-trend" viewBox="0 0 24 24"><path d="M3 7l6 6 4-4 8 8"/><path d="M15 17h6v-6"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3c.6 4.4 2.6 6.4 7 7-4.4.6-6.4 2.6-7 7-.6-4.4-2.6-6.4-7-7 4.4-.6 6.4-2.6 7-7Z"/></symbol>
+</svg>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="logo" href="#tong-quan" aria-label="EduTwin, về Tổng quan"><span class="logo-mark"><svg class="i"><use href="#i-route"/></svg></span><span>Edu<em>Twin</em></span></a>
+    <nav class="nav" aria-label="Điều hướng chính">
+      <a href="#tong-quan" data-view="tong-quan" title="Tổng quan"><svg class="i"><use href="#i-home"/></svg><span class="t">Tổng quan</span></a>
+      <a href="#lo-trinh" data-view="lo-trinh" title="Lộ trình"><svg class="i"><use href="#i-route"/></svg><span class="t">Lộ trình</span></a>
+      <a href="#tong-quan" title="Bài tập"><svg class="i"><use href="#i-clip"/></svg><span class="t">Bài tập</span><span class="badge">2</span></a>
+      <a href="#tong-quan" title="Luyện tập"><svg class="i"><use href="#i-dumbbell"/></svg><span class="t">Luyện tập</span></a>
+      <a href="#tong-quan" title="Năng lực"><svg class="i"><use href="#i-radar"/></svg><span class="t">Năng lực</span></a>
+    </nav>
+    <div class="top-right">
+      <button class="subject" type="button" aria-label="Đổi môn học, đang chọn Toán 10"><span class="dot">T</span><span class="t">Toán 10</span><svg class="i" style="width:15px;height:15px"><use href="#i-down"/></svg></button>
+      <span class="streak" title="Chuỗi ngày học liên tiếp"><svg class="i fill"><use href="#i-flame"/></svg><span class="num" id="streakNum">7</span></span>
+      <button class="icon-btn theme" type="button" id="themeBtn" aria-label="Đổi giao diện sáng hoặc tối"><svg class="i"><use href="#i-moon"/></svg></button>
+      <button class="icon-btn" type="button" aria-label="Thông báo, có thông báo mới"><svg class="i"><use href="#i-bell"/></svg><span class="dot"></span></button>
+      <span class="avatar" aria-label="Tài khoản Minh Anh">MA</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- ================= TỔNG QUAN ================= -->
+  <section class="view" id="view-tong-quan" aria-label="Tổng quan">
+    <div class="dash-head">
+      <div class="rise" style="--d:0">
+        <p class="eyebrow">Thứ Bảy, 14/11 · Lớp 10A2 · Toán</p>
+        <h1>Chào buổi tối, <span class="grad">Minh Anh</span></h1>
+        <p class="lead">Còn <b id="leftCount">3 việc</b> nữa là xong kế hoạch hôm nay. Bắt đầu từ việc quan trọng nhất nhé.</p>
+      </div>
+      <div class="stats rise" style="--d:1">
+        <div class="stat"><svg class="mini-ring" viewBox="0 0 40 40"><circle class="tr" cx="20" cy="20" r="16"/><circle class="br" id="miniRing" cx="20" cy="20" r="16" stroke-dasharray="100.5" stroke-dashoffset="100.5"/></svg><div><b><span id="minNum" data-to="25">0</span><span class="muted" style="font-size:14px">/40</span></b><small>phút hôm nay</small></div></div>
+        <div class="stat"><div><b data-to="7">0</b><small>ngày liên tiếp</small></div></div>
+        <div class="stat"><div><b data-to="86">0</b><small>câu tuần này</small></div></div>
+        <div class="stat"><div><b><span data-to="7.2" data-dec="1">0</span> <span class="up">↑0.3</span></b><small>điểm dự đoán</small></div></div>
+      </div>
+    </div>
+
+    <div class="bento">
+      <article class="card hero spot s8 rise" style="--d:2" aria-labelledby="heroTitle">
+        <span class="orb" aria-hidden="true"></span>
+        <div class="hero-top">
+          <span class="pill p-primary"><span class="live"></span>Ưu tiên cao · Bài tập của cô Hạnh</span>
+          <span class="pill p-line"><svg class="i"><use href="#i-clock"/></svg>Hạn còn&nbsp;<span class="countdown" id="countdown">02:14:37</span></span>
+        </div>
+        <div>
+          <h2 id="heroTitle">Kiểm tra 15 phút: <span class="grad">Hàm số bậc hai</span></h2>
+          <p class="desc" style="margin-top:8px">10 câu về đồ thị parabol và sự biến thiên. Nộp trước 21:00 hôm nay để được tính điểm.</p>
+        </div>
+        <div class="parts" aria-label="Cấu trúc bài">
+          <div class="part"><span class="tile"><svg class="i"><use href="#i-graph"/></svg></span><b>Nhận dạng đồ thị</b><small>4 câu · 5 phút</small></div>
+          <span class="arrow"><svg class="i"><use href="#i-chev"/></svg></span>
+          <div class="part"><span class="tile"><svg class="i"><use href="#i-crosshair"/></svg></span><b>Tìm đỉnh, trục</b><small>3 câu · 5 phút</small></div>
+          <span class="arrow"><svg class="i"><use href="#i-chev"/></svg></span>
+          <div class="part"><span class="tile"><svg class="i"><use href="#i-trend"/></svg></span><b>Xét biến thiên</b><small>3 câu · 5 phút</small></div>
+        </div>
+        <div class="hero-actions">
+          <button class="btn btn-primary" type="button" id="heroStart">Làm bài ngay <svg class="i arrow"><use href="#i-arrow"/></svg></button>
+          <button class="btn btn-outline" type="button">Xem trước đề</button>
+          <div class="tip"><svg class="i"><use href="#i-bulb"/></svg><span><b>Mẹo nhỏ:</b> đỉnh parabol có hoành độ x = −b/2a. Lần trước em quên dấu trừ ở bước này.</span></div>
+        </div>
+      </article>
+
+      <article class="card exam s4 rise" style="--d:3" aria-labelledby="examTitle">
+        <div style="display:flex;align-items:center;gap:10px"><span class="tile"><svg class="i"><use href="#i-flag"/></svg></span><span class="eyebrow">Sắp thi</span></div>
+        <div>
+          <h3 id="examTitle" style="font-size:18px">Thi giữa kỳ · Toán</h3>
+          <div class="days" style="margin-top:6px"><b class="num" data-to="9">0</b><span>ngày nữa</span></div>
+          <p>Thứ Ba 25/11 · 7:30 · Phòng B204</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div class="exam-row"><span>Bài tập: Hàm số bậc hai (2)</span><span class="pill">Hạn 17/11</span></div>
+          <div class="exam-row"><span>Thi thử chương 1–2</span><span class="pill">20/11</span></div>
+        </div>
+        <a class="link" href="#lo-trinh">Xem lộ trình ôn thi <svg class="i"><use href="#i-arrow"/></svg></a>
+      </article>
+
+      <article class="card spot s5 rise" style="--d:4" aria-labelledby="planTitle">
+        <div class="card-head">
+          <div><p class="eyebrow">Theo lộ trình</p><h3 id="planTitle">Kế hoạch hôm nay</h3></div>
+          <div class="plan-prog"><span id="planCount">1/4</span><div class="thin" style="width:80px"><i id="planBar"></i></div></div>
+        </div>
+        <div id="plan">
+          <div class="task done" data-min="4"><button class="chk" type="button" aria-label="Đã xong: Xem lại cách tìm đỉnh"><svg class="i"><use href="#i-check"/></svg></button><div><h5>Xem lại cách tìm đỉnh parabol</h5><div class="meta"><span class="pill p-amber">Nhánh vá</span><span><svg class="i"><use href="#i-clock"/></svg>4 phút</span></div></div><span></span></div>
+          <div class="task" data-min="8"><button class="chk" type="button" aria-label="Đánh dấu xong: Luyện 6 câu tìm đỉnh"><svg class="i"><use href="#i-check"/></svg></button><div><h5>Luyện 6 câu tìm đỉnh</h5><div class="meta"><span class="pill p-amber">Nhánh vá</span><span><svg class="i"><use href="#i-clock"/></svg>8 phút</span></div></div><a class="link go" href="#lo-trinh">Làm <svg class="i"><use href="#i-arrow"/></svg></a></div>
+          <div class="task" data-min="5"><button class="chk" type="button" aria-label="Đánh dấu xong: Ôn tập hợp"><svg class="i"><use href="#i-check"/></svg></button><div><h5>Ôn nhớ lại: Tập hợp</h5><div class="meta"><span class="pill p-navy">Đến hạn ôn</span><span><svg class="i"><use href="#i-clock"/></svg>5 phút</span></div></div><a class="link go" href="#lo-trinh">Ôn <svg class="i"><use href="#i-arrow"/></svg></a></div>
+          <div class="task" data-min="3"><button class="chk" type="button" aria-label="Đánh dấu xong: Kiểm tra nhanh 3 câu"><svg class="i"><use href="#i-check"/></svg></button><div><h5>Kiểm tra nhanh 3 câu</h5><div class="meta"><span class="pill p-green">Kiểm tra ngắn</span><span><svg class="i"><use href="#i-clock"/></svg>3 phút</span></div></div><a class="link go" href="#lo-trinh">Thử <svg class="i"><use href="#i-arrow"/></svg></a></div>
+        </div>
+      </article>
+
+      <article class="card spot s3 rise" style="--d:5" aria-labelledby="goalTitle">
+        <div class="card-head" style="margin-bottom:10px"><h3 id="goalTitle">Mục tiêu giữa kỳ</h3><span class="pill p-primary">8.0</span></div>
+        <div class="score"><b class="num" data-to="7.2" data-dec="1">0</b><span>điểm dự đoán</span></div>
+        <div class="score-bar" role="img" aria-label="7.2 trên 10, mục tiêu 8.0"><i id="scoreBar"></i><em></em></div>
+        <div class="score-scale"><span>0</span><span>Mục tiêu 8.0</span><span>10</span></div>
+        <div id="crit"></div>
+      </article>
+
+      <article class="card spot s4 rise" style="--d:6" aria-labelledby="fixTitle">
+        <div class="card-head" style="margin-bottom:12px"><h3 id="fixTitle">Chỗ em hay sai</h3><span class="pill p-line">2 lỗi</span></div>
+        <div class="fix">
+          <p class="eyebrow">Lỗi cần sửa · 3 lần tuần này</p>
+          <p class="wrong">Đỉnh parabol: x = b/2a</p>
+          <p class="right"><svg class="i"><use href="#i-check"/></svg><span>Đỉnh parabol: x = <mark>−b/2a</mark></span></p>
+        </div>
+        <div class="fix">
+          <p class="eyebrow">Lỗi cần sửa · 1 lần</p>
+          <p class="wrong">a &lt; 0: đồng biến trên cả (−∞; x₀) và (x₀; +∞)</p>
+          <p class="right"><svg class="i"><use href="#i-check"/></svg><span>a &lt; 0: đồng biến trên (−∞; x₀), <mark>nghịch biến</mark> trên (x₀; +∞)</span></p>
+        </div>
+        <a class="link" href="#lo-trinh">Luyện 5 câu sửa lỗi <svg class="i"><use href="#i-arrow"/></svg></a>
+      </article>
+    </div>
+    <p class="demo-note">Trang mẫu, dữ liệu minh họa. Thử tick các việc trong Kế hoạch hôm nay và trả lời câu Đố nhanh ở góc phải.</p>
+  </section>
+
+  <!-- ================= LỘ TRÌNH ================= -->
+  <section class="view" id="view-lo-trinh" aria-label="Lộ trình học tập">
+    <div class="path-head">
+      <div class="rise" style="--d:0">
+        <p class="eyebrow">Lộ trình cá nhân · Toán 10</p>
+        <h1>Chinh phục <span class="grad">8.0</span> giữa kỳ</h1>
+        <div class="meta">
+          <span class="pill p-line"><svg class="i"><use href="#i-route"/></svg>Học, luyện, ôn cân bằng</span>
+          <span class="pill p-amber"><svg class="i"><use href="#i-review"/></svg>Đang vá 1 chỗ vướng</span>
+          <span class="pill p-primary"><svg class="i"><use href="#i-flag"/></svg>Thi 25/11 · còn 9 ngày</span>
+        </div>
+      </div>
+      <div class="path-kpi rise" style="--d:1">
+        <div class="kpi-ring"><svg viewBox="0 0 58 58"><circle class="tr" cx="29" cy="29" r="24"/><circle class="br" id="kpiRing" cx="29" cy="29" r="24" stroke-dasharray="150.8" stroke-dashoffset="150.8"/></svg><b>50%</b></div>
+        <div><strong>6 / 12 chặng</strong><small>Dự kiến xong 22/11</small></div>
+        <button class="btn btn-outline btn-sm" type="button">Điều chỉnh mục tiêu</button>
+      </div>
+    </div>
+
+    <nav class="chapters rise" style="--d:2" id="chapters" role="tablist" aria-label="Các chương trong lộ trình"></nav>
+
+    <div class="path-layout">
+      <div class="card tree-panel rise" style="--d:3">
+        <div class="tree-top">
+          <div><p class="eyebrow" id="treeEyebrow">Chương 2</p><h3 id="treeTitle">Cây kỹ năng</h3></div>
+          <div class="legend" aria-label="Chú thích">
+            <span><i style="background:var(--green)"></i>Đã vững</span>
+            <span><i style="background:var(--primary)"></i>Đang học</span>
+            <span><i style="background:var(--amber)"></i>Nhánh vá</span>
+            <span><i style="background:var(--navy)"></i>Đến hạn ôn</span>
+            <span><i style="border:2px dashed var(--ink-2)"></i>Học song song</span>
+          </div>
+        </div>
+        <div class="tree-scroll" id="treeScroll"><div class="tree" id="tree"></div></div>
+        <div class="detail" id="detail" aria-live="polite"></div>
+      </div>
+
+      <aside class="side">
+        <div class="card spot rise" style="--d:4">
+          <p class="eyebrow">Đang làm · nhánh vá</p>
+          <h3 style="font-size:17px;margin-top:4px">Đỉnh và trục đối xứng</h3>
+          <div class="today-steps">
+            <div class="ts ok"><span class="c"><svg class="i"><use href="#i-check"/></svg></span>Xem lại cách tìm đỉnh<span class="t">4 phút</span></div>
+            <div class="ts cur"><span class="c"></span>Luyện 6 câu tìm đỉnh<span class="t">8 phút</span></div>
+            <div class="ts"><span class="c"></span>Kiểm tra nhanh 3 câu<span class="t">3 phút</span></div>
+            <div class="ts back"><svg class="i"><use href="#i-review"/></svg>Rồi quay lại cổng “Sự biến thiên”</div>
+          </div>
+          <button class="btn btn-primary" type="button" style="width:100%" id="sideStart">Làm tiếp <svg class="i arrow"><use href="#i-arrow"/></svg></button>
+        </div>
+        <div class="card spot rise" style="--d:5">
+          <p class="eyebrow">Cây ban đầu · đầu vào 12/11</p>
+          <h3 style="font-size:17px;margin-top:4px">18 câu → 11 kỹ năng</h3>
+          <div class="seed-bar"><i style="flex:3;background:var(--green)"></i><i style="flex:1;background:var(--amber)"></i><i style="flex:7;background:var(--primary)"></i></div>
+          <div class="seed">
+            <div><b class="p-green">3</b>đã vững, được bỏ qua</div>
+            <div><b class="p-amber">1</b>kỹ năng nền phải vá trước</div>
+            <div><b class="p-primary">7</b>cần học theo thứ tự</div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+</main>
+
+<nav class="tabbar" aria-label="Điều hướng nhanh">
+  <a href="#tong-quan" data-view="tong-quan"><svg class="i"><use href="#i-home"/></svg>Tổng quan</a>
+  <a href="#lo-trinh" data-view="lo-trinh"><svg class="i"><use href="#i-route"/></svg>Lộ trình</a>
+  <a href="#tong-quan"><svg class="i"><use href="#i-clip"/></svg>Bài tập</a>
+  <a href="#tong-quan"><svg class="i"><use href="#i-dumbbell"/></svg>Luyện tập</a>
+  <a href="#tong-quan"><svg class="i"><use href="#i-radar"/></svg>Năng lực</a>
+</nav>
+
+<aside class="quiz" id="quiz" aria-label="Đố nhanh 30 giây">
+  <div class="quiz-head"><svg class="i" style="width:16px;height:16px"><use href="#i-spark"/></svg>Đố nhanh 30 giây<button class="x" type="button" id="quizClose" aria-label="Thu gọn"><svg class="i"><use href="#i-x"/></svg></button></div>
+  <div class="quiz-timer"><i id="quizTimer"></i></div>
+  <p class="quiz-q" id="quizQ"></p>
+  <div class="quiz-opts" id="quizOpts"></div>
+  <p class="quiz-fb" id="quizFb" aria-live="polite"></p>
+  <div class="quiz-foot"><span id="quizTopic"></span><button type="button" id="quizNext">Câu khác</button></div>
+</aside>
+<button class="quiz-pill" id="quizPill" type="button"><svg class="i"><use href="#i-spark"/></svg>Đố nhanh</button>
+
+<div class="toast" id="toast" role="status" aria-live="polite"><svg class="i"><use href="#i-check"/></svg><span id="toastText"></span></div>
+<canvas id="burst" aria-hidden="true"></canvas>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const raf2 = fn => requestAnimationFrame(() => requestAnimationFrame(fn));
+
+  function countUp(el, to, dec = 0, dur = 1100) {
+    if (reduce) { el.textContent = to.toFixed(dec); return; }
+    const t0 = performance.now();
+    const step = t => { const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3); el.textContent = (to * e).toFixed(dec); if (p < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  }
+
+  /* spotlight that follows the pointer */
+  addEventListener('pointermove', e => {
+    const c = e.target.closest && e.target.closest('.spot'); if (!c) return;
+    const r = c.getBoundingClientRect(); c.style.setProperty('--mx', (e.clientX - r.left) + 'px'); c.style.setProperty('--my', (e.clientY - r.top) + 'px');
+  });
+
+  /* toast + small burst */
+  let tt;
+  function toast(msg) { $('#toastText').textContent = msg; $('#toast').classList.add('show'); clearTimeout(tt); tt = setTimeout(() => $('#toast').classList.remove('show'), 2400); }
+  const cv = $('#burst'), ctx = cv.getContext('2d'); let parts = [], running = false;
+  function burst(x, y, n = 26) {
+    if (reduce) return;
+    const dpr = devicePixelRatio || 1; cv.width = innerWidth * dpr; cv.height = innerHeight * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const cs = getComputedStyle(document.documentElement), cols = ['--primary', '--primary-2', '--amber', '--green'].map(v => cs.getPropertyValue(v).trim());
+    for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, s = 2 + Math.random() * 4.5; parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 2, r: 2 + Math.random() * 3, c: cols[i % cols.length], l: 0 }); }
+    if (!running) { running = true; requestAnimationFrame(tick); }
+  }
+  function tick() {
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    parts.forEach(p => { p.vy += .12; p.vx *= .97; p.x += p.vx; p.y += p.vy; p.l++; ctx.globalAlpha = Math.max(0, 1 - p.l / 60); ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); });
+    parts = parts.filter(p => p.l < 60);
+    if (parts.length) requestAnimationFrame(tick); else { running = false; ctx.clearRect(0, 0, innerWidth, innerHeight); }
+  }
+  const bump = el => { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); };
+
+  /* ================= dashboard ================= */
+  const crit = [['Mệnh đề, tập hợp', 86, 'var(--green)'], ['Đồ thị parabol', 64, 'var(--amber)'], ['Sự biến thiên', 38, 'var(--primary)'], ['Hệ thức lượng', 0, 'var(--lock-ink)']];
+  $('#crit').innerHTML = crit.map(([n, v, c]) => `<div class="crit"><span>${n}</span><span class="v">${v ? v + '%' : 'Chưa học'}</span><div class="bar"><i data-w="${v}" style="background:${c}"></i></div></div>`).join('');
+  let minutes = 25;
+  const setMinutes = () => { $('#miniRing').style.strokeDashoffset = 100.5 * (1 - Math.min(minutes, 40) / 40); };
+  function planState() {
+    const all = $$('#plan .task'), done = $$('#plan .task.done').length;
+    $('#planCount').textContent = `${done}/${all.length}`; $('#planBar').style.width = (done / all.length * 100) + '%';
+    $('#leftCount').textContent = `${all.length - done} việc`;
+  }
+  function animateDashboard() {
+    $('#miniRing').style.strokeDashoffset = 100.5; raf2(setMinutes);
+    $$('#view-tong-quan [data-to]').forEach(el => countUp(el, +el.dataset.to, +(el.dataset.dec || 0)));
+    $('#planBar').style.width = '0'; setTimeout(planState, 200);
+    $('#scoreBar').style.width = '0'; setTimeout(() => $('#scoreBar').style.width = '72%', 200);
+    $$('#crit .bar i').forEach((i, k) => { i.style.width = '0'; setTimeout(() => i.style.width = i.dataset.w + '%', 250 + k * 90); });
+  }
+  $('#plan').addEventListener('click', e => {
+    const b = e.target.closest('.chk'); if (!b) return;
+    const t = b.closest('.task'), was = t.classList.contains('done');
+    t.classList.toggle('done', !was);
+    minutes += (was ? -1 : 1) * +t.dataset.min; $('#minNum').textContent = minutes; $('#minNum').dataset.to = minutes; setMinutes();
+    planState();
+    if (!was) {
+      const r = b.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2); bump(b);
+      if (!$$('#plan .task:not(.done)').length) { $('#streakNum').textContent = '8'; bump($('.streak')); toast('Đã xong kế hoạch hôm nay · chuỗi 8 ngày'); }
+      else toast(`Xong: ${$('h5', t).textContent}`);
+    }
+  });
+  const due = Date.now() + (2 * 3600 + 14 * 60 + 37) * 1000;
+  setInterval(() => { const s = Math.max(0, Math.round((due - Date.now()) / 1000)), p = n => String(n).padStart(2, '0'); $('#countdown').textContent = `${p(Math.floor(s / 3600))}:${p(Math.floor(s % 3600 / 60))}:${p(s % 60)}`; }, 1000);
+  $('#heroStart').addEventListener('click', e => { const r = e.currentTarget.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2); toast('Đang mở bài kiểm tra (trang mẫu)'); });
+
+  /* ================= learning path ================= */
+  const units = [
+    { t: 'Mệnh đề và tập hợp', nodes: [
+      { t: 'Mệnh đề', s: 'done', k: 'learn', note: 'Vững từ đầu vào', placed: true },
+      { t: 'Tập hợp', s: 'review', k: 'learn', note: 'Đến hạn ôn' },
+      { t: 'Các phép toán tập hợp', s: 'done', k: 'practice' },
+      { t: 'Kiểm tra chương 1', s: 'done', k: 'quiz' } ] },
+    { t: 'Hàm số bậc hai', nodes: [
+      { t: 'Khái niệm hàm số', s: 'done', k: 'learn', note: 'Vững từ đầu vào', placed: true },
+      { t: 'Đồ thị parabol', s: 'done', k: 'practice' },
+      { t: 'Sự biến thiên', s: 'gatefail', k: 'practice', note: 'Cổng 2/5 · chưa đạt',
+        branch: { tag: 'Nhánh vá · ~15 phút',
+          why: 'Ở cổng kiểm tra “Sự biến thiên”, em sai 3/5 câu và cả 3 câu đều vướng ở bước tìm đỉnh parabol (x = −b/2a). Hệ thống tách riêng bước này thành nhánh ngắn thay vì bắt em luyện lại cả chặng.',
+          nodes: [ { t: 'Xem lại cách tìm đỉnh', s: 'done', k: 'learn' }, { t: 'Luyện 6 câu tìm đỉnh', s: 'current', k: 'practice' }, { t: 'Kiểm tra nhanh 3 câu', s: 'locked', k: 'quiz' } ] } },
+      { t: 'Kiểm tra lại: Sự biến thiên', s: 'locked', k: 'gate', note: 'Mở sau nhánh vá' },
+      { t: 'Lập bảng biến thiên', s: 'locked', k: 'learn' },
+      { t: 'Kiểm tra chương 2', s: 'locked', k: 'quiz' } ] },
+    { t: 'Hệ thức lượng trong tam giác', nodes: [
+      { t: 'Giá trị lượng giác 0°–180°', s: 'open', k: 'learn', note: 'Học song song được' },
+      { t: 'Định lý côsin, định lý sin', s: 'locked', k: 'practice' },
+      { t: 'Giải tam giác', s: 'locked', k: 'practice' } ] },
+  ];
+  const kindIcon = { learn: 'i-book', practice: 'i-dumbbell', quiz: 'i-zap', gate: 'i-shield' };
+  const kindLabel = { learn: 'Học mới', practice: 'Học và luyện', quiz: 'Kiểm tra ngắn', gate: 'Cổng kiểm tra' };
+  const stateText = { done: 'đã vững', review: 'đến hạn ôn', current: 'đang làm', gatefail: 'cổng chưa đạt', open: 'học song song được', locked: 'chưa mở' };
+  const reached = s => ['done', 'review', 'gatefail', 'current'].includes(s);
+  const noteCls = n => ({ gatefail: 'warn', review: 'navy', current: 'amber' })[n.s] || '';
+  let selU = 1, selN = 2, selK = 1, current = null, dragMoved = false;
+
+  function defaultSel(ui) {
+    const u = units[ui];
+    for (let i = 0; i < u.nodes.length; i++) {
+      const n = u.nodes[i];
+      if (n.branch) { const k = n.branch.nodes.findIndex(b => b.s === 'current'); if (k >= 0) return [i, k]; }
+      if (['current', 'gatefail', 'open', 'review'].includes(n.s)) return [i, null];
+    }
+    const firstLocked = u.nodes.findIndex(n => n.s === 'locked'); return [firstLocked >= 0 ? firstLocked : 0, null];
+  }
+
+  function renderChapters() {
+    $('#chapters').innerHTML = units.map((u, i) => {
+      const done = u.nodes.filter(n => n.s === 'done' || n.s === 'review').length, all = u.nodes.length;
+      const fixing = u.nodes.some(n => n.branch), open = u.nodes.some(n => n.s === 'open');
+      const cls = done === all ? 'done' : u.nodes.every(n => n.s === 'locked') ? 'locked' : '';
+      const icon = done === all ? 'i-check' : fixing ? 'i-review' : open ? 'i-book' : 'i-lock';
+      const sub = done === all ? 'Hoàn thành' : fixing ? 'Đang vá 1 chỗ' : open ? 'Học song song được' : 'Chưa mở';
+      return `<button class="chap ${cls} ${i === selU ? 'on' : ''}" role="tab" aria-selected="${i === selU}" data-u="${i}" type="button">
+        <span class="tile"><svg class="i"><use href="#${icon}"/></svg></span>
+        <span><small>Chương ${i + 1} · ${done}/${all}</small><b>${u.t}</b><em class="${fixing ? 'warn' : ''}">${sub}</em></span>
+        <span class="bar"><i data-w="${done / all * 100}"></i></span></button>
+        <span class="chap-arrow" aria-hidden="true"><svg class="i"><use href="#i-chev"/></svg></span>`;
+    }).join('') + `<button class="chap final" type="button" data-final="1"><span class="tile"><svg class="i"><use href="#i-flag"/></svg></span><span><small>Đích đến</small><b>Thi giữa kỳ</b><em>25/11 · còn 9 ngày</em></span></button>`;
+    raf2(() => {
+      $$('#chapters .bar i').forEach(i => i.style.width = i.dataset.w + '%');
+      const on = $('#chapters .chap.on'), bar = $('#chapters');
+      if (on && bar.scrollWidth > bar.clientWidth) bar.scrollTo({ left: on.offsetLeft - (bar.clientWidth - on.offsetWidth) / 2, behavior: reduce ? 'auto' : 'smooth' });
+    });
+  }
+
+  function nodeIcon(n, mini) {
+    if (n.s === 'done') return 'i-check';
+    if (n.s === 'review') return 'i-review';
+    if (n.s === 'current') return mini ? 'i-play' : 'i-star';
+    if (n.s === 'locked') return 'i-lock';
+    return kindIcon[n.k];
+  }
+  function nodeBtn(n, x, y, ni, k, idx, mini, inline) {
+    const sq = ['quiz', 'gate'].includes(n.k), sel = ni === selN && (k ?? null) === selK;
+    const flag = n.s === 'gatefail' ? '<span class="flag">!</span>' : n.s === 'review' ? '<span class="flag navy"><svg class="i"><use href="#i-clock"/></svg></span>' : '';
+    const pos = inline ? '' : `left:${x}px;top:${y}px;`;
+    return `<button class="tn ${mini ? 'mini' : ''} ${sq ? 'sq' : ''} ${n.s} ${sel ? 'sel' : ''}" type="button" style="${pos}--d:${idx}" data-n="${ni}" ${k != null ? `data-k="${k}"` : ''} aria-label="${n.t}, ${stateText[n.s]}" aria-pressed="${sel}"><span class="face"><svg class="i${n.s === 'current' ? ' fill' : ''}"><use href="#${nodeIcon(n, mini)}"/></svg></span>${flag}</button>`;
+  }
+
+  function renderTree(animate) {
+    const u = units[selU], tree = $('#tree'), sc = $('#treeScroll');
+    $('#treeEyebrow').textContent = `Chương ${selU + 1} · ${u.nodes.filter(n => n.s === 'done' || n.s === 'review').length}/${u.nodes.length} kỹ năng vững`;
+    $('#treeTitle').textContent = u.t;
+    const narrow = sc.clientWidth < 620;
+    sc.classList.toggle('h', !narrow);
+    let html = '', idx = 0;
+    if (narrow) {
+      html = '<ol class="vtree">' + u.nodes.map((n, i) => {
+        let li = `<li><div class="vrow ${selN === i && selK == null ? 'sel' : ''}" data-n="${i}">${nodeBtn(n, 0, 0, i, null, idx++, false, true)}<div><small>${kindLabel[n.k]}</small><b>${n.t}</b>${n.note ? `<small class="${noteCls(n)}">${n.note}</small>` : ''}</div></div>`;
+        if (n.branch) li += `<div class="vbranch"><span class="lane-tag"><svg class="i"><use href="#i-review"/></svg>${n.branch.tag}</span>` +
+          n.branch.nodes.map((b, k) => `<div class="vrow ${selN === i && selK === k ? 'sel' : ''}" data-n="${i}" data-k="${k}">${nodeBtn(b, 0, 0, i, k, idx++, true, true)}<div><b>${b.t}</b><small>${stateText[b.s]}</small></div></div>`).join('') +
+          `<div class="vback"><svg class="i"><use href="#i-review"/></svg>Quay lại cổng kiểm tra</div></div>`;
+        return li + '</li>';
+      }).join('') + '</ol>';
+      tree.style.width = ''; tree.style.height = '';
+      tree.innerHTML = html;
+    } else {
+      const P = { pad: 84, sp: 156, gap: 116, bsp: 120, ty: 56, by: 204 };
+      const xs = []; let x = P.pad;
+      u.nodes.forEach(n => { xs.push(x); x += n.branch ? P.gap * 2 + (n.branch.nodes.length - 1) * P.bsp : P.sp; });
+      const content = xs[xs.length - 1] + P.pad, W = Math.max(content, sc.clientWidth), H = u.nodes.some(n => n.branch) ? 286 : 156;
+      const shift = (W - content) / 2; for (let i = 0; i < xs.length; i++) xs[i] += shift;
+      let edges = '';
+      u.nodes.forEach((n, i) => {
+        if (i < u.nodes.length - 1) edges += `<path class="e ${reached(u.nodes[i + 1].s) && !n.branch ? 'ok' : 'dim'}" d="M${xs[i] + 30} ${P.ty} L${xs[i + 1] - 30} ${P.ty}"/>`;
+        html += nodeBtn(n, xs[i], P.ty, i, null, idx, false);
+        html += `<div class="tl" style="left:${xs[i]}px;top:${P.ty + 36}px;--d:${idx}"><small>${kindLabel[n.k]}</small>${n.t}${n.note ? `<em class="${noteCls(n)}">${n.note}</em>` : ''}</div>`;
+        idx++;
+        if (!n.branch) return;
+        const b = n.branch, bx = b.nodes.map((_, k) => xs[i] + P.gap + k * P.bsp), xn = xs[i + 1], L = bx[bx.length - 1];
+        html += `<div class="lane-bg" style="left:${bx[0] - 66}px;top:${P.by - 38}px;width:${L - bx[0] + 132}px;height:114px"></div>`;
+        html += `<div class="lane-tag" style="left:${(bx[0] + L) / 2}px;top:${P.by - 38}px"><svg class="i"><use href="#i-review"/></svg>${b.tag}</div>`;
+        edges += `<path class="e br" d="M${xs[i] + 28} ${P.ty + 8} C${xs[i] + 74} ${P.ty + 8} ${xs[i] + 62} ${P.by} ${bx[0] - 22} ${P.by} L${L + 22} ${P.by} C${xn - 62} ${P.by} ${xn - 74} ${P.ty + 8} ${xn - 28} ${P.ty + 8}"/>`;
+        b.nodes.forEach((bn, k) => {
+          html += nodeBtn(bn, bx[k], P.by, i, k, idx, true);
+          html += `<div class="tl mini" style="left:${bx[k]}px;top:${P.by + 28}px;--d:${idx}">${bn.t}</div>`;
+          idx++;
+        });
+      });
+      tree.style.width = W + 'px'; tree.style.height = H + 'px';
+      tree.innerHTML = `<svg class="edges" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">${edges}</svg>` + html;
+      if (!reduce) $$('.e.ok', tree).forEach((p, i) => { const l = p.getTotalLength(); p.style.strokeDasharray = l; p.style.strokeDashoffset = l; p.getBoundingClientRect(); p.style.transition = `stroke-dashoffset .6s cubic-bezier(.2,.8,.2,1) ${.2 + i * .12}s`; p.style.strokeDashoffset = 0; });
+      const s = $('.tn.sel', tree);
+      if (s) sc.scrollTo({ left: Math.max(0, parseFloat(s.style.left) - sc.clientWidth / 2), behavior: animate && !reduce ? 'smooth' : 'auto' });
+    }
+    if (animate) { tree.classList.remove('swap'); void tree.offsetWidth; tree.classList.add('swap'); }
+  }
+
+  function info(ui, ni, k) {
+    const u = units[ui], trunk = u.nodes[ni], br = k != null ? trunk.branch : null, n = br ? br.nodes[k] : trunk;
+    const M = (ic, t, s, c, st) => ({ ic, t, s, c, st });
+    const triple = st => [M('i-book', 'Hiểu: lý thuyết và ví dụ', '8 phút · video ngắn, ví dụ mẫu', 'p-navy', st), M('i-dumbbell', 'Luyện: bộ 6 câu thích ứng', '10 phút · độ khó tự điều chỉnh', 'p-primary', st), M('i-shield', 'Cổng kiểm tra: 5 câu mới', 'đúng 4/5 để mở chặng sau', 'p-green', st)];
+    let unit = `Chương ${ui + 1} · ${u.t}`, chip, why, steps, cta, tile = ['p-primary', kindIcon[n.k]];
+    if (br) {
+      unit = `Nhánh vá của “${trunk.t}”`; tile = ['p-amber', kindIcon[n.k]];
+      steps = br.nodes.map((bn, j) => M(kindIcon[bn.k], bn.t, ['4 phút · video ngắn và 2 ví dụ', '8 phút · ưu tiên dạng em vừa sai', '3 phút · đúng 3/3 để quay lại'][j], ['p-navy', 'p-amber', 'p-green'][j], bn.s));
+      steps.push(M('i-shield', `Quay lại cổng “${trunk.t}”`, '5 câu mới · đúng 4/5 để đi tiếp', 'p-primary', 'next'));
+      chip = n.s === 'done' ? ['p-green', 'Đã xong'] : n.s === 'current' ? ['p-amber', 'Đang làm · bước 2/3'] : ['p-lock', 'Chưa tới'];
+      why = ['Vì sao có nhánh này?', br.why];
+      cta = n.s === 'current' ? { text: `Làm tiếp: ${n.t}`, arrow: true } : n.s === 'done' ? { text: 'Xem lại bước này', outline: true } : { text: 'Xong bước trước để mở', disabled: true };
+    } else if (n.s === 'gatefail') {
+      chip = ['p-primary', 'Cổng kiểm tra chưa đạt · 2/5'];
+      steps = [M('i-book', 'Hiểu: lý thuyết và ví dụ', '8 phút', 'p-navy', 'done'), M('i-dumbbell', 'Luyện: 2 bộ × 6 câu', 'đạt 83% và 85%', 'p-primary', 'done'), M('i-shield', 'Cổng kiểm tra: 5 câu mới', 'đúng 2/5 · cần 4/5', 'p-primary', 'fail')];
+      why = ['Chưa đạt thì sao?', 'Em không phải học lại cả chặng. Hệ thống thấy 3 câu sai đều vướng cùng một bước nên mở một nhánh vá ngắn ngay bên dưới. Xong nhánh vá, em làm lại cổng bằng câu hỏi mới.'];
+      cta = { text: 'Đi tới nhánh vá', arrow: true, go: [ui, ni, 1] };
+    } else if (n.s === 'review') {
+      chip = ['p-navy', 'Đến hạn ôn']; tile = ['p-navy', 'i-review'];
+      steps = [M('i-review', 'Ôn nhớ lại 5 câu', '5 phút · trộn các dạng đã học', 'p-navy', 'todo')];
+      why = ['Vì sao phải ôn?', 'Em đã vững phần này 5 ngày trước. Ôn đúng lúc sắp quên giúp nhớ lâu hơn nhiều so với học dồn trước kỳ thi.'];
+      cta = { text: 'Ôn 5 câu ngay', arrow: true };
+    } else if (n.s === 'open') {
+      chip = ['p-line', 'Học song song được'];
+      steps = triple('todo');
+      why = ['Vì sao đã mở?', 'Phần này không cần “Sự biến thiên”. Trong lúc vá, nếu muốn đổi gió, em có thể học trước phần này mà lộ trình chính không bị ảnh hưởng.'];
+      cta = { text: 'Bắt đầu học', arrow: true };
+    } else if (n.s === 'done') {
+      chip = ['p-green', n.placed ? 'Đã vững · từ kiểm tra đầu vào' : 'Đã vững']; tile = ['p-green', kindIcon[n.k]];
+      steps = n.placed ? [M('i-zap', 'Kiểm tra đầu vào', 'đúng 3/3 câu phần này · 12/11', 'p-green', 'done')] : triple('done');
+      why = n.placed ? ['Vì sao được bỏ qua?', 'Em làm đúng cả 3 câu phần này ở bài kiểm tra đầu vào nên không phải học lại. Phần này vẫn có lịch ôn để giữ kiến thức.'] : ['Gợi ý', 'Em đã vững phần này. Hệ thống sẽ nhắc ôn đúng lúc để em không quên.'];
+      cta = { text: 'Ôn lại phần này', outline: true };
+    } else {
+      chip = ['p-lock', 'Chưa mở']; tile = ['p-lock', kindIcon[n.k]];
+      cta = { text: 'Chưa mở khóa', disabled: true };
+      if (n.k === 'gate') {
+        steps = [M('i-shield', 'Kiểm tra lại: 5 câu mới', '~10 phút · cần đúng 4/5', 'p-primary', 'todo')];
+        why = ['Khi nào mở?', 'Mở khi em xong nhánh vá. Đề có 5 câu mới em chưa gặp, đúng 4/5 là qua và mở chặng sau.'];
+      } else {
+        const prev = [...u.nodes.slice(0, ni)].reverse().find(x => x.k !== 'gate' && x.k !== 'quiz') || trunk;
+        steps = triple('todo');
+        why = ['Vì sao chưa mở?', `Phần này cần em vững “${prev.t}” trước.`];
+      }
+    }
+    return { n, unit, chip, why, steps, cta, tile };
+  }
+
+  let ctaGo = null;
+  function renderDetail(animate) {
+    const d = info(selU, selN, selK);
+    const st = { done: '<span class="pill p-green"><svg class="i"><use href="#i-check"/></svg>Xong</span>', fail: '<span class="pill p-primary">Chưa đạt</span>', current: '<span class="pill p-amber">Đang làm</span>', next: '<span class="pill p-line">Sau đó</span>' };
+    const c = d.cta; ctaGo = c.go || null;
+    $('#detail').innerHTML = `
+      <div>
+        <div class="dt-head"><span class="tile ${d.tile[0]}"><svg class="i"><use href="#${d.tile[1]}"/></svg></span>
+          <div><p class="eyebrow">${d.unit}</p><h3>${d.n.t}</h3><span class="pill ${d.chip[0]}">${d.chip[1]}</span></div></div>
+        <div class="why"><b>${d.why[0]}</b>${d.why[1]}</div>
+      </div>
+      <div>
+        <div class="steps">${d.steps.map(m => `<div class="step ${m.st === 'next' ? 'next' : ''}"><span class="tile ${m.c}"><svg class="i"><use href="#${m.ic}"/></svg></span><div><h5>${m.t}</h5><p>${m.s}</p></div><span class="st">${st[m.st] || ''}</span></div>`).join('')}</div>
+        <button class="btn ${c.outline ? 'btn-outline' : 'btn-primary'} dt-cta" type="button" id="dtCta" ${c.disabled ? 'disabled' : ''}>${c.disabled ? '<svg class="i"><use href="#i-lock"/></svg>' : ''}${c.text}${c.arrow ? ' <svg class="i arrow"><use href="#i-arrow"/></svg>' : ''}</button>
+      </div>`;
+    if (animate) { const el = $('#detail'); el.classList.remove('swap'); void el.offsetWidth; el.classList.add('swap'); }
+  }
+
+  function select(ui, ni, k, scrollToDetail) {
+    const changedUnit = ui !== selU;
+    selU = ui; selN = ni; selK = k ?? null;
+    if (changedUnit) { renderChapters(); renderTree(true); }
+    else {
+      $$('#tree .tn').forEach(b => { const on = +b.dataset.n === selN && (b.dataset.k != null ? +b.dataset.k : null) === selK; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', on); });
+      $$('#tree .vrow').forEach(r => r.classList.toggle('sel', +r.dataset.n === selN && (r.dataset.k != null ? +r.dataset.k : null) === selK));
+      const s = $('#tree .tn.sel'), sc = $('#treeScroll');
+      if (s && sc.classList.contains('h')) sc.scrollTo({ left: Math.max(0, parseFloat(s.style.left) - sc.clientWidth / 2), behavior: reduce ? 'auto' : 'smooth' });
+    }
+    renderDetail(true);
+    if (scrollToDetail && innerWidth < 900) $('#detail').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'nearest' });
+  }
+
+  $('#chapters').addEventListener('click', e => {
+    const c = e.target.closest('.chap'); if (!c) return;
+    if (c.dataset.final) { toast('Bài thi mở theo lịch giáo viên: 25/11, 7:30'); return; }
+    const ui = +c.dataset.u; if (ui === selU) return;
+    const [n, k] = defaultSel(ui); select(ui, n, k);
+  });
+  $('#chapters').addEventListener('keydown', e => {
+    if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+    e.preventDefault();
+    const ui = Math.max(0, Math.min(units.length - 1, selU + (e.key === 'ArrowRight' ? 1 : -1)));
+    if (ui === selU) return;
+    const [n, k] = defaultSel(ui); select(ui, n, k); $(`#chapters .chap[data-u="${ui}"]`).focus();
+  });
+  $('#tree').addEventListener('click', e => {
+    if (dragMoved) return;
+    const t = e.target.closest('.tn, .vrow'); if (!t) return;
+    select(selU, +t.dataset.n, t.dataset.k != null ? +t.dataset.k : null, true);
+  });
+  $('#detail').addEventListener('click', e => {
+    const b = e.target.closest('#dtCta'); if (!b || b.disabled) return;
+    if (ctaGo) { select(...ctaGo); return; }
+    const r = b.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2); toast('Bắt đầu nhiệm vụ (trang mẫu)');
+  });
+  $('#sideStart').addEventListener('click', () => select(1, 2, 1, true));
+
+  /* drag to scroll the tree with a mouse */
+  const sc = $('#treeScroll'); let drag = null;
+  sc.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse' || !sc.classList.contains('h')) return; drag = { x: e.clientX, l: sc.scrollLeft }; dragMoved = false; });
+  addEventListener('pointermove', e => { if (!drag) return; const dx = e.clientX - drag.x; if (Math.abs(dx) > 4) { dragMoved = true; sc.classList.add('dragging'); } sc.scrollLeft = drag.l - dx; });
+  addEventListener('pointerup', () => { drag = null; sc.classList.remove('dragging'); setTimeout(() => dragMoved = false, 0); });
+
+  function animatePath() {
+    renderChapters(); renderTree(false); renderDetail(false);
+    $('#kpiRing').style.strokeDashoffset = 150.8; raf2(() => $('#kpiRing').style.strokeDashoffset = 150.8 * .5);
+  }
+  let rt, lastW = innerWidth;
+  addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { if (current === 'lo-trinh' && innerWidth !== lastW) { lastW = innerWidth; renderTree(false); } }, 180); });
+
+  /* ================= quick quiz ================= */
+  const QS = [
+    { q: 'Đỉnh của parabol y = x² − 4x + 3 là điểm nào?', o: ['(2; −1)', '(−2; 15)', '(4; 3)', '(1; 0)'], why: 'x = −b/2a = 4/2 = 2, thay vào được y = 4 − 8 + 3 = −1.', topic: 'Đồ thị parabol' },
+    { q: 'Hàm số y = −2x² + 4x + 1 đồng biến trên khoảng nào?', o: ['(−∞; 1)', '(1; +∞)', '(−∞; 2)', '(2; +∞)'], why: 'a = −2 < 0 và đỉnh tại x = 1, nên hàm đồng biến bên trái đỉnh: (−∞; 1).', topic: 'Sự biến thiên' },
+    { q: 'Trục đối xứng của parabol y = 3x² − 6x + 2 là', o: ['x = 1', 'x = −1', 'x = 2', 'y = 1'], why: 'Trục đối xứng là đường x = −b/2a = 6/6 = 1.', topic: 'Đồ thị parabol' },
+  ];
+  let qi = 0, answered = false;
+  function renderQuiz() {
+    const Q = QS[qi], order = Q.o.map((_, i) => i).sort(() => Math.random() - .5);
+    answered = false;
+    $('#quizQ').textContent = Q.q; $('#quizTopic').textContent = `Chuyên đề: ${Q.topic}`; $('#quizFb').textContent = '';
+    $('#quizOpts').innerHTML = order.map(i => `<button class="qo" type="button" data-i="${i}">${Q.o[i]}</button>`).join('');
+    const t = $('#quizTimer'); t.style.animationPlayState = ''; t.classList.remove('run'); void t.offsetWidth;
+    if (!reduce) t.classList.add('run'); // no countdown when the viewer asked for reduced motion
+  }
+  function reveal() { answered = true; $$('#quizOpts .qo').forEach(x => { x.disabled = true; if (x.dataset.i === '0') x.classList.add('right'); }); $('#quizTimer').style.animationPlayState = 'paused'; }
+  $('#quizOpts').addEventListener('click', e => {
+    const b = e.target.closest('.qo'); if (!b || answered) return;
+    const ok = b.dataset.i === '0'; reveal();
+    if (ok) { const r = b.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2, 18); $('#quizFb').innerHTML = `<b>Chính xác.</b> ${QS[qi].why}`; }
+    else { b.classList.add('wrong'); $('#quizFb').innerHTML = `<b>Chưa đúng.</b> ${QS[qi].why}`; }
+  });
+  $('#quizTimer').addEventListener('animationend', () => { if (answered) return; reveal(); $('#quizFb').innerHTML = `<b>Hết giờ.</b> ${QS[qi].why}`; });
+  $('#quizNext').addEventListener('click', () => { qi = (qi + 1) % QS.length; renderQuiz(); });
+  $('#quizClose').addEventListener('click', () => { $('#quiz').classList.remove('show'); $('#quizPill').classList.add('show'); });
+  $('#quizPill').addEventListener('click', () => { $('#quizPill').classList.remove('show'); $('#quiz').classList.add('show'); renderQuiz(); });
+  setTimeout(() => { renderQuiz(); $('#quiz').classList.add('show'); }, 2200);
+
+  /* ================= router ================= */
+  function show(name) {
+    if (!['tong-quan', 'lo-trinh'].includes(name)) name = 'tong-quan';
+    if (name === current) return;
+    const apply = () => {
+      current = name;
+      $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+      $$('[data-view]').forEach(a => a.classList.toggle('active', a.dataset.view === name));
+      $$('#view-' + name + ' .rise').forEach(el => { el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; });
+      scrollTo({ top: 0 });
+      name === 'tong-quan' ? animateDashboard() : animatePath();
+    };
+    if (document.startViewTransition && current && !reduce) document.startViewTransition(apply); else apply();
+  }
+  addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+
+  $('#themeBtn').addEventListener('click', () => {
+    const root = document.documentElement;
+    const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'light' : 'dark';
+  });
+})();
+</script>

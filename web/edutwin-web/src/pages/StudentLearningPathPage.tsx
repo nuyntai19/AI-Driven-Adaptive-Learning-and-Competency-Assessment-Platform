@@ -41,6 +41,7 @@ function Reason({ text, className = "" }: { text: string; className?: string }) 
   const { lead, rest } = splitReason(text);
   return <div className={className}><p>{lead}</p>{rest && <details className="mt-1"><summary className="cursor-pointer text-indigo-600">Vì sao?</summary><p className="mt-1">{rest}</p></details>}</div>;
 }
+type PathView = "today" | "stages" | "map" | "history";
 const stateLabels: Record<string, string> = { Unknown: "Chưa đủ bằng chứng", Developing: "Cần củng cố",
   Demonstrated: "Đã có bằng chứng ban đầu", Confirmed: "Đã xác nhận", ReviewDue: "Cần ôn lại" };
 export function StudentLearningPathPage() {
@@ -107,6 +108,9 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
   // waiting screen covers it instead of flashing the route page.
   const [transitionNote, setTransitionNote] = useState<string | null>(null);
   const [acceptedNotice, setAcceptedNotice] = useState("");
+  // The page is split into views so a student never scrolls past the whole route to reach one part.
+  const [view, setView] = useState<PathView>("today");
+  const [stageKey, setStageKey] = useState<string | undefined>();
   const map = useQuery({ queryKey: ["learning-paths", "capability-map", actor?.centerId, actor?.userId, subjectId, access.classId],
     queryFn: () => getCapabilityMap(subjectId, access.classId), enabled: !!subjectId && access.writable });
   const agenda = useQuery({ queryKey: ["learning-agenda", actor?.centerId, actor?.userId, subjectId, access.classId, minutes],
@@ -168,21 +172,46 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
       // Count the rows the student sees below; practice sets are named separately (one row may hold several sets).
       : `Kế hoạch: ${todayPlan.length} nhiệm vụ${todayPlan.some(m => (m.plannedSets ?? 1) > 1) ? ` (${todayPlan.reduce((n, m) => n + (m.purpose === "Practice" || m.purpose === "Review" ? m.plannedSets ?? 1 : 0), 0)} bộ luyện)` : ""} · khoảng ${formatStudyMinutes(agenda.data.plannedMinutes ?? 0)}${agenda.data.plannedQuestionCount ? ` · ≈ ${agenda.data.plannedQuestionCount} câu` : ""}${agenda.isPlaceholderData ? " · đang tính lại…" : ""}`
     : undefined;
-  const panel = "rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 sm:p-6";
-  const action = "rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40 disabled:cursor-not-allowed";
+  const panel = "st-card st-spot p-5 sm:p-6";
+  const action = "st-btn-primary rounded-full px-5 py-2.5 text-sm font-bold disabled:cursor-not-allowed [font-family:var(--student-font-display)]";
+  const secondary = "rounded-full border border-[var(--student-border)] bg-[var(--student-surface)] px-4 py-2.5 text-sm font-semibold transition-colors hover:border-[var(--student-brand)] hover:text-[var(--student-brand)]";
+  const timeline = learningPathTimeline(missions, agenda.data?.exams ?? [], agenda.data?.schedule?.timeZoneId ?? "Asia/Ho_Chi_Minh");
+  const stageDone = (group: AgendaItemDto[]) => group.every(m => m.status === "Completed" || m.status === "Skipped");
+  const stageLive = (group: AgendaItemDto[]) => group.some(m => !!m.activeRunId || (m.canStart && m.status !== "Completed" && m.status !== "Skipped"));
+  const defaultStage = (timeline.find(e => e.kind === "stage" && stageLive(e.missions)) ?? timeline.find(e => e.kind === "stage" && !stageDone(e.missions)) ?? timeline[0])?.key;
+  const activeStage = timeline.some(e => e.key === stageKey) ? stageKey : defaultStage;
+  const hasHistory = (agenda.data?.pathHistory?.length ?? 0) > 0;
+  const views: [PathView, string, number | undefined][] = [
+    ["today", "Hôm nay", undefined],
+    ["stages", agenda.data?.isPlacement ? "Kiểm tra đầu vào" : "Các chặng", timeline.length || undefined],
+    ["map", "Bản đồ năng lực", map.data?.skills.length || undefined],
+    ...(hasHistory ? [["history", "Lịch sử tuyến", agenda.data?.pathHistory?.length] as [PathView, string, number | undefined]] : []),
+  ];
   if (access.pending) return <p role="status" className="p-6">Đang kiểm tra môn học và giáo trình…</p>;
   if (access.readOnly) return <StudentLearningReadOnlyNotice reason={access.reason} />;
-  return <div className="mx-auto w-full max-w-[1800px] space-y-6 px-4 py-6 sm:px-6 lg:px-8 text-slate-900 dark:text-slate-100">
-    {acceptedNotice && <div role="status" className="flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900"><p>{acceptedNotice}</p><button aria-label="Đóng thông báo đã chọn tuyến" onClick={() => setAcceptedNotice("")}>×</button></div>}
-    <header className="flex flex-wrap items-start justify-between gap-4">
-      <div><p className="text-sm text-indigo-600 dark:text-indigo-300">Mục tiêu của bạn · Tiến bộ từ bằng chứng thật</p>
-        <h1 className="mt-1 text-3xl font-bold">Lộ trình học tập cá nhân</h1>
-        <p className="mt-2 text-sm text-slate-500">Học theo mục tiêu, luyện phần còn yếu và theo dõi tiến bộ qua từng chặng.</p></div>
+  return <div className="mx-auto w-full max-w-[1800px] space-y-5 px-4 py-6 sm:px-6 lg:px-8 text-[var(--student-ink)]">
+    {acceptedNotice && <div role="status" className="flex items-start justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"><p>{acceptedNotice}</p><button aria-label="Đóng thông báo đã chọn tuyến" onClick={() => setAcceptedNotice("")}>×</button></div>}
+    <header className="flex flex-wrap items-end justify-between gap-4 st-rise">
+      <div><p className="st-eyebrow">Mục tiêu của bạn · Tiến bộ từ bằng chứng thật</p>
+        <h1 className="mt-1.5 text-2xl sm:text-3xl font-extrabold">Lộ trình học tập <span className="st-grad-text">cá nhân</span></h1>
+        <p className="mt-2 text-sm text-[var(--student-ink-secondary)]">Học theo mục tiêu, luyện phần còn yếu và theo dõi tiến bộ qua từng chặng.</p>
+        {agenda.data?.progress && agenda.data.progress.totalSkills > 0 && !agenda.data.isPlacement && <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+          <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">{agenda.data.progress.confirmedSkills}/{agenda.data.progress.totalSkills} kỹ năng đã vững</span>
+          {agenda.data.progress.readyForCheckSkills > 0 && <span className="rounded-full bg-[var(--student-brand-soft)] px-3 py-1 text-[var(--student-brand-ink)]">{agenda.data.progress.readyForCheckSkills} sẵn sàng tự kiểm tra</span>}
+          {agenda.data.targetScore != null && <span className="rounded-full border border-[var(--student-border)] px-3 py-1 text-[var(--student-ink-secondary)]">Mục tiêu {agenda.data.targetScore}/10</span>}
+        </div>}</div>
       <div className="flex flex-wrap gap-3">{agenda.data?.learningPathId && !agenda.data.isPlacement && <button className={action} onClick={() => openSetup("Update", agenda.data?.targetSkillIds)} disabled={!map.data?.skills.length}>Điều chỉnh mục tiêu</button>}
-        {extendCandidates.length > 0 && <button className="rounded-xl border px-4 py-2.5 text-sm" onClick={() => setShowExtend(true)}>Kiểm tra thêm phần khác</button>}</div>
+        {extendCandidates.length > 0 && <button className={secondary} onClick={() => setShowExtend(true)}>Kiểm tra thêm phần khác</button>}</div>
     </header>
+    <nav className="sticky top-[4.5rem] z-30 flex w-fit max-w-full gap-1 overflow-x-auto rounded-full border border-[var(--student-border)] bg-[color-mix(in_srgb,var(--student-surface)_90%,transparent)] p-1 backdrop-blur-xl st-rise" aria-label="Các phần của lộ trình" role="tablist">
+      {views.map(([key, label, count]) => <button key={key} type="button" role="tab" aria-selected={view === key} onClick={() => setView(key)}
+        className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold whitespace-nowrap transition-colors ${view === key ? "st-nav-active" : "text-[var(--student-ink-secondary)] hover:bg-[var(--student-surface-subtle)] hover:text-[var(--student-ink)]"}`}>
+        {label}{count != null && <span className={`rounded-full px-1.5 text-[11px] font-bold leading-5 ${view === key ? "bg-white/25" : "bg-[var(--student-surface-subtle)]"}`}>{count}</span>}
+      </button>)}
+    </nav>
+    <div className="space-y-5" hidden={view !== "today"}>
     {agenda.data?.scheduleSummary && !agenda.data.isPlacement && <section className={`${panel} ${agenda.data.scheduleSummary.missingMinutes > 0 ? "border-amber-300" : "border-indigo-200"}`} aria-label="Lịch học và ngân sách">
-      <div className="flex flex-wrap justify-between gap-3"><h2 className="text-xl font-semibold">Lịch học theo mục tiêu</h2><span className="text-sm text-indigo-700 dark:text-indigo-300">{agenda.data.scheduleSummary.phase === "MockExam" ? "Giai đoạn thi thử và vá lỗ hổng" : agenda.data.scheduleSummary.phase === "ShortChecks" ? "Giai đoạn tăng kiểm tra ngắn" : "Học, luyện và ôn cân bằng"}</span></div>
+      <div className="flex flex-wrap justify-between gap-3"><h2 className="text-xl font-bold">Lịch học theo mục tiêu</h2><span className="text-sm text-indigo-700 dark:text-indigo-300">{agenda.data.scheduleSummary.phase === "MockExam" ? "Giai đoạn thi thử và vá lỗ hổng" : agenda.data.scheduleSummary.phase === "ShortChecks" ? "Giai đoạn tăng kiểm tra ngắn" : "Học, luyện và ôn cân bằng"}</span></div>
       <p className="mt-3 text-sm">{agenda.data.scheduleSummary.message}</p>
       {!!agenda.data.scheduleSummary.deferredSkillIds.length && <p className="mt-2 text-sm text-amber-800 dark:text-amber-300">Phần có nội dung bị hoãn: {agenda.data.scheduleSummary.deferredSkillIds.map(id => map.data?.skills.find(s => s.skillId === id)?.skillName ?? id).join(", ")}.</p>}
       {agenda.data.targetScore != null && <p className="mt-3 text-sm font-medium">Mục tiêu {agenda.data.targetScore}/10{agenda.data.predictedScore != null ? ` · Ước lượng sơ bộ ${agenda.data.predictedScore}/10` : ""}</p>}
@@ -214,7 +243,7 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
       <p className="mt-1">Tuyến tập trung vào các phần em đã chọn. Thông tin tự xác nhận chưa thay thế kết quả đánh giá trên web; em có thể cập nhật mục tiêu để ôn thêm bất cứ lúc nào.</p>
     </section>}
     {agenda.data?.canAdvance && <section className={`${panel} border-emerald-200`}>
-      <h2 className="text-xl font-semibold">Em đã nắm vững phạm vi của chặng này</h2>
+      <h2 className="text-xl font-bold">Em đã nắm vững phạm vi của chặng này</h2>
       <p className="mt-2 text-sm text-slate-500">Các kỹ năng đã được xác nhận vững qua bài kiểm tra. Em có thể chọn chặng tiếp theo; lịch sử bài làm tiếp tục được dùng để lập tuyến mới.</p>
       <button className={`${action} mt-4`} onClick={() => openSetup("Next", agenda.data?.nextSkillIds)}>{agenda.data.nextSkillIds?.length ? "Khám phá và học phần tiếp theo" : "Chọn mục tiêu tiếp theo"}</button>
     </section>}
@@ -252,11 +281,11 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
           <p className="mt-1 text-slate-500">{agenda.data.progress.remainingMinutes > 0 ? `Còn khoảng ${formatStudyMinutes(agenda.data.progress.remainingMinutes)}${agenda.data.progress.estimatedFinishDate ? ` · dự kiến xong ${new Date(agenda.data.progress.estimatedFinishDate).toLocaleDateString("vi-VN")}` : ""}` : "Đã xong các phần trong tuyến"}</p>
         </div>
       </div>
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full rounded-full bg-indigo-600" style={{ width: `${100 * agenda.data.progress.confirmedSkills / agenda.data.progress.totalSkills}%` }} /></div>
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-[var(--student-surface-subtle)]"><div className="h-full rounded-full bg-[linear-gradient(90deg,var(--student-brand),var(--student-brand-2))] st-bar-fill" style={{ width: `${100 * agenda.data.progress.confirmedSkills / agenda.data.progress.totalSkills}%` }} /></div>
     </section>}
     {agenda.data?.learningPathId && !agenda.data.isPlacement && <section className={panel} aria-labelledby="today-title">
       <div className="grid gap-5 md:grid-cols-[1fr_minmax(0,22rem)] md:items-start">
-        <div><h2 id="today-title" className="text-xl font-semibold">Hôm nay học gì?</h2>
+        <div><h2 id="today-title" className="text-xl font-bold">Hôm nay học gì?</h2>
           {agenda.data.goalTitle && <p className="mt-1 text-sm text-slate-500">Mục tiêu: {agenda.data.goalTitle}</p>}
           <p className="mt-3 text-sm text-slate-500">{agenda.data.agendaMessage}</p></div>
         <TimeBudgetSlider label="Thời gian hôm nay" value={sliderMinutes} onChange={changeSlider} summary={planSummary} capacity={agenda.data.learningPathId && !agenda.data.isPlacement ? agenda.data.availableTodayMinutes : undefined} />
@@ -275,35 +304,53 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
           </li>;
         })}</ul>
       </section>}
-      {primary && <div className="mt-5 rounded-xl bg-indigo-50 p-5 dark:bg-indigo-950/40">
-        <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">{primary.activeRunId ? "Tiếp tục nhiệm vụ" : "Bắt đầu từ đây"}</p>
-        <h3 className="mt-2 text-xl font-semibold">{primary.title}</h3>{agenda.data.primaryReason && <p className="mt-1 text-xs text-indigo-700 dark:text-indigo-300">Vì sao đứng đầu: {agenda.data.primaryReason}</p>}<Reason className="mt-2 text-sm" text={primary.recommendationReason} />
+      {primary && <div className="mt-5 rounded-2xl st-hero border border-[var(--student-brand-border)] p-5 sm:p-6">
+        <p className="st-eyebrow inline-flex items-center gap-2"><span className="st-live" aria-hidden="true" />{primary.activeRunId ? "Tiếp tục nhiệm vụ" : "Bắt đầu từ đây"}</p>
+        <h3 className="mt-2 text-xl sm:text-2xl font-extrabold">{primary.title}</h3>{agenda.data.primaryReason && <p className="mt-1 text-xs text-indigo-700 dark:text-indigo-300">Vì sao đứng đầu: {agenda.data.primaryReason}</p>}<Reason className="mt-2 text-sm" text={primary.recommendationReason} />
         <button className={`${action} mt-4`} onClick={() => setMission(primary)}>{primary.activeRunId ? "Tiếp tục đúng tiến độ" : "Mở nhiệm vụ"} · {sizeLabel(primary)}khoảng {primary.estimatedDurationMinutes} phút</button>
       </div>}
-      {todayPlan.length > 1 && <ol className="mt-4 space-y-2" aria-label="Các bước hôm nay">{todayPlan.slice(1).map((m, i) => <li key={m.missionId} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+      {todayPlan.length > 1 && <ol className="mt-4 space-y-2" aria-label="Các bước hôm nay">{todayPlan.slice(1).map((m, i) => <li key={m.missionId} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--student-border)] p-3 transition-colors hover:border-[var(--student-brand-border)]">
         <div className="flex items-start gap-3"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold dark:bg-slate-800">{i + 2}</span>
           <div><p className="text-sm font-medium">{m.title}</p><p className="text-xs text-slate-500">{activityLabels[m.purpose] ?? m.purpose} · {sizeLabel(m)}khoảng {m.estimatedDurationMinutes} phút{m.weaknessLevel === "Weak" ? " · phần yếu" : ""}</p></div></div>
-        <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm" onClick={() => setMission(m)}>{m.activeRunId ? "Tiếp tục" : "Mở"}</button>
+        <button className={secondary} onClick={() => setMission(m)}>{m.activeRunId ? "Tiếp tục" : "Mở"}</button>
       </li>)}</ol>}
       {agenda.data.pacingNote && <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-600 dark:bg-slate-800 dark:text-slate-300">{agenda.data.pacingNote}</p>}
       {agenda.data.progress?.studiedToday && todayPlan.length === 0 && (agenda.data.missions?.length ?? 0) > 0 && <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
-        <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">🎉 Em đã hoàn thành kế hoạch hôm nay</p>
+        <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">Em đã hoàn thành kế hoạch hôm nay</p>
         <p className="mt-1 text-sm text-emerald-800/80 dark:text-emerald-200/80">Còn năng lượng thì ôn thêm với luyện tập thích ứng — hệ thống chọn câu vừa sức để củng cố phần còn yếu.</p>
         <Link to={`/hoc-tap/luyen-tap?subjectId=${subjectId}`} className={`${action} mt-3 inline-block`}>Luyện tập thêm</Link>
       </div>}
     </section>}
     {agenda.data && (agenda.data.reviewDueTasks.length > 0 || agenda.data.recentChanges?.length > 0) && <section className={panel}>
-      <h2 className="text-xl font-semibold">Tiến bộ và lịch ôn</h2>
+      <h2 className="text-xl font-bold">Tiến bộ và lịch ôn</h2>
       {!!agenda.data.recentChanges?.length && <p className="mt-3 text-xs font-semibold text-slate-500">Lịch sử cập nhật tuyến · số liệu tại thời điểm cập nhật; tiến độ hiện tại xem ở trên.</p>}
       {agenda.data.recentChanges?.map((r, i) => <p className="mt-3 text-sm text-slate-500" key={i}>{r}</p>)}
       {agenda.data.reviewDueTasks.map(r => <div key={r.missionId} className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-indigo-50 p-4 dark:bg-indigo-950/40"><p className="text-sm">{r.title} · {r.availableFrom ? new Date(r.availableFrom).toLocaleDateString("vi-VN") : "Đến lượt ôn"}</p><button disabled={!r.canStart} className={action} onClick={() => setMission(r)}>{r.canStart ? "Ôn ngay" : "Đã hẹn lịch"}</button></div>)}
     </section>}
-    <section className="space-y-4"><div><h2 className="text-xl font-semibold">{agenda.data?.isPlacement ? "Các phần kiểm tra đầu vào" : "Các chặng trong tuyến của bạn"}</h2><p className="mt-1 text-sm text-slate-500">{agenda.data?.isPlacement ? "Kiểm tra theo từng kỹ năng. Hoàn thành phần đang làm rồi chuyển sang phần tiếp theo; có thể lưu và quay lại sau." : "Mỗi chặng gắn với một kỹ năng. Phần đã có bằng chứng sẽ được giảm luyện lặp; nội dung còn thiếu được nêu rõ."}</p></div>
+    </div>
+    <section className="space-y-4" hidden={view !== "stages"}><div><h2 className="text-xl font-bold">{agenda.data?.isPlacement ? "Các phần kiểm tra đầu vào" : "Các chặng trong tuyến của bạn"}</h2><p className="mt-1 text-sm text-[var(--student-muted)]">{agenda.data?.isPlacement ? "Kiểm tra theo từng kỹ năng. Hoàn thành phần đang làm rồi chuyển sang phần tiếp theo; có thể lưu và quay lại sau." : "Mỗi chặng gắn với một kỹ năng. Phần đã có bằng chứng sẽ được giảm luyện lặp; nội dung còn thiếu được nêu rõ."}</p></div>
       {missions.length === 0 && <p className={panel}>{agenda.data?.isPlacement ? "Các phần đã chọn đã có bằng chứng hợp lệ. Xem đánh giá đầu vào để chọn tuyến học tiếp theo." : "Chọn phần muốn học và tìm điểm xuất phát ở trên để bắt đầu. Các bài làm và tuyến trước được giữ trong lịch sử."}</p>}
-      {learningPathTimeline(missions, agenda.data?.exams ?? [], agenda.data?.schedule?.timeZoneId ?? "Asia/Ho_Chi_Minh").map((entry, index) => {
+      {timeline.length > 0 && <ol className="flex items-stretch gap-1.5 overflow-x-auto pb-2" aria-label="Chọn chặng">{timeline.map((entry, index) => {
+        const on = entry.key === activeStage;
+        const done = entry.kind === "stage" && stageDone(entry.missions);
+        const live = entry.kind === "stage" && stageLive(entry.missions);
+        const title = entry.kind === "exam" ? entry.exam.title : entry.missions[0].milestoneTitle || entry.missions[0].skillName;
+        const sub = entry.kind === "exam" ? new Date(entry.exam.examAt).toLocaleDateString("vi-VN") : `${entry.missions.filter(m => m.status === "Completed").length}/${entry.missions.length} nhiệm vụ`;
+        return <li key={entry.key} className="flex shrink-0 items-center gap-1.5">
+          {index > 0 && <span aria-hidden="true" className="text-[var(--student-muted)]">›</span>}
+          <button type="button" aria-pressed={on} onClick={() => setStageKey(entry.key)}
+            className={`flex w-52 items-center gap-3 rounded-2xl border p-3 text-left transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 ${on ? "border-[var(--student-brand)] bg-[var(--student-surface)] shadow-[0_0_0_3px_var(--student-brand-soft)]" : "border-[var(--student-border)] bg-[var(--student-surface)] hover:border-[var(--student-brand-border)]"}`}>
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${entry.kind === "exam" ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" : done ? "bg-emerald-600 text-white" : live ? "text-white bg-[linear-gradient(135deg,var(--student-brand),var(--student-brand-2))] shadow-[var(--student-glow)]" : "bg-[var(--student-surface-subtle)] text-[var(--student-muted)]"}`}>
+              {entry.kind === "exam" ? "⚑" : done ? "✓" : index + 1}
+            </span>
+            <span className="min-w-0"><span className="block truncate text-sm font-semibold">{title}</span><span className="block text-xs text-[var(--student-muted)]">{sub}</span></span>
+          </button>
+        </li>;
+      })}</ol>}
+      {timeline.map((entry, index) => {
         if (entry.kind === "exam") {
           const exam = entry.exam;
-          return <article key={entry.key} className={`${panel} border-amber-200`} aria-label="Mốc thi của lớp">
+          return <article key={entry.key} hidden={entry.key !== activeStage} className={`${panel} border-amber-200`} aria-label="Mốc thi của lớp">
             <p className="text-xs font-semibold text-amber-700">Mốc {index + 1} · {({Midterm: "Thi giữa kỳ", Final: "Thi cuối kỳ", MockExam: "Thi thử"} as Record<string, string>)[exam.kind] ?? "Bài thi của lớp"}</p>
             <h3 className="mt-2 text-lg font-semibold">{exam.title}</h3>
             <p className="mt-2 text-sm">{new Date(exam.examAt).toLocaleString("vi-VN", { timeZone: agenda.data?.schedule?.timeZoneId })} · {exam.timeLimitMinutes} phút</p>
@@ -313,12 +360,12 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
           </article>;
         }
         const group = entry.missions; const id = group[0].skillId; const skill = map.data?.skills.find(s => s.skillId === id);
-        return <article className={panel} key={entry.key}><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 font-semibold text-indigo-800">{index + 1}</span>
+        return <article className={`${panel} st-rise`} hidden={entry.key !== activeStage} key={entry.key}><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full font-bold text-white bg-[linear-gradient(135deg,var(--student-brand),var(--student-brand-2))]">{index + 1}</span>
           <div><div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-semibold">{group[0].milestoneTitle || group[0].skillName}</h3>
             {group.every(m => m.isSelfAssessedCheck) && <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-800">Tự đánh giá đã vững · ôn xác nhận</span>}
             {group[0].weaknessLevel && weaknessLabels[group[0].weaknessLevel] && <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${weaknessLabels[group[0].weaknessLevel][1]}`}>{weaknessLabels[group[0].weaknessLevel][0]}</span>}</div><p className="mt-1 text-sm text-slate-500">{skill?.description || "Học và tự thực hiện các nhiệm vụ thuộc kỹ năng này."}</p>
             <p className="mt-2 text-xs font-semibold text-indigo-600">{stateLabels[skill?.state ?? "Unknown"]} · {skill?.evidenceCount ?? 0} câu có bằng chứng hợp lệ</p></div></div>
-          <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3">{group.map(m => <div key={m.missionId} className="flex min-w-0 flex-col rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+          <div className="mt-5 grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-3">{group.map(m => <div key={m.missionId} className="flex min-w-0 flex-col rounded-2xl border border-[var(--student-border)] p-4 transition-colors hover:border-[var(--student-brand-border)]">
             <p className="text-xs font-semibold text-indigo-600">{m.isSelfAssessedCheck ? "Ôn xác nhận" : activityLabels[m.purpose] ?? m.purpose}{m.plannedDate ? ` · Dự kiến ${m.plannedDate.split("-").reverse().join("/")}` : ""}</p><h4 className="mt-2 font-medium">{m.title}</h4>
             {m.skipReason === "MissedStudyDate" && <p className="mt-2 text-xs text-amber-700">Đã bỏ lượt dự kiến; phần chưa học được xếp lại trong lộ trình.</p>}
             {!!m.remainingUnscheduledMinutes && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Có phần có thể học ngay; còn khoảng {m.remainingUnscheduledMinutes} phút chưa xếp được trước ngày đích.</p>}
@@ -329,7 +376,7 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
             <div className="mt-4 flex flex-wrap gap-2">
               <button className={action} disabled={m.deferred || (!m.canStart && !m.activeRunId && !m.latestRunId)} onClick={() => setMission({ ...m, reviewOnly: missionAction(m).reviewOnly })}>
                 {m.deferred ? "Đã hoãn · cần điều chỉnh mục tiêu" : missionAction(m).label}</button>
-              {!m.activeRunId && m.canRetry && <button className="rounded-xl border border-indigo-300 px-4 py-2.5 text-sm font-semibold text-indigo-700 dark:text-indigo-300"
+              {!m.activeRunId && m.canRetry && <button className={secondary}
                 onClick={() => setMission({ ...m, retry: true, reviewOnly: false })}>{m.retryLabel ?? "Làm lại"}</button>}
             </div>
             {!m.activeRunId && !m.canRetry && m.retryBlockedReason && <p className="mt-2 text-xs text-slate-500">{m.retryBlockedReason}</p>}
@@ -341,15 +388,15 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
           </div>)}</div></article>;
       })}
     </section>
-    <section className={panel}><h2 className="text-xl font-semibold">Bản đồ năng lực · {subject?.subjectName}</h2>
+    <section className={panel} hidden={view !== "map"}><h2 className="text-xl font-bold">Bản đồ năng lực · {subject?.subjectName}</h2>
       {!map.data?.skills.length && <p className="mt-3 text-sm text-slate-500">Chưa có kỹ năng khả dụng trong giáo trình. Cần giáo viên bổ sung nội dung; hệ thống không dùng môn khác để thay thế.</p>}
-      <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-3">{map.data?.skills.map(s => <div className="min-w-0 rounded-xl border border-slate-200 p-4 dark:border-slate-700" key={s.skillId}>
+      <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-3">{map.data?.skills.map(s => <div className="min-w-0 rounded-2xl border border-[var(--student-border)] p-4" key={s.skillId}>
         <h3 className="font-semibold">{s.skillName}</h3><p className="mt-1 text-sm text-indigo-600">{stateLabels[s.state] ?? s.state}</p>
         <p className="mt-2 text-xs text-slate-500">{s.rationale}</p>{s.masteryScore != null && <p className="mt-2 text-xs">Hồ sơ năng lực: {s.masteryScore}%</p>}
         {s.availability === "PrerequisiteBlocked" && !s.prerequisiteSkillIds.every(id => agenda.data?.selfReportedPrerequisiteSkillIds?.includes(id) || map.data?.skills.some(p => p.skillId === id && p.state === "Confirmed")) && <p className="mt-2 text-xs text-amber-700">{agenda.data?.isPlacement ? "Nền tảng chưa được xác nhận; kiểm tra đầu vào vẫn giúp nhận biết phần đã biết." : "Cần xác nhận kỹ năng nền tảng hoặc cập nhật mục tiêu để tự xác nhận phần đã học ở trường."}</p>}
       </div>)}</div>
     </section>
-    {(agenda.data?.pathHistory?.length ?? 0) > 0 && <section className={panel} aria-labelledby="path-history-title">
+    {hasHistory && <section className={panel} hidden={view !== "history"} aria-labelledby="path-history-title">
       <h2 id="path-history-title" className="text-xl font-semibold">Lịch sử tuyến học</h2>
       <p className="mt-1 text-sm text-slate-500">Đổi tuyến không xóa bài làm. Mọi câu trả lời của các tuyến trước vẫn được dùng để xác định phần yếu và bỏ qua phần đã vững.</p>
       <ul className="mt-4 space-y-2">{agenda.data!.pathHistory!.map(h => <li key={h.learningPathId} className="rounded-xl border border-slate-200 text-sm dark:border-slate-700">
@@ -412,8 +459,8 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
         if (extraQueue.current.length > 1 || placementFlow.current) setTransitionNote("Đã lưu phần vừa làm. Đang chuẩn bị phần kiểm tra tiếp theo…");
         try { await afterMissionClosed(closedId); } finally { setTransitionNote(null); }
       }} />}
-    {transitionNote && !mission && <div role="status" aria-live="polite" className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-white px-6 text-center dark:bg-slate-900">
-      <span className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-500 border-t-transparent motion-reduce:animate-none" aria-hidden="true" />
+    {transitionNote && !mission && <div role="status" aria-live="polite" className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-[var(--student-canvas)] px-6 text-center">
+      <span className="h-10 w-10 animate-spin rounded-full border-4 border-[var(--student-brand)] border-t-transparent motion-reduce:animate-none" aria-hidden="true" />
       <p className="text-base font-semibold text-slate-800 dark:text-slate-100">{transitionNote}</p>
       <p className="text-sm text-slate-500 dark:text-slate-400">Bài làm được lưu theo tài khoản; nếu mạng chậm, phần tiếp theo sẽ tự mở khi sẵn sàng.</p>
     </div>}

@@ -42,10 +42,10 @@ export const StudentAssignmentDetailPage: React.FC = () => {
     return (
       <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5 student-shell">
         <div className="h-6 w-32 bg-stone-200 dark:bg-stone-800 animate-pulse rounded" />
-        <div className="h-44 bg-white dark:bg-[#151d2f] animate-pulse rounded-xl border border-stone-200 dark:border-stone-800" />
+        <div className="h-44 bg-white dark:bg-[var(--student-surface)] animate-pulse rounded-xl border border-stone-200 dark:border-stone-800" />
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-32 bg-white dark:bg-[#151d2f] animate-pulse rounded-xl border border-stone-200 dark:border-stone-800" />
+            <div key={i} className="h-32 bg-white dark:bg-[var(--student-surface)] animate-pulse rounded-xl border border-stone-200 dark:border-stone-800" />
           ))}
         </div>
       </div>
@@ -55,7 +55,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
   if (isError || !assignment) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12 student-shell">
-        <div className="rounded-xl bg-white dark:bg-[#151d2f] p-8 border border-stone-200 dark:border-stone-800 text-center shadow-xs">
+        <div className="rounded-xl bg-white dark:bg-[var(--student-surface)] p-8 border border-stone-200 dark:border-stone-800 text-center shadow-xs">
           <p className="text-sm font-medium text-red-700 dark:text-red-400 mb-4">
             Đã có lỗi xảy ra: {getStudentDetailError(error)}
           </p>
@@ -195,7 +195,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-5 items-start">
       {/* Assignment Overview Workspace Card */}
-      <div className="xl:sticky xl:top-72 rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/90 dark:border-stone-800/90 p-5 shadow-xs">
+      <div className="xl:sticky xl:top-72 rounded-xl bg-white dark:bg-[var(--student-surface)] border border-stone-200/90 dark:border-stone-800/90 p-5 shadow-xs">
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -307,7 +307,7 @@ export const StudentAssignmentDetailPage: React.FC = () => {
           return (
             <div
               key={question.questionId}
-              className="rounded-xl bg-white dark:bg-[#151d2f] border border-stone-200/90 dark:border-stone-800/90 p-4 shadow-xs space-y-2.5"
+              className="rounded-xl bg-white dark:bg-[var(--student-surface)] border border-stone-200/90 dark:border-stone-800/90 p-4 shadow-xs space-y-2.5"
             >
               {/* Question header */}
               <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">

@@ -1,56 +1,88 @@
 /* ==========================================================================
-   EDUTWIN LEARNING ATLAS — DESIGN TOKENS (STUDENT ONLY)
-   Strictly scoped under .student-shell to isolate from other roles.
+   EDUTWIN STUDENT — DESIGN TOKENS (STUDENT ONLY)
+   Warm paper canvas, one vermilion accent, Montserrat headings.
+   Strictly scoped under .student-shell (and html.student-theme while a
+   student surface is mounted, so portals such as modals match) to isolate
+   from other roles.
    ========================================================================== */
 
-.student-shell {
+.student-shell,
+:root.student-theme {
   /* Canvas & Base Ink */
-  --student-canvas: #F6F8FC;
+  --student-canvas: #FEFCF9;
   --student-surface: #FFFFFF;
-  --student-surface-subtle: #EDF2F7;
+  --student-surface-subtle: #F7F2EA;
   --student-surface-elevated: #FFFFFF;
-  --student-border: #DCE3ED;
-  --student-border-subtle: #E8EDF4;
-  --student-ink: #172033;
-  --student-ink-secondary: #475467;
-  --student-muted: #667085;
+  --student-border: #EEE7DC;
+  --student-border-subtle: #F3EEE6;
+  --student-ink: #15110E;
+  --student-ink-secondary: #4B4138;
+  --student-muted: #7A6D60;
 
-  /* Brand Palette */
-  --student-brand: #6746E8;
-  --student-brand-soft: #F1EEFD;
-  --student-brand-border: #D8CFFC;
+  /* Brand: vermilion → orange */
+  --student-brand: #CB1C01;
+  --student-brand-2: #F2581D;
+  --student-brand-soft: #FDEDE7;
+  --student-brand-border: #F8C9B6;
+  --student-brand-ink: #A81700;
+  --student-blush: #FBDCCF;
+  --student-glow: 0 10px 24px -10px rgba(203, 28, 1, 0.55);
+  --student-shadow: 0 1px 2px rgba(21, 17, 14, 0.04), 0 12px 32px -18px rgba(21, 17, 14, 0.18);
+  --student-shadow-lg: 0 30px 60px -28px rgba(21, 17, 14, 0.35);
 
-  /* Expressive Atlas Accents */
-  --atlas-cobalt: #3558F4;
-  --atlas-cobalt-soft: #EFF3FE;
-  --atlas-cobalt-border: #C6D5FC;
+  /* Expressive accents (names kept for existing components) */
+  --atlas-cobalt: #0B4A8F;
+  --atlas-cobalt-soft: #E7EFF8;
+  --atlas-cobalt-border: #C3D6EC;
 
-  --atlas-sun: #FFC94A;
-  --atlas-sun-soft: #FFF9EB;
-  --atlas-sun-border: #FEE7B0;
+  --atlas-sun: #F9B81F;
+  --atlas-sun-soft: #FEF4DA;
+  --atlas-sun-border: #F6DC97;
 
-  --atlas-coral: #FF6B57;
-  --atlas-coral-soft: #FFF0EE;
-  --atlas-coral-border: #FFCDC6;
+  --atlas-coral: #CB1C01;
+  --atlas-coral-soft: #FDEDE7;
+  --atlas-coral-border: #F8C9B6;
 
-  --atlas-mint: #36C5A0;
-  --atlas-mint-soft: #EBF9F5;
-  --atlas-mint-border: #BCEFE2;
+  --atlas-mint: #16A34A;
+  --atlas-mint-soft: #E4F5EA;
+  --atlas-mint-border: #B5E2C4;
 
-  --atlas-berry: #D94B82;
-  --atlas-berry-soft: #FDF1F5;
-  --atlas-berry-border: #F7C8DA;
+  --atlas-berry: #BE185D;
+  --atlas-berry-soft: #FCEEF4;
+  --atlas-berry-border: #F3C4D8;
 
-  --atlas-sky: #4EB8E8;
-  --atlas-sky-soft: #F0F9FD;
-  --atlas-sky-border: #C8EAF8;
+  --atlas-sky: #0E7490;
+  --atlas-sky-soft: #E3F4F8;
+  --atlas-sky-border: #B6DEE8;
 
   /* Node & Route Motif */
-  --atlas-node-current: #6746E8;
-  --atlas-node-target: #3558F4;
-  --atlas-route-mastered: #36C5A0;
-  --atlas-route-recommended: #6746E8;
-  --atlas-route-dim: #D9E1EC;
+  --atlas-node-current: #CB1C01;
+  --atlas-node-target: #F2581D;
+  --atlas-route-mastered: #16A34A;
+  --atlas-route-recommended: #CB1C01;
+  --atlas-route-dim: #E2D8C9;
+
+  /* Tailwind palette remap: cool greys → warm paper neutrals, indigo/violet → vermilion.
+     Every bg-/text-/border- utility on student surfaces follows these, so pages
+     stay consistent without per-class rewrites. Other roles are untouched. */
+  --color-slate-50: #FCFAF6;  --color-slate-100: #F7F2EA; --color-slate-200: #EEE7DC; --color-slate-300: #E0D6C7;
+  --color-slate-400: #A99C8C; --color-slate-500: #7A6D60; --color-slate-600: #63574B; --color-slate-700: #4B4138;
+  --color-slate-800: #2F2823; --color-slate-900: #1D1814; --color-slate-950: #14110E;
+  --color-stone-50: #FCFAF6;  --color-stone-100: #F7F2EA; --color-stone-200: #EEE7DC; --color-stone-300: #E0D6C7;
+  --color-stone-400: #A99C8C; --color-stone-500: #7A6D60; --color-stone-600: #63574B; --color-stone-700: #4B4138;
+  --color-stone-800: #2F2823; --color-stone-900: #1D1814; --color-stone-950: #14110E;
+  --color-gray-50: #FCFAF6;   --color-gray-100: #F7F2EA;  --color-gray-200: #EEE7DC;  --color-gray-300: #E0D6C7;
+  --color-gray-400: #A99C8C;  --color-gray-500: #7A6D60;  --color-gray-600: #63574B;  --color-gray-700: #4B4138;
+  --color-gray-800: #2F2823;  --color-gray-900: #1D1814;  --color-gray-950: #14110E;
+  --color-indigo-50: #FFF4EF; --color-indigo-100: #FDE6DC; --color-indigo-200: #FBCBB8; --color-indigo-300: #F7A68A;
+  --color-indigo-400: #F07A55; --color-indigo-500: #E2492A; --color-indigo-600: #CB1C01; --color-indigo-700: #A81700;
+  --color-indigo-800: #861402; --color-indigo-900: #6C1306; --color-indigo-950: #3B0802;
+  --color-violet-50: #FFF4EF; --color-violet-100: #FDE6DC; --color-violet-200: #FBCBB8; --color-violet-300: #F7A68A;
+  --color-violet-400: #F07A55; --color-violet-500: #E2492A; --color-violet-600: #CB1C01; --color-violet-700: #A81700;
+  --color-violet-800: #861402; --color-violet-900: #6C1306; --color-violet-950: #3B0802;
+  --color-purple-50: #FFF4EF; --color-purple-100: #FDE6DC; --color-purple-200: #FBCBB8; --color-purple-300: #F7A68A;
+  --color-purple-400: #F07A55; --color-purple-500: #E2492A; --color-purple-600: #CB1C01; --color-purple-700: #A81700;
+  --color-purple-800: #861402; --color-purple-900: #6C1306; --color-purple-950: #3B0802;
 
   /* Larger type is scoped to student surfaces; browser zoom and other roles
      are unchanged. Mobile keeps compact spacing and a readable type floor. */
@@ -63,11 +95,15 @@
   --text-3xl: 2.125rem;
   --text-4xl: 2.5rem;
 
-  /* Typography: Be Vietnam Pro with full Vietnamese diacritics support */
+  --student-font-display: "Montserrat", "Be Vietnam Pro", system-ui, sans-serif;
+}
+
+.student-shell {
+  /* Typography: Be Vietnam Pro body with full Vietnamese diacritics support */
   font-family: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   background-color: var(--student-canvas);
   color: var(--student-ink);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.005em;
   font-size: var(--text-base);
 }
 
@@ -91,74 +127,207 @@
   line-height: 1.45;
 }
 
-/* Dark Mode Tokens */
+/* Dark Mode Tokens: warm ink, brighter vermilion */
+.dark .student-shell,
+.student-shell.dark,
+:root.dark.student-theme {
+  --student-canvas: #12100E;
+  --student-surface: #1C1815;
+  --student-surface-subtle: #241F1A;
+  --student-surface-elevated: #2A241F;
+  --student-border: #342C25;
+  --student-border-subtle: #2A231D;
+  --student-ink: #F6F1EA;
+  --student-ink-secondary: #D2C7BA;
+  --student-muted: #A39584;
+
+  --student-brand: #FF5A36;
+  --student-brand-2: #FF8A3D;
+  --student-brand-soft: #3A1810;
+  --student-brand-border: #6B2A18;
+  --student-brand-ink: #FFB39E;
+  --student-blush: #3A1C12;
+  --student-glow: 0 10px 24px -10px rgba(255, 90, 54, 0.55);
+  --student-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px -18px rgba(0, 0, 0, 0.7);
+  --student-shadow-lg: 0 30px 60px -28px rgba(0, 0, 0, 0.8);
+
+  --atlas-cobalt: #6FA8E8;
+  --atlas-cobalt-soft: #13263D;
+  --atlas-cobalt-border: #24456B;
+
+  --atlas-sun: #FFC94A;
+  --atlas-sun-soft: #3A2C0C;
+  --atlas-sun-border: #6B5317;
+
+  --atlas-coral: #FF7A59;
+  --atlas-coral-soft: #3A1810;
+  --atlas-coral-border: #6B2A18;
+
+  --atlas-mint: #34D17A;
+  --atlas-mint-soft: #10301D;
+  --atlas-mint-border: #1E5A36;
+
+  --atlas-berry: #F06BA0;
+  --atlas-berry-soft: #3D1426;
+  --atlas-berry-border: #6E2848;
+
+  --atlas-sky: #5CC8E4;
+  --atlas-sky-soft: #0F3340;
+  --atlas-sky-border: #1D5B6E;
+
+  --atlas-node-current: #FF5A36;
+  --atlas-route-recommended: #FF5A36;
+  --atlas-route-dim: #3A322A;
+
+  --color-indigo-300: #FFB39E; --color-indigo-400: #FF7A59; --color-indigo-500: #FF5A36;
+  --color-violet-300: #FFB39E; --color-violet-400: #FF7A59; --color-violet-500: #FF5A36;
+  --color-purple-300: #FFB39E; --color-purple-400: #FF7A59; --color-purple-500: #FF5A36;
+}
+
 .dark .student-shell,
 .student-shell.dark {
-  --student-canvas: #101623;
-  --student-surface: #172033;
-  --student-surface-subtle: #1E2A42;
-  --student-surface-elevated: #222F49;
-  --student-border: #283652;
-  --student-border-subtle: #202C44;
-  --student-ink: #E6EDF8;
-  --student-ink-secondary: #94A3B8;
-  --student-muted: #64748B;
-
-  --student-brand: #8568FF;
-  --student-brand-soft: #231C4D;
-  --student-brand-border: #443685;
-
-  --atlas-cobalt: #5C7CF9;
-  --atlas-cobalt-soft: #172B66;
-  --atlas-cobalt-border: #254299;
-
-  --atlas-sun: #FFD369;
-  --atlas-sun-soft: #423512;
-  --atlas-sun-border: #6B5620;
-
-  --atlas-coral: #FF8775;
-  --atlas-coral-soft: #4A221C;
-  --atlas-coral-border: #7A382F;
-
-  --atlas-mint: #45D6B1;
-  --atlas-mint-soft: #144237;
-  --atlas-mint-border: #206E5C;
-
-  --atlas-berry: #E5679A;
-  --atlas-berry-soft: #47192C;
-  --atlas-berry-border: #7A2B4C;
-
-  --atlas-sky: #6BCAFA;
-  --atlas-sky-soft: #183C4F;
-  --atlas-sky-border: #276280;
-
-  --atlas-route-dim: #2A3852;
-
   background-color: var(--student-canvas);
   color: var(--student-ink);
 }
 
-/* Base Headings - Strict Be Vietnam Pro sans-serif without serif fallback */
+/* Headings: Montserrat display face, Be Vietnam Pro fallback keeps diacritics */
 .student-shell h1,
 .student-shell h2,
 .student-shell h3,
 .student-shell h4,
 .student-shell h5,
 .student-shell h6 {
-  font-family: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
-  letter-spacing: -0.015em;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  font-family: var(--student-font-display) !important;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
 }
+
+/* ---------- Student primitives (used by redesigned pages) ---------- */
+.st-eyebrow {
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--student-brand-ink);
+}
+.dark .st-eyebrow { color: var(--student-brand-ink); }
+
+.st-grad-text {
+  background: linear-gradient(95deg, var(--student-brand, currentColor), var(--student-brand-2, currentColor));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.st-card {
+  position: relative;
+  background: var(--student-surface);
+  border: 1px solid var(--student-border);
+  border-radius: 20px;
+  box-shadow: var(--student-shadow);
+  min-width: 0;
+}
+
+/* Spotlight that follows the pointer (set by useStudentSpotlight) */
+.st-spot { isolation: isolate; overflow: hidden; }
+.st-spot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), color-mix(in srgb, var(--student-brand) 9%, transparent), transparent 60%);
+}
+.st-spot:hover::after { opacity: 1; }
+
+.st-hero {
+  background:
+    radial-gradient(70% 90% at 100% 0%, var(--student-blush), transparent 70%),
+    radial-gradient(40% 60% at 0% 100%, var(--atlas-sun-soft), transparent 70%),
+    var(--student-surface);
+}
+
+.st-btn-primary {
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  background: linear-gradient(100deg, var(--student-brand) 0%, var(--student-brand-2) 50%, var(--student-brand) 100%);
+  background-size: 200% 100%;
+  box-shadow: var(--student-glow);
+  transition: transform 0.2s cubic-bezier(.2, .8, .2, 1), background-position 0.5s cubic-bezier(.2, .8, .2, 1), box-shadow 0.25s;
+}
+.st-btn-primary:hover:not(:disabled) { background-position: 100% 0; transform: translateY(-1px); }
+.st-btn-primary:active:not(:disabled) { transform: translateY(1px); }
+.st-btn-primary:disabled { background: var(--student-surface-subtle); color: var(--student-muted); box-shadow: none; cursor: not-allowed; }
+.st-btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.35) 50%, transparent 65%);
+  background-size: 250% 100%;
+  background-position: 130% 0;
+  animation: st-sheen 3.6s ease-in-out 1.2s infinite;
+}
+.st-btn-primary:disabled::after { display: none; }
+@keyframes st-sheen { 0%, 70% { background-position: 130% 0; } 100% { background-position: -30% 0; } }
+.st-btn-primary .st-arrow, .st-link .st-arrow { transition: transform 0.25s cubic-bezier(.2, .8, .2, 1); }
+.st-btn-primary:hover .st-arrow, .st-link:hover .st-arrow { transform: translateX(4px); }
+
+/* Existing solid action buttons (dark ink or indigo fills with white text) become the
+   one primary style on student surfaces. `~=` matches whole class tokens only, so
+   dark:-variants and translucent fills such as bg-stone-900/40 are untouched. */
+.student-shell :is(a, button):is([class~="bg-stone-900"], [class~="bg-slate-900"], [class~="bg-indigo-600"], [class~="bg-violet-600"]):is([class~="text-white"], [class~="text-stone-50"], [class~="text-stone-100"], [class~="text-slate-50"], [class~="text-slate-100"]),
+:root.student-theme [role="dialog"] :is(a, button):is([class~="bg-stone-900"], [class~="bg-slate-900"], [class~="bg-indigo-600"], [class~="bg-violet-600"]):is([class~="text-white"], [class~="text-stone-50"], [class~="text-stone-100"], [class~="text-slate-50"], [class~="text-slate-100"]) {
+  color: #fff !important;
+  background: linear-gradient(100deg, var(--student-brand) 0%, var(--student-brand-2) 50%, var(--student-brand) 100%) !important;
+  background-size: 200% 100% !important;
+  border-color: transparent !important;
+  border-radius: 9999px;
+  box-shadow: var(--student-glow);
+  transition: background-position 0.5s cubic-bezier(.2, .8, .2, 1), transform 0.2s cubic-bezier(.2, .8, .2, 1), box-shadow 0.25s;
+}
+.student-shell :is(a, button):is([class~="bg-stone-900"], [class~="bg-slate-900"], [class~="bg-indigo-600"], [class~="bg-violet-600"]):is([class~="text-white"], [class~="text-stone-50"], [class~="text-stone-100"], [class~="text-slate-50"], [class~="text-slate-100"]):hover:not(:disabled),
+:root.student-theme [role="dialog"] :is(a, button):is([class~="bg-stone-900"], [class~="bg-slate-900"], [class~="bg-indigo-600"], [class~="bg-violet-600"]):is([class~="text-white"], [class~="text-stone-50"], [class~="text-stone-100"], [class~="text-slate-50"], [class~="text-slate-100"]):hover:not(:disabled) {
+  background-position: 100% 0 !important;
+  transform: translateY(-1px);
+}
+.student-shell :is(a, button):is([class~="bg-stone-900"], [class~="bg-slate-900"], [class~="bg-indigo-600"], [class~="bg-violet-600"]):is([class~="text-white"], [class~="text-stone-50"], [class~="text-stone-100"], [class~="text-slate-50"], [class~="text-slate-100"]):disabled,
+:root.student-theme [role="dialog"] :is(a, button):is([class~="bg-stone-900"], [class~="bg-slate-900"], [class~="bg-indigo-600"], [class~="bg-violet-600"]):is([class~="text-white"], [class~="text-stone-50"], [class~="text-stone-100"], [class~="text-slate-50"], [class~="text-slate-100"]):disabled {
+  background: var(--student-surface-subtle) !important;
+  color: var(--student-muted) !important;
+  box-shadow: none;
+}
+
+.st-nav-active {
+  color: #fff !important;
+  background: linear-gradient(100deg, var(--student-brand), var(--student-brand-2)) !important;
+  box-shadow: var(--student-glow);
+}
+
+.st-rise { animation: st-rise 0.6s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(var(--d, 0) * 70ms); }
+@keyframes st-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+.st-live { width: 7px; height: 7px; border-radius: 9999px; background: var(--student-brand); animation: st-ping 1.6s infinite; }
+@keyframes st-ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--student-brand) 60%, transparent); } 100% { box-shadow: 0 0 0 9px transparent; } }
+
+.st-march { stroke-dasharray: 7 7; animation: st-march 1s linear infinite; }
+@keyframes st-march { to { stroke-dashoffset: -14; } }
+
+.st-bar-fill { transition: width 1.1s cubic-bezier(.2, .8, .2, 1); }
 
 /* Learning Atlas Visual Primitives */
 .atlas-node-current {
   background-color: var(--atlas-node-current);
-  box-shadow: 0 0 0 4px rgba(103, 70, 232, 0.18);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--atlas-node-current) 18%, transparent);
 }
 
 .atlas-node-target {
   background-color: var(--atlas-node-target);
-  box-shadow: 0 0 0 4px rgba(53, 88, 244, 0.18);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--atlas-node-target) 18%, transparent);
 }
 
 .atlas-route-mastered {
@@ -195,3 +364,12 @@
   box-shadow: none !important;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .student-shell *,
+  .student-shell *::before,
+  .student-shell *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -52,11 +52,11 @@ export function StudentJourneyRoute({ topics, subjectKey }: { topics: JourneyTop
       <div style={{ minWidth: `${count * 7.5}rem` }}>
         <div className="relative" style={{ height: ROUTE_HEIGHT }}>
           <svg aria-hidden="true" className="absolute inset-0 h-full w-full" viewBox={`0 0 1000 ${ROUTE_HEIGHT}`} preserveAspectRatio="none" fill="none">
-            {count > 1 && <path d={routePath(count - 1, count)} stroke="rgb(255 255 255 / 0.28)" strokeWidth="3" strokeDasharray="2 9" strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
+            {count > 1 && <path d={routePath(count - 1, count)} stroke="var(--atlas-route-dim)" strokeWidth="3" strokeDasharray="2 9" strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
           </svg>
           {currentIndex > 0 && (
             <svg aria-hidden="true" className="journey-progress absolute inset-0 h-full w-full" viewBox={`0 0 1000 ${ROUTE_HEIGHT}`} preserveAspectRatio="none" fill="none">
-              <path d={routePath(currentIndex, count)} stroke="white" strokeWidth="4" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+              <path d={routePath(currentIndex, count)} stroke="var(--atlas-route-mastered)" strokeWidth="4" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
             </svg>
           )}
 
@@ -70,14 +70,14 @@ export function StudentJourneyRoute({ topics, subjectKey }: { topics: JourneyTop
                 style={{ left: `${(pointX(index, count) / 1000) * 100}%`, top: pointY(index) }}
               >
                 <div className="journey-stop relative" style={{ animationDelay: `${Math.min(index, 8) * 70}ms` }}>
-                  {current && <span aria-hidden="true" className="journey-pulse absolute inset-0 rounded-full bg-white" />}
+                  {current && <span aria-hidden="true" className="journey-pulse absolute inset-0 rounded-full bg-[var(--student-brand)]" />}
                   <span
                     className={`relative flex items-center justify-center rounded-full ${
                       done
-                        ? "h-8 w-8 bg-white text-[#5b3fd1]"
+                        ? "h-8 w-8 bg-[var(--atlas-route-mastered)] text-white"
                         : current
-                        ? "h-9 w-9 bg-white text-[#5b3fd1]"
-                        : "h-7 w-7 border-2 border-white/50 bg-[#5b3fd1] text-white/80 dark:bg-[#3a2a8f]"
+                        ? "h-9 w-9 text-white bg-[linear-gradient(135deg,var(--student-brand),var(--student-brand-2))] shadow-[var(--student-glow)]"
+                        : "h-7 w-7 border-2 border-[var(--atlas-route-dim)] bg-[var(--student-surface)] text-[var(--student-muted)]"
                     }`}
                   >
                     {done ? (
@@ -98,8 +98,8 @@ export function StudentJourneyRoute({ topics, subjectKey }: { topics: JourneyTop
             const current = index === currentIndex && !done;
             return (
               <li key={topic.id} className="px-2 text-center">
-                <p className={`text-sm leading-snug ${current || done ? "font-semibold text-white" : "text-white/80"}`}>{topic.name}</p>
-                <p className="mt-0.5 text-xs tabular-nums text-white/85">
+                <p className={`text-sm leading-snug ${current ? "font-semibold text-[var(--student-brand-ink)]" : done ? "font-semibold text-[var(--student-ink)]" : "text-[var(--student-ink-secondary)]"}`}>{topic.name}</p>
+                <p className="mt-0.5 text-xs tabular-nums text-[var(--student-muted)]">
                   {done ? `Đã vững · ${topic.mastery.toFixed(0)}%` : current ? `Bạn đang ở đây · ${topic.mastery.toFixed(0)}%` : topic.evidenceCount > 0 ? `${topic.mastery.toFixed(0)}%` : "Chưa học"}
                 </p>
               </li>

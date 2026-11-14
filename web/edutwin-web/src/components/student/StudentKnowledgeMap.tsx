@@ -410,7 +410,7 @@ const StudentKnowledgeMapCanvas: React.FC<StudentKnowledgeMapProps> = ({
                     fill="white"
                     stroke={node.accentColor}
                     strokeWidth={2}
-                    className="dark:fill-[#172033] transition-transform duration-150 hover:scale-110"
+                    className="dark:fill-[var(--student-surface)] transition-transform duration-150 hover:scale-110"
                   />
                   {/* Node Core Dot */}
                   <circle
@@ -458,7 +458,7 @@ const StudentKnowledgeMapCanvas: React.FC<StudentKnowledgeMapProps> = ({
         {/* LAYER 6: Smart Floating Tooltip (Floats opposite to active node, never covers node) */}
         {activeTooltip && (
           <div
-            className={`absolute ${tooltipPlacementClass} p-3 rounded-xl bg-white/95 dark:bg-[#172033]/95 backdrop-blur-xs border border-stone-200 dark:border-stone-700 shadow-md max-w-xs pointer-events-none text-xs space-y-1 z-30 animate-in fade-in duration-150`}
+            className={`absolute ${tooltipPlacementClass} p-3 rounded-xl bg-white/95 dark:bg-[var(--student-surface)]/95 backdrop-blur-xs border border-stone-200 dark:border-stone-700 shadow-md max-w-xs pointer-events-none text-xs space-y-1 z-30 animate-in fade-in duration-150`}
           >
             <div className="font-bold text-stone-900 dark:text-stone-100">
               {activeTooltip.topicName}
@@ -500,7 +500,7 @@ const StudentKnowledgeMapCanvas: React.FC<StudentKnowledgeMapProps> = ({
               className={`flex items-center gap-3 p-3 rounded-xl border text-xs cursor-pointer transition-colors ${
                 isSelected
                   ? "bg-indigo-50/60 dark:bg-indigo-950/30 border-indigo-300 dark:border-indigo-800"
-                  : "bg-stone-50 dark:bg-[#151d2f] border-stone-200/80 dark:border-stone-800/80"
+                  : "bg-stone-50 dark:bg-[var(--student-surface)] border-stone-200/80 dark:border-stone-800/80"
               }`}
             >
               <div className="flex flex-col items-center">

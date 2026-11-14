@@ -10,7 +10,7 @@ import { mapSafeOperationalError } from "../utils/problemDetails";
 import { studentScopeUrl } from "../utils/studentAcademicNavigation";
 import { TOPIC_STATUS_LABELS, topicMasteryStatus, type TopicMasteryStatus } from "../utils/topicMastery";
 
-const PANEL = "rounded-2xl border border-stone-200/90 bg-white p-4 sm:p-5 dark:border-stone-800/90 dark:bg-[#151d2f]";
+const PANEL = "rounded-2xl border border-stone-200/90 bg-white p-4 sm:p-5 dark:border-stone-800/90 dark:bg-[var(--student-surface)]";
 const PRESS = "transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] motion-reduce:transform-none";
 const TOPIC_FILTERS: TopicMasteryStatus[] = ["needsWork", "developing", "mastered", "noData"];
 const STATUS_TEXT: Record<TopicMasteryStatus, string> = {
@@ -141,9 +141,9 @@ export const StudentTwinPage: React.FC = () => {
   if (twinLoading || dashboardQuery.isLoading) {
     return (
       <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0 student-shell">
-        <div className="h-32 animate-pulse rounded-2xl bg-white dark:bg-[#151d2f] border border-stone-200/70 dark:border-stone-800/70" />
-        <div className="h-56 animate-pulse rounded-2xl bg-white dark:bg-[#151d2f] border border-stone-200/70 dark:border-stone-800/70" />
-        <div className="h-72 animate-pulse rounded-2xl bg-white dark:bg-[#151d2f] border border-stone-200/70 dark:border-stone-800/70" />
+        <div className="h-32 animate-pulse rounded-2xl bg-white dark:bg-[var(--student-surface)] border border-stone-200/70 dark:border-stone-800/70" />
+        <div className="h-56 animate-pulse rounded-2xl bg-white dark:bg-[var(--student-surface)] border border-stone-200/70 dark:border-stone-800/70" />
+        <div className="h-72 animate-pulse rounded-2xl bg-white dark:bg-[var(--student-surface)] border border-stone-200/70 dark:border-stone-800/70" />
       </div>
     );
   }
@@ -151,7 +151,7 @@ export const StudentTwinPage: React.FC = () => {
   if (twinError || dashboardQuery.isError || !twinData || !dashboardQuery.data) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-12 student-shell">
-        <div className="rounded-2xl bg-white dark:bg-[#151d2f] p-8 border border-stone-200 dark:border-stone-800 text-center shadow-xs">
+        <div className="rounded-2xl bg-white dark:bg-[var(--student-surface)] p-8 border border-stone-200 dark:border-stone-800 text-center shadow-xs">
           <h2 className="text-base font-bold text-red-700 dark:text-red-400">
             Không thể tải Hồ sơ Năng lực
           </h2>
@@ -207,12 +207,13 @@ export const StudentTwinPage: React.FC = () => {
 
   return (
     <div className="w-full max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4 min-w-0 student-shell">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-3 st-rise">
         <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
-            Hồ sơ năng lực
+          <p className="st-eyebrow">Bản sao số năng lực · Digital Twin</p>
+          <h1 className="mt-1.5 text-2xl sm:text-3xl font-extrabold tracking-tight text-[var(--student-ink)]">
+            Hồ sơ <span className="st-grad-text">năng lực</span>
           </h1>
-          <p className="mt-0.5 text-sm text-stone-500 dark:text-stone-400">
+          <p className="mt-1.5 text-sm text-[var(--student-ink-secondary)]">
             {subject.subjectName}{classInView ? ` · ${classInView.className}` : ""} · chỉ tính các chuyên đề trong giáo trình của lớp đang xem
           </p>
         </div>

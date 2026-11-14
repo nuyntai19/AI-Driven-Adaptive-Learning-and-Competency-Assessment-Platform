@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useStudentTheme } from "../hooks/useStudentTheme";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adaptivePracticeApi } from "../api/adaptivePracticeApi";
@@ -48,6 +49,7 @@ function questionStartedAt(itemId: string): number {
 }
 
 export const AdaptivePracticeSessionPage: React.FC = () => {
+  useStudentTheme();
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -288,7 +290,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
 
   if (sessionQuery.isLoading || questionQuery.isLoading) {
     return (
-      <div className="min-h-screen bg-stone-50/50 dark:bg-[#101623] student-shell flex flex-col items-center justify-center p-6 space-y-4">
+      <div className="min-h-screen bg-stone-50/50 dark:bg-[var(--student-canvas)] student-shell flex flex-col items-center justify-center p-6 space-y-4">
         <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
         <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
           Đang chuẩn bị câu hỏi thích ứng tiếp theo...
@@ -299,7 +301,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
 
   if (session?.status === "Closed" && !feedback) {
     return (
-      <div className="min-h-screen bg-stone-50/50 dark:bg-[#101623] student-shell flex flex-col items-center justify-center p-6 space-y-4">
+      <div className="min-h-screen bg-stone-50/50 dark:bg-[var(--student-canvas)] student-shell flex flex-col items-center justify-center p-6 space-y-4">
         <h2 className="text-xl font-bold text-slate-800 dark:text-white">
           Phiên luyện tập đã kết thúc
         </h2>
@@ -371,8 +373,8 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-stone-50/50 dark:bg-[#101623] text-slate-900 dark:text-white flex flex-col antialiased student-shell">
-      <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#151d2f]/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
+    <div className="min-h-screen bg-stone-50/50 dark:bg-[var(--student-canvas)] text-slate-900 dark:text-white flex flex-col antialiased student-shell">
+      <header className="sticky top-0 z-30 bg-white/95 dark:bg-[var(--student-surface)]/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
         <div className="w-full max-w-[1700px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           <div className="min-w-0">
             <div className="truncate text-sm font-bold text-slate-900 dark:text-white">{session?.topicName}</div>

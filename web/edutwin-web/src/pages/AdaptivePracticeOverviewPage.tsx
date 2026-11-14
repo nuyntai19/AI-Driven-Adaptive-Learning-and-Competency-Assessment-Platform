@@ -95,19 +95,20 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8 min-w-0">
+    <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 min-w-0">
       {/* Header */}
-      <div className="pb-4 border-b border-stone-200 dark:border-stone-800">
+      <div className="st-rise">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-              Luyện tập thích ứng
+          <p className="st-eyebrow">Phiên luyện tập cá nhân hóa</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[var(--student-ink)]">
+              Luyện tập <span className="st-grad-text">thích ứng</span>
             </h1>
-            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+            <span className="px-3 py-1 rounded-full text-xs font-bold bg-[var(--student-brand-soft)] text-[var(--student-brand-ink)]">
               AI-Driven Adaptive Engine 1.0
             </span>
           </div>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-1.5 text-sm text-[var(--student-ink-secondary)]">
             Tổ chức phiên luyện tập cá nhân hóa có mục tiêu rõ ràng, tự động điều chỉnh độ khó và tổng hợp bằng chứng năng lực.
           </p>
         </div>
