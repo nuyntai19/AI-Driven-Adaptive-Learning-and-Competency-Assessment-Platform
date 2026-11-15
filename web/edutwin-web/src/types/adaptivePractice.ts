@@ -61,6 +61,8 @@ export interface AdaptivePracticeSession {
   sessionId: string;
   studentId: string;
   centerId: string;
+  /** Class the session was started in; a follow-up session keeps it. */
+  classId?: string | null;
   subjectId: string;
   subjectName: string;
   topicNodeId: string;

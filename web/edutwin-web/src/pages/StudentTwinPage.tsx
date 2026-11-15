@@ -40,6 +40,8 @@ export const StudentTwinPage: React.FC = () => {
   const isHistoryView = searchParams.get("history") === "true";
   const [topicFilter, setTopicFilter] = useState<TopicMasteryStatus | "all">("all");
   const [historyPage, setHistoryPage] = useState<number>(1);
+  // Explanations show one line each and open one at a time, so the log stays close to the topic column's height.
+  const [openExplanationId, setOpenExplanationId] = useState<string | null>(null);
   const [isGoalEditorOpen, setIsGoalEditorOpen] = useState(false);
   const [targetScoreInput, setTargetScoreInput] = useState("8.0");
   const [remainingDaysInput, setRemainingDaysInput] = useState("90");
@@ -199,7 +201,7 @@ export const StudentTwinPage: React.FC = () => {
     ? progressLine[progressLine.length - 1].overallSubjectMastery - progressLine[progressLine.length - 2].overallSubjectMastery
     : null;
 
-  const historyPageSize = 8;
+  const historyPageSize = 4;
   const historyTotalPages = Math.max(1, Math.ceil((historyData?.length ?? 0) / historyPageSize));
   const currentHistoryPage = Math.min(historyPage, historyTotalPages);
   const visibleHistory =
@@ -472,7 +474,7 @@ export const StudentTwinPage: React.FC = () => {
                 visibleHistory.map((item) => {
                   const isTeacher = item.eventSource === "TeacherOverride";
                   return (
-                    <div key={item.historyId} className="flex items-start gap-3 py-3 text-sm">
+                    <div key={item.historyId} className="flex items-start gap-3 py-2.5 text-sm">
                       <span
                         title={`${item.previousMastery.toFixed(1)}% → ${item.newMastery.toFixed(1)}%`}
                         className={`mt-0.5 inline-flex min-w-[52px] shrink-0 justify-center rounded-lg px-1.5 py-1 text-xs font-bold tabular-nums ${
@@ -494,7 +496,25 @@ export const StudentTwinPage: React.FC = () => {
                           {" · "}
                           <span className="tabular-nums">{item.previousMastery.toFixed(1)}% → {item.newMastery.toFixed(1)}%</span>
                         </small>
-                        {item.explanation && <p className="mt-0.5 text-xs leading-relaxed text-[var(--student-ink-secondary)]">{item.explanation}</p>}
+                        {item.explanation && (() => {
+                          const id = String(item.historyId);
+                          const open = openExplanationId === id;
+                          const long = item.explanation.length > 70;
+                          const text = "mt-0.5 text-xs leading-relaxed text-[var(--student-ink-secondary)]";
+                          if (!long) return <p className={text}>{item.explanation}</p>;
+                          return (
+                            <button
+                              type="button"
+                              aria-expanded={open}
+                              onClick={() => setOpenExplanationId(open ? null : id)}
+                              title={open ? "Thu gọn" : "Xem đầy đủ"}
+                              className={`${text} block w-full text-left cursor-pointer hover:text-[var(--student-ink)]`}
+                            >
+                              <span className={open ? "" : "line-clamp-1"}>{item.explanation}</span>
+                              <span className="font-semibold text-[var(--student-brand)]">{open ? "Thu gọn" : ""}</span>
+                            </button>
+                          );
+                        })()}
                       </div>
                     </div>
                   );

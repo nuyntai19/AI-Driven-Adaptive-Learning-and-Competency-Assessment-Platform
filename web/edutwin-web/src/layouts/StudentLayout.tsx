@@ -142,8 +142,8 @@ export const StudentLayout: React.FC = () => {
     { to: "/hoc-tap/tong-quan", label: "Tổng quan", short: "Tổng quan", icon: <NavIcon d="M3 10.5 12 3l9 7.5M5 9.5V21h14V9.5M10 21v-6h4v6" />, active: location.pathname === "/hoc-tap/tong-quan" },
     { to: "/hoc-tap/lo-trinh-hoc-tap", label: "Lộ trình học tập", short: "Lộ trình", icon: <NavIcon d="M8.5 19H17a3.5 3.5 0 0 0 0-7H7a3.5 3.5 0 0 1 0-7h8.5M6 21.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM18 7.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" />, active: location.pathname.startsWith("/hoc-tap/lo-trinh-hoc-tap") },
     { to: "/hoc-tap/bai-tap", label: "Bài tập của tôi", short: "Bài tập", icon: <NavIcon d="M7 4h10a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2ZM9 4V3h6v1M9 11h6M9 15h4" />, active: location.pathname.startsWith("/hoc-tap/bai-tap"), badge: workspaceLabels.assignmentCount },
-    { to: "/hoc-tap/ho-so-nang-luc", label: "Hồ sơ năng lực (Twin)", short: "Hồ sơ năng lực", icon: <NavIcon d="M12 3 20.5 9.2 17.3 19.2H6.7L3.5 9.2ZM12 8l3.5 2.6-1.3 4.2H9.8l-1.3-4.2Z" />, active: location.pathname.startsWith("/hoc-tap/ho-so-nang-luc") },
     { to: "/hoc-tap/luyen-tap", label: "Luyện tập thích ứng", short: "Luyện tập", icon: <NavIcon d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12" />, active: location.pathname.startsWith("/hoc-tap/luyen-tap") },
+    { to: "/hoc-tap/ho-so-nang-luc", label: "Hồ sơ năng lực (Twin)", short: "Hồ sơ năng lực", icon: <NavIcon d="M12 3 20.5 9.2 17.3 19.2H6.7L3.5 9.2ZM12 8l3.5 2.6-1.3 4.2H9.8l-1.3-4.2Z" />, active: location.pathname.startsWith("/hoc-tap/ho-so-nang-luc") },
   ];
 
   return (
@@ -152,7 +152,7 @@ export const StudentLayout: React.FC = () => {
       <header className="sticky top-0 z-40 bg-[color-mix(in_srgb,var(--student-canvas)_86%,transparent)] backdrop-blur-xl backdrop-saturate-150 border-b border-[var(--student-border)]">
         <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-3 sm:gap-4 min-w-0">
-            <div className="flex items-center gap-3 xl:gap-5 min-w-0">
+            <div className="flex items-center gap-3 xl:gap-5 shrink-0">
               <Link
                 to={getTabUrl("/hoc-tap/tong-quan")}
                 className="flex items-center gap-2.5 group rounded-xl shrink-0"
@@ -166,7 +166,7 @@ export const StudentLayout: React.FC = () => {
                 </span>
               </Link>
 
-              <nav className="hidden lg:flex items-center gap-1 min-w-0" aria-label="Điều hướng học tập">
+              <nav className="hidden lg:flex items-center gap-1" aria-label="Điều hướng học tập">
                 {navItems.map((item) => (
                   <NavLink
                     key={item.to}
@@ -190,10 +190,11 @@ export const StudentLayout: React.FC = () => {
               </nav>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            {/* The account name gives way first: it truncates so the tabs never slide under these controls. */}
+            <div className="flex items-center justify-end gap-2 min-w-0">
               {!isAccountPage && (
                 <div
-                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--atlas-sun-soft)] text-[var(--student-ink)] text-[13px] font-bold whitespace-nowrap"
+                  className="hidden sm:flex shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--atlas-sun-soft)] text-[var(--student-ink)] text-[13px] font-bold whitespace-nowrap"
                   title={workspaceLabels.streakTitle}
                 >
                   <svg className="w-4 h-4 text-[var(--student-brand-2)]" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 22c4 0 7-2.8 7-6.8 0-4.2-3.2-6.7-4.6-10.7-.3-.8-1.3-.9-1.7-.2-.9 1.6-1 3.4-2.4 4.6C9.6 7.3 9 6 8.6 5.2c-.3-.6-1.2-.6-1.5.1C5.9 7.9 5 10.4 5 15.2 5 19.2 8 22 12 22Z" /></svg>
@@ -207,18 +208,19 @@ export const StudentLayout: React.FC = () => {
               <NotificationBell />
 
               {/* Student User Profile Dropdown */}
-              <div className="relative shrink-0">
+              <div className="relative min-w-0">
                 <button
                   type="button"
                   onClick={() => setIsProfileDropdownOpen((prev) => !prev)}
                   aria-expanded={isProfileDropdownOpen}
                   aria-label="Mở menu tài khoản"
-                  className="flex items-center gap-2 p-1 rounded-full hover:bg-[var(--student-surface-subtle)] transition-colors border border-[var(--student-border)] bg-[var(--student-surface)] cursor-pointer"
+                  title={user?.displayName || undefined}
+                  className="flex min-w-0 max-w-full items-center gap-2 p-1 rounded-full hover:bg-[var(--student-surface-subtle)] transition-colors border border-[var(--student-border)] bg-[var(--student-surface)] cursor-pointer"
                 >
                   <div className="w-8 h-8 rounded-full bg-[var(--student-ink)] text-[var(--student-canvas)] font-bold text-xs flex items-center justify-center shrink-0 [font-family:var(--student-font-display)]">
                     {getInitials(user?.displayName, user?.username)}
                   </div>
-                  <div className="hidden 2xl:flex flex-col text-left pr-3 max-w-[190px]">
+                  <div className="hidden 2xl:flex min-w-0 flex-col text-left pr-3 max-w-[190px]">
                     <span className="text-[13px] font-bold text-[var(--student-ink)] leading-tight truncate">
                       {user?.displayName || "Học sinh"}
                     </span>

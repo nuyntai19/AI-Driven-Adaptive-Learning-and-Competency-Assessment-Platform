@@ -109,6 +109,17 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
     if (questionAnsweredEmpty) void refetchSession();
   }, [questionAnsweredEmpty, questionQuery.dataUpdatedAt, refetchSession]);
 
+  // The server may close the session on its own (goal reached, question limit, time up, no question left).
+  // The practice overview caches the running session and history, so refresh them now: otherwise it keeps
+  // showing this session as unfinished and blocks starting a new one until a reload.
+  const sessionClosed = session?.status === "Closed" || !!feedback?.isSessionClosed;
+  useEffect(() => {
+    if (!sessionClosed) return;
+    for (const part of ["active-session", "history", "proposal"]) {
+      void queryClient.invalidateQueries({ queryKey: ["adaptive-practice", part] });
+    }
+  }, [sessionClosed, queryClient]);
+
   // The server's count survives a reload; the page only ticks between syncs.
   useEffect(() => {
     if (session) setElapsedSeconds(session.elapsedSeconds);
@@ -375,15 +386,17 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-stone-50/50 dark:bg-[var(--student-canvas)] text-slate-900 dark:text-white flex flex-col antialiased student-shell">
       <header className="sticky top-0 z-30 bg-white/95 dark:bg-[var(--student-surface)]/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
-        <div className="w-full max-w-[1700px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          <div className="min-w-0">
+        {/* Phones get two rows (topic and progress, then the controls); one fixed 4rem row squeezed the topic into a
+            narrow column that spilled over the question. */}
+        <div className="w-full max-w-[1700px] mx-auto px-4 sm:px-6 py-2 sm:py-0 sm:h-16 flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-4 gap-y-1.5">
+          <div className="min-w-0 basis-full sm:basis-auto">
             <div className="truncate text-sm font-bold text-slate-900 dark:text-white">{session?.topicName}</div>
             <div className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
               Câu {question?.sequenceNumber || session?.questionCount || 1} · dự kiến {session?.minimumQuestions}–{session?.maximumQuestions} câu · mục tiêu {session?.targetMastery.toFixed(0)}%
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="px-2 text-sm font-semibold tabular-nums text-slate-700 dark:text-slate-300" aria-label="Thời gian đã làm trên thời gian dự kiến">{formatTime(elapsedSeconds)} / {session?.timeBudgetMinutes}:00</span>
+          <div className="flex w-full items-center gap-2 sm:w-auto sm:shrink-0">
+            <span className="mr-auto px-0 sm:mr-0 sm:px-2 text-sm font-semibold tabular-nums text-slate-700 dark:text-slate-300" aria-label="Thời gian đã làm trên thời gian dự kiến">{formatTime(elapsedSeconds)} / {session?.timeBudgetMinutes}:00</span>
             <button type="button" onClick={handlePause} disabled={isPaused || session?.status !== "InProgress"} className={SECONDARY}>Tạm dừng</button>
             <button type="button" onClick={() => setShowExitConfirm(true)} className={`rounded-lg px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 cursor-pointer dark:text-rose-400 dark:hover:bg-rose-950/40 ${PRESS}`}>
               Dừng phiên

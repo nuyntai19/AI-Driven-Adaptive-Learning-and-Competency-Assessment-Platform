@@ -19,10 +19,13 @@ test("Phase 11: StudentLayout header and main container responsive constraints",
   assert.match(layoutSource, /max-w-\[1440px\] mx-auto px-4 sm:px-6 lg:px-8/);
   // Header row must have min-w-0; only this slim row stays sticky.
   assert.match(layoutSource, /flex items-center justify-between h-16 gap-3 sm:gap-4 min-w-0/);
-  // Left side must have min-w-0 and not rigid shrink-0
-  assert.match(layoutSource, /<div className="flex items-center gap-3 xl:gap-5 min-w-0">/);
+  // The tabs keep their width; a shrinkable tab group let a long student name push the last tab under the
+  // streak pill (QA, long names). The account controls give way instead: the name truncates.
+  assert.match(layoutSource, /<div className="flex items-center gap-3 xl:gap-5 shrink-0">/);
+  assert.match(layoutSource, /<div className="flex items-center justify-end gap-2 min-w-0">/);
+  assert.match(layoutSource, /hidden 2xl:flex min-w-0 flex-col text-left pr-3 max-w-\[190px\]/);
   // Compact pill navigation (fixed 15px labels) fits from 1024px; below that the phone tab bar takes over.
-  assert.match(layoutSource, /<nav className="hidden lg:flex items-center gap-1 min-w-0"/);
+  assert.match(layoutSource, /<nav className="hidden lg:flex items-center gap-1"/);
 });
 
 const radarChartSource = readFileSync(new URL("../src/components/student/StudentRadarChart.tsx", import.meta.url), "utf8");

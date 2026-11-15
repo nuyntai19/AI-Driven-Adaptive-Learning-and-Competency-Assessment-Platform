@@ -83,6 +83,8 @@ public sealed class AdaptivePracticeSessionDto
     public Guid SessionId { get; set; }
     public Guid StudentId { get; set; }
     public Guid CenterId { get; set; }
+    /// <summary>Class the session was started in; a follow-up session reuses it to stay in that class's scope.</summary>
+    public Guid? ClassId { get; set; }
     public Guid SubjectId { get; set; }
     public string SubjectName { get; set; } = null!;
 

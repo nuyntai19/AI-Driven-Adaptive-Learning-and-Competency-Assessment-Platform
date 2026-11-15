@@ -70,7 +70,8 @@ export function WorkToolbar({ showModes, mode, onModeChange, showTools, activeTo
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
       {showModes ? (
-        <div role="tablist" aria-label="Cách làm bài" className="inline-flex gap-0.5 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/70">
+        // On a phone the three tabs share the row (icons hidden) instead of running past the screen edge.
+        <div role="tablist" aria-label="Cách làm bài" className="flex w-full gap-0.5 rounded-xl bg-slate-100 p-1 sm:inline-flex sm:w-auto dark:bg-slate-800/70">
           {MODES.map((item) => {
             const selected = mode === item.value;
             return (
@@ -81,9 +82,9 @@ export function WorkToolbar({ showModes, mode, onModeChange, showTools, activeTo
                 aria-selected={selected}
                 title={`${item.hint}. Đổi cách làm vẫn giữ nguyên bài đã làm.`}
                 onClick={() => onModeChange(item.value)}
-                className={`${BUTTON} ${selected ? "bg-white text-indigo-700 shadow-xs dark:bg-slate-950 dark:text-indigo-300" : IDLE}`}
+                className={`${BUTTON} min-w-0 flex-1 justify-center px-2 sm:flex-none sm:px-3 ${selected ? "bg-white text-indigo-700 shadow-xs dark:bg-slate-950 dark:text-indigo-300" : IDLE}`}
               >
-                <Icon>{item.icon}</Icon>
+                <span className="hidden sm:inline-flex"><Icon>{item.icon}</Icon></span>
                 {item.label}
               </button>
             );

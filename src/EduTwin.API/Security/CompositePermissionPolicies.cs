@@ -8,6 +8,8 @@ public static class CompositePermissionPolicies
     public const string StudentTwinRead = "permissions:any:twin.student.read";
     public const string StudentTwinUpdate = "permissions:any:twin.student.update";
     public const string DashboardsClassRead = "permissions:any:dashboards.class.read";
+    // Practice log and alerts: a teacher sees the classes they teach, a center manager every class (A07).
+    public const string AdaptivePracticeClassRead = "permissions:any:adaptive_practice.class.read";
     public const string QuestionImagesRead = "permissions:any:curriculum.question_images.read";
     public const string NotificationRead = "permissions:any:notifications.inbox.read_own";
     public const string NotificationUpdate = "permissions:any:notifications.inbox.update_own";
@@ -56,6 +58,11 @@ public static class CompositePermissionPolicies
             [DashboardsClassRead] =
             [
                 "dashboards.teacher.read_scoped"
+            ],
+            [AdaptivePracticeClassRead] =
+            [
+                "dashboards.teacher.read_scoped",
+                "dashboards.center.read"
             ]
         };
 }

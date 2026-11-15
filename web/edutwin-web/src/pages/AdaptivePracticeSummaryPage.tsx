@@ -33,6 +33,8 @@ export const AdaptivePracticeSummaryPage: React.FC = () => {
     mutationFn: () =>
       adaptivePracticeApi.createSession({
         subjectId: session!.subjectId,
+        // Stay in the class of the finished session, or the scope widens to every class of the subject.
+        classId: session!.classId || undefined,
         topicNodeId: summary?.recommendedNextTopicId || session!.topicNodeId,
         practiceMode: "Weakness",
         timeBudgetMinutes: 10,

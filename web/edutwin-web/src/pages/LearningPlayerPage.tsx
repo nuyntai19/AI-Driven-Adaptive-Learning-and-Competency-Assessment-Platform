@@ -3772,9 +3772,10 @@ const PracticePlayerPage = () => {
               </div>
             )}
 
-            {/* 1. Question Palette (Thanh chọn câu hỏi 1, 2, 3...) for Assignments */}
+            {/* 1. Question Palette (Thanh chọn câu hỏi 1, 2, 3...) for Assignments. It scrolls away with the page:
+                kept sticky it covered the statement and the A4 sheet, which stick just below it. */}
             {assignmentId && totalQuestions > 1 && (
-              <div className="xl:sticky xl:top-20 z-20 rounded-2xl bg-white dark:bg-[#0f172a] px-4 py-2 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3">
+              <div className="rounded-2xl bg-white dark:bg-[#0f172a] px-4 py-2 border border-slate-200/80 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
                     Danh sách câu:
@@ -3999,7 +4000,7 @@ const PracticePlayerPage = () => {
               )}
 
               <div className={reviewSplitActive ? "grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-6 items-start" : "space-y-4"}>
-              <div className={reviewSplitActive ? "min-w-0 xl:sticky xl:top-36" : "min-w-0"}>
+              <div className={reviewSplitActive ? "min-w-0 xl:sticky xl:top-24" : "min-w-0"}>
               <div className={workSplitActive ? `grid grid-cols-1 gap-6 items-start ${activeSideTool ? "xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]" : "lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]"}` : "space-y-5"}>
               {splitDrawActive ? null : <div className={workSplitActive ? (activeSideTool ? "xl:sticky xl:top-24" : "lg:sticky lg:top-24") : undefined}>{questionStatement}</div>}
 

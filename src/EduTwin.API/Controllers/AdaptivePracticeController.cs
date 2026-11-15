@@ -298,7 +298,7 @@ public sealed class AdaptivePracticeController : ControllerBase
     }
 
     [HttpGet("teacher/sessions")]
-    [Authorize(Policy = CompositePermissionPolicies.DashboardsClassRead)]
+    [Authorize(Policy = CompositePermissionPolicies.AdaptivePracticeClassRead)]
     [ProducesResponseType(typeof(TeacherAdaptivePracticeSessionDto[]), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetTeacherSessions(
         [FromQuery] Guid? classId = null,
@@ -317,7 +317,7 @@ public sealed class AdaptivePracticeController : ControllerBase
     }
 
     [HttpGet("teacher/alerts")]
-    [Authorize(Policy = CompositePermissionPolicies.DashboardsClassRead)]
+    [Authorize(Policy = CompositePermissionPolicies.AdaptivePracticeClassRead)]
     [ProducesResponseType(typeof(TeacherAdaptivePracticeAlertDto[]), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetTeacherAlerts(
         [FromQuery] Guid? classId = null,

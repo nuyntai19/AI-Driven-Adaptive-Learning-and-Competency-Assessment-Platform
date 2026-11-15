@@ -1239,7 +1239,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             .Include(s => s.TopicNode)
             .Include(s => s.Summary)
             .OrderByDescending(s => s.CompletedAt ?? s.CreatedAt)
-            .Take(limit * 4)
+            .Take(limit)
             .ToListAsync(ct);
 
         return sessions
@@ -1288,7 +1288,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             .Include(s => s.Subject)
             .Include(s => s.TopicNode)
             .OrderByDescending(s => s.CompletedAt)
-            .Take(80)
+            .Take(20)
             .ToListAsync(ct);
 
         return alertSessions
@@ -1320,10 +1320,14 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
                select new VisibleClassMember(c.ClassId, c.SubjectId, c.ClassName, cs.StudentId, cs.Status == ClassStudentStatus.Active))
             .ToListAsync(ct);
 
-    // Sessions of students enrolled in a visible class of the same subject; OwningClass then applies the exact rule.
+    // The same rule as OwningClass, applied in the database so the result limit counts only matching sessions:
+    // a session started in a class belongs to that class alone; an older one without a class goes to a visible
+    // class of the same subject the student is enrolled in. Filtering after the limit let sessions of another
+    // class fill the window and hid this class's sessions.
     private IQueryable<AdaptivePracticeSession> VisibleSessionsQuery(Guid centerId, Guid actorId, bool allClasses, Guid? classId) =>
         _dbContext.AdaptivePracticeSessions.AsNoTracking().Where(s => s.CenterId == centerId && !s.IsDeleted &&
             _dbContext.ClassStudents.Any(cs => cs.CenterId == centerId && cs.StudentId == s.StudentId &&
+                (s.ClassId == null || cs.ClassId == s.ClassId) &&
                 _dbContext.Classes.Any(c => c.CenterId == centerId && c.ClassId == cs.ClassId && c.SubjectId == s.SubjectId && !c.IsDeleted &&
                     (allClasses || c.TeacherId == actorId) && (!classId.HasValue || c.ClassId == classId.Value))));
 
@@ -1388,6 +1392,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             SessionId = s.SessionId,
             StudentId = s.StudentId,
             CenterId = s.CenterId,
+            ClassId = s.ClassId,
             SubjectId = s.SubjectId,
             SubjectName = s.Subject?.Name ?? "",
             TopicNodeId = s.TopicNodeId,

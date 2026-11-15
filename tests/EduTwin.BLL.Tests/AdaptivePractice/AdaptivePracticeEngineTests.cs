@@ -11,6 +11,7 @@ using EduTwin.Contracts.CurriculumAndQuestions;
 using EduTwin.Contracts.KnowledgeGraph;
 using EduTwin.Contracts.Assignments;
 using EduTwin.Contracts.Organization;
+using EduTwin.DAL.AdaptivePractice;
 using EduTwin.DAL.Assignments;
 using EduTwin.DAL.CurriculumAndQuestions;
 using EduTwin.DAL.DigitalTwin;
@@ -991,6 +992,55 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
 
         Assert.Empty(await _engine.GetTeacherSessionsAsync(_centerId, teacher, false, classA, null, 20, CancellationToken.None));
         Assert.Equal("10B2", Assert.Single(await _engine.GetTeacherSessionsAsync(_centerId, teacher, false, classB, null, 20, CancellationToken.None)).ClassName);
+    }
+
+    [Fact]
+    public async Task TeacherSessions_NewerSessionsOfAnotherClass_DoNotHideThisClass()
+    {
+        // QA TM05: a student in classes A and B; many newer B sessions used to fill the limit window before the
+        // class filter ran, so class A's log came back empty.
+        var session = await StartSessionAsync();
+        await _engine.CloseSessionAsync(_centerId, _studentId, session.SessionId, AdaptivePracticeCloseReason.StudentStopped, _utcNow, CancellationToken.None);
+        var teacher = Guid.NewGuid();
+        var classA = Guid.NewGuid();
+        var classB = Guid.NewGuid();
+        _dbContext.Classes.Add(new Class { CenterId = _centerId, ClassId = classA, TeacherId = teacher, SubjectId = _subjectId, ClassName = "10A1", AcademicYear = "2026", Status = ClassStatus.Active, CreatedAt = _utcNow, UpdatedAt = _utcNow });
+        _dbContext.Classes.Add(new Class { CenterId = _centerId, ClassId = classB, TeacherId = Guid.NewGuid(), SubjectId = _subjectId, ClassName = "10B2", AcademicYear = "2026", Status = ClassStatus.Active, CreatedAt = _utcNow, UpdatedAt = _utcNow });
+        _dbContext.ClassStudents.Add(new ClassStudent { CenterId = _centerId, ClassId = classA, StudentId = _studentId, JoinedAt = _utcNow, Status = ClassStudentStatus.Active });
+        _dbContext.ClassStudents.Add(new ClassStudent { CenterId = _centerId, ClassId = classB, StudentId = _studentId, JoinedAt = _utcNow, Status = ClassStudentStatus.Active });
+        var original = await _dbContext.AdaptivePracticeSessions.SingleAsync();
+        original.ClassId = classA;
+        for (var i = 1; i <= 81; i++)
+        {
+            _dbContext.AdaptivePracticeSessions.Add(new AdaptivePracticeSession
+            {
+                SessionId = Guid.NewGuid(), CenterId = _centerId, StudentId = _studentId, SubjectId = _subjectId,
+                TopicNodeId = _mainTopicId, ClassId = classB, PracticeMode = AdaptivePracticeMode.Weakness,
+                TimeBudgetMinutes = 10, MinimumQuestions = 4, MaximumQuestions = 8, SelectionReason = "B",
+                Status = AdaptivePracticeSessionStatus.Closed, CloseReason = AdaptivePracticeCloseReason.StudentStopped,
+                StartedAt = _utcNow.AddMinutes(i), CompletedAt = _utcNow.AddMinutes(i), CreatedAt = _utcNow.AddMinutes(i), UpdatedAt = _utcNow.AddMinutes(i)
+            });
+        }
+        await _dbContext.SaveChangesAsync();
+
+        Assert.Equal(original.SessionId, Assert.Single(await _engine.GetTeacherSessionsAsync(_centerId, teacher, false, classA, null, 1, CancellationToken.None)).SessionId);
+        Assert.Equal(original.SessionId, Assert.Single(await _engine.GetTeacherSessionsAsync(_centerId, teacher, false, classA, null, 20, CancellationToken.None)).SessionId);
+        // Without a class filter the teacher still sees only class A, and the limit counts class A sessions only.
+        Assert.Single(await _engine.GetTeacherSessionsAsync(_centerId, teacher, false, null, null, 20, CancellationToken.None));
+        Assert.Equal(20, (await _engine.GetTeacherSessionsAsync(_centerId, Guid.NewGuid(), true, classB, null, 20, CancellationToken.None)).Count);
+    }
+
+    [Fact]
+    public async Task SessionDto_CarriesTheClassItWasStartedIn()
+    {
+        var session = await StartSessionAsync();
+        var classId = Guid.NewGuid();
+        (await _dbContext.AdaptivePracticeSessions.SingleAsync()).ClassId = classId;
+        await _dbContext.SaveChangesAsync();
+
+        var loaded = await _engine.GetSessionByIdAsync(_centerId, _studentId, session.SessionId, CancellationToken.None);
+
+        Assert.Equal(classId, loaded!.ClassId);
     }
 
     private sealed class AdaptivePracticeTestDbContext(

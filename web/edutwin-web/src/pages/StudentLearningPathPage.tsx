@@ -351,7 +351,9 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
         })}
       </ol>
 
-      <div className={`${panel} lg:sticky lg:top-36`} aria-live="polite">
+      {/* `.st-card` sets position: relative outside Tailwind's layers, which beat plain `lg:sticky`: the panel then
+          stayed relative and `top` pushed it 9rem below the stage list. `!` keeps it sticky and level with the list. */}
+      <div className={`${panel} lg:!sticky lg:top-36`} aria-live="polite">
         {activeRouteKey === "place" ? <div className="space-y-4">
           <div className="flex items-start gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--atlas-cobalt-soft)] text-[var(--atlas-cobalt)]"><PathIcon d={purposeIcon.Probe} /></span>
             <div className="min-w-0"><p className="st-eyebrow">Điểm xuất phát của em</p><h2 className="text-xl font-extrabold">Kiểm tra đầu vào</h2>
