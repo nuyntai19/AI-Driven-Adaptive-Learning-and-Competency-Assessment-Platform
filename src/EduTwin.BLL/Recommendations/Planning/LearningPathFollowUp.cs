@@ -35,6 +35,8 @@ public static class LearningPathFollowUp
             q.AnswerEvaluationMode != Contracts.CurriculumAndQuestions.QuestionAnswerEvaluationMode.Manual && q.QuestionType != Contracts.CurriculumAndQuestions.QuestionType.Essay, ct);
         var practiceSets = milestone.Missions.Where(m => m.Purpose == "Practice").ToList();
         var lastSet = practiceSets.Count == 0 ? 0u : Math.Max((uint)practiceSets.Count, practiceSets.Max(m => m.SetNumber));
+        var mainNumbers = LearningPathRemediation.MainSetNumbers(milestone.Missions);
+        var nextMainNumber = (uint)milestone.Missions.Count(mission => mission.Purpose == "Practice" && mission.RemediationRound == 0 && mission.SkillId == run.Session.TopicNodeId.ToString()) + 1;
         var checkMission = milestone.Missions.FirstOrDefault(m => m.Purpose == "IndependentCheck");
         var checkSessionId = checkMission == null ? (Guid?)null : Guid.Parse(checkMission.MissionId);
         var checkPassed = checkSessionId.HasValue && await db.LearningPathSessions.AnyAsync(s => s.CenterId == run.CenterId &&
@@ -45,6 +47,7 @@ public static class LearningPathFollowUp
 
         ProposedMissionDto? next = null;
         ProposedMissionDto? extra = null;
+        ProposedMissionDto? supportStudy = null;
         string explanation;
         string code;
         ProposedMissionDto Set(string title, byte target, bool repair, uint streak) => new()
@@ -61,7 +64,82 @@ public static class LearningPathFollowUp
             AvailableFrom = now.AddDays(days), ActivityTypes = ["Practice"], CanStart = available > 0, SelectionReason = reason
         };
 
-        if (outcome == "Passed")
+        if (outcome == "NeedsSupport")
+        {
+            // Preserve late-correction invalidation for both broad and focused repair.
+            var future = milestone.Missions.Where(m => m.Purpose == "Review" && m.AvailableFrom > now).Select(m => Guid.Parse(m.MissionId)).ToHashSet();
+            foreach (var session in (await db.LearningPathSessions.Where(s => s.CenterId == run.CenterId && s.LearningPathId == path.LearningPathId &&
+                s.Status == LearningPathSessionStatus.NotStarted).ToListAsync(ct)).Where(s => future.Contains(s.SessionId)))
+            { session.Status = LearningPathSessionStatus.Skipped; session.UpdatedAt = now; session.RowVersion++; }
+        }
+        var observations = original != null && (purpose is "Practice" or "Review" || outcome == "NeedsSupport")
+            ? await LearningPathRemediation.ObserveAsync(db, run, original, milestone.Missions, ct)
+            : (Current: new List<LearningPathRemediation.Observation>(), History: new List<LearningPathRemediation.Observation>());
+        var weakFocuses = LearningPathRemediation.WeakFocuses(observations.Current);
+        var focuses = (original?.RemediationFocuses.Count > 0 ? original.RemediationFocuses : weakFocuses).ToList();
+        var repairResult = outcome == "NeedsSupport" || outcome == "ActivityOnlyCompleted" &&
+            (purpose == "Practice" || purpose == "Review" && accuracy < LearningPathPacing.ReviewPassRate);
+        if (repairResult && original != null && focuses.Count > 0)
+        {
+            milestone.ReadyForCheck = false;
+            if (purpose == "Review") milestone.IsSelfAssessedCheck = false;
+            if (checkMission == null)
+                extra = new ProposedMissionDto {
+                    MissionId = Guid.NewGuid().ToString(), SkillId = run.Session.TopicNodeId.ToString(), Purpose = "IndependentCheck",
+                    ActivityTypes = ["IndependentCheck"], Title = $"Tự kiểm tra: {milestone.Title}", QuestionCount = 5,
+                    EstimatedMinutes = 10, CanStart = available >= 3,
+                    SelectionReason = "Tự kiểm tra cả chủ đề sau khi củng cố phần yếu và luyện tổng hợp; luyện nhánh không tự xác nhận thành thạo."
+                };
+            var round = original.RemediationRound + 1;
+            var focusPass = LearningPathRemediation.Secure(focuses, observations.Current, 1, window: null);
+            var streak = accuracy >= LearningPathPacing.PassRate && focusPass ? original.PassStreak + 1 : 0u;
+            var secure = LearningPathRemediation.Secure(focuses, observations.History);
+            var names = string.Join(" + ", focuses);
+            var eligible = await LearningPathV4Data.QuestionsAsync(db, run.CenterId, run.StudentId, path.SubjectId,
+                new[] { run.Session.TopicNodeId }, run.Session.ClassId, ct);
+            var smallBank = focuses.Any(focus => eligible.Count(question => LearningPathRemediation.Focuses(question).Contains(focus, StringComparer.OrdinalIgnoreCase)) < 3);
+            if (original.RemediationRound > 0 && streak >= LearningPathPacing.ReadyStreak && secure && lastSet < LearningPathPacing.MaxSetsPerSkill)
+            {
+                var root = original.RemediationRootMissionId ?? original.MissionId;
+                var unfinishedLessons = milestone.Missions.Where(mission => mission.Purpose == "Study" && mission.RemediationRootMissionId == root)
+                    .Select(mission => Guid.Parse(mission.MissionId)).ToHashSet();
+                foreach (var lesson in (await db.LearningPathSessions.Where(session => session.CenterId == run.CenterId && session.LearningPathId == path.LearningPathId &&
+                    session.Status == LearningPathSessionStatus.NotStarted).ToListAsync(ct)).Where(session => unfinishedLessons.Contains(session.SessionId)))
+                { lesson.Status = LearningPathSessionStatus.Skipped; lesson.UpdatedAt = now; lesson.RowVersion++; }
+                explanation = $"Đã củng cố {names}: đạt ít nhất 80% trên tối thiểu 3 câu khác nhau mỗi phần và 2 bộ liên tiếp. Quay lại bộ luyện tổng hợp; chỉ bài tự kiểm tra mới xác nhận nắm vững cả chủ đề.";
+                next = Set($"Rèn kỹ năng: {milestone.Title} · bộ {nextMainNumber}", original.TargetDifficulty ?? 2, false, 0);
+                code = "FOCUS_REPAIR_RETURN";
+            }
+            else if (lastSet >= LearningPathPacing.MaxSetsPerSkill || original.RemediationRound > 0 && (smallBank || original.RemediationRound >= LearningPathRemediation.MaxRounds))
+            {
+                explanation = smallBank
+                    ? $"Chưa thể xác nhận {names}: ngân hàng chưa đủ 3 câu khác nhau cho mỗi phần. Không lặp vô hạn hoặc coi nhớ đáp án là đã vững; hãy nhờ giáo viên bổ sung câu và hỗ trợ phần này."
+                    : $"Đã luyện {lastSet} bộ, trong đó có {original.RemediationRound} vòng ôn {names}. Tạm dừng thêm bộ tự động; nên xem lại ví dụ và nhờ giáo viên hỗ trợ hoặc điều chỉnh lộ trình trước khi luyện tiếp. Chưa xác nhận đã vững cả chủ đề.";
+                code = smallBank ? "FOCUS_REPAIR_NEEDS_QUESTIONS" : "FOCUS_REPAIR_SUPPORT";
+            }
+            else
+            {
+                var target = original.TargetDifficulty ?? 2;
+                if (accuracy < LearningPathPacing.RepairRate) target = (byte)Math.Max(1, target - 1);
+                next = Set($"Rèn lại bằng bài tập: {names} · vòng {round}", target, true, streak);
+                next.RemediationFocuses = focuses;
+                next.RemediationRound = round;
+                next.RemediationSourceMissionId = original.MissionId;
+                next.RemediationRootMissionId = original.RemediationRootMissionId ?? original.MissionId;
+                explanation = $"Bộ vừa học cho thấy cần củng cố {names}. Học lại qua ví dụ, rồi luyện vòng {round}: khoảng 80% câu đúng phần này và một ít câu đối chiếu, ưu tiên câu khác chưa làm. Cần 2 bộ liên tiếp từ 80% và ít nhất 3 câu khác nhau mỗi phần trước khi trở lại luyện tổng hợp."
+                    + (smallBank ? " Ngân hàng còn ít câu ở phần yếu; kết quả sẽ chưa đủ để kết luận đã vững." : "");
+                if (original.RemediationRound == 0 || accuracy < LearningPathPacing.RepairRate)
+                    supportStudy = new ProposedMissionDto {
+                        MissionId = Guid.NewGuid().ToString(), SkillId = next.SkillId, Purpose = "Study", Title = $"Ôn lại: {names}",
+                        EstimatedMinutes = 5, ActivityTypes = ["Study"], IsRepair = true,
+                        RemediationFocuses = focuses, RemediationRound = round,
+                        RemediationSourceMissionId = original.MissionId, RemediationRootMissionId = next.RemediationRootMissionId,
+                        SelectionReason = "Dùng nội dung đã biên soạn và ví dụ đúng phần cần củng cố. Có thể xem lại lời giải các câu vừa sai qua nút Học lại."
+                    };
+                code = "FOCUS_REPAIR_BRANCH";
+            }
+        }
+        else if (outcome == "Passed")
         {
             explanation = "Đạt tự kiểm tra. Hẹn ôn sau 2 ngày để kiểm tra khả năng nhớ lại; buổi ôn không tự cấp xác nhận thành thạo.";
             next = Review(2, explanation); code = "SPACED_RECALL";
@@ -76,17 +154,11 @@ public static class LearningPathFollowUp
         }
         else if (outcome == "NeedsSupport")
         {
-            // A late teacher correction can invalidate an unstarted review, but never discards work.
-            var future = milestone.Missions.Where(m => m.Purpose == "Review" && m.AvailableFrom > now).Select(m => Guid.Parse(m.MissionId)).ToList();
-            // Filter Guid lists in memory: MySQL (Pomelo) cannot translate Contains over a Guid parameter list.
-            foreach (var session in (await db.LearningPathSessions.Where(s => s.CenterId == run.CenterId && s.LearningPathId == path.LearningPathId &&
-                s.Status == LearningPathSessionStatus.NotStarted).ToListAsync(ct)).Where(s => future.Contains(s.SessionId)))
-            { session.Status = LearningPathSessionStatus.Skipped; session.UpdatedAt = now; session.RowVersion++; }
             var missed = await db.IssuedItems.CountAsync(i => i.CenterId == run.CenterId && i.ActivityRun.SessionRunId == run.SessionRunId &&
                 i.Attempt != null && i.Attempt.IsCorrect == false, ct);
             milestone.ReadyForCheck = false;
             explanation = $"Tự kiểm tra chưa đạt ({missed} câu sai): thêm bộ rèn lại {setSize} câu, ưu tiên câu từng sai. Đạt 2 bộ liên tiếp từ 80% sẽ mở lại tự kiểm tra bằng câu mới.";
-            next = Set($"Rèn lại: {milestone.Title} · bộ {lastSet + 1}", 2, true, 0); code = "TARGETED_REPAIR";
+            next = Set($"Rèn lại: {milestone.Title} · bộ {nextMainNumber}", 2, true, 0); code = "TARGETED_REPAIR";
         }
         else if (outcome == "ActivityOnlyCompleted" && purpose == "Review")
         {
@@ -103,7 +175,7 @@ public static class LearningPathFollowUp
                 // The self-assessment did not hold: the part becomes regular learning with a repair set and a self-check.
                 milestone.IsSelfAssessedCheck = false; milestone.ReadyForCheck = false;
                 explanation = $"Ôn xác nhận đạt {pct}%: phần em tự đánh giá đã vững cần củng cố thêm. Đã thêm bộ rèn lại {setSize} câu và bài tự kiểm tra; đạt 2 bộ liên tiếp nên làm tự kiểm tra.";
-                next = Set($"Rèn lại: {milestone.Title} · bộ {lastSet + 1}", 2, true, 0); code = "SELF_ASSESSMENT_NOT_CONFIRMED";
+                next = Set($"Rèn lại: {milestone.Title} · bộ {nextMainNumber}", 2, true, 0); code = "SELF_ASSESSMENT_NOT_CONFIRMED";
                 if (checkMission == null)
                     extra = new ProposedMissionDto
                     {
@@ -116,14 +188,14 @@ public static class LearningPathFollowUp
             {
                 milestone.ReadyForCheck = false;
                 explanation = $"Ôn chỉ đạt {pct}%: kỹ năng cần củng cố lại. Đã thêm bộ rèn lại {setSize} câu; đạt 2 bộ liên tiếp sẽ hẹn ôn lại.";
-                next = Set($"Rèn lại: {milestone.Title} · bộ {lastSet + 1}", 2, true, 0); code = "FORGETTING_DETECTED";
+                next = Set($"Rèn lại: {milestone.Title} · bộ {nextMainNumber}", 2, true, 0); code = "FORGETTING_DETECTED";
             }
         }
         else if (outcome == "ActivityOnlyCompleted" && purpose == "Practice" && accuracy.HasValue && original != null)
         {
             var streak = accuracy >= LearningPathPacing.PassRate ? original.PassStreak + 1 : 0u;
             var target = original.TargetDifficulty ?? 2;
-            var setNo = original.SetNumber == 0 ? lastSet : original.SetNumber;
+            var setNo = mainNumbers.GetValueOrDefault(original.MissionId, original.SetNumber);
             var notes = "";
             if (original.IsProbe && accuracy >= LearningPathPacing.PassRate)
             {
@@ -147,40 +219,43 @@ public static class LearningPathFollowUp
             }
             else if (lastSet >= LearningPathPacing.MaxSetsPerSkill)
             {
-                milestone.ReadyForCheck = true;
+                milestone.ReadyForCheck = false;
                 explanation = $"Đã luyện {lastSet} bộ mà kết quả chưa ổn định. Nên hỏi giáo viên chỗ đang vướng, hoặc làm tự kiểm tra để xác định rõ."; code = "ASK_TEACHER";
             }
             else if (setSize == 0) return;
             else if (accuracy >= LearningPathPacing.PassRate)
             {
                 explanation = $"Bộ {setNo} đạt {pct}%: bộ tiếp theo khó hơn. Đạt thêm {LearningPathPacing.ReadyStreak - streak} bộ liên tiếp sẽ mở tự kiểm tra.{notes}";
-                next = Set($"{(original.IsRepair ? "Rèn lại" : "Rèn kỹ năng")}: {milestone.Title} · bộ {lastSet + 1}", (byte)Math.Min(5, target + 1), original.IsRepair, streak); code = "STEP_UP";
+                next = Set($"{(original.IsRepair ? "Rèn lại" : "Rèn kỹ năng")}: {milestone.Title} · bộ {nextMainNumber}", (byte)Math.Min(5, target + 1), original.IsRepair, streak); code = "STEP_UP";
             }
             else if (accuracy >= LearningPathPacing.RepairRate)
             {
                 explanation = $"Bộ {setNo} đạt {pct}%: thêm một bộ cùng mức, ưu tiên câu vừa sai.";
-                next = Set($"{(original.IsRepair ? "Rèn lại" : "Rèn kỹ năng")}: {milestone.Title} · bộ {lastSet + 1}", target, original.IsRepair, 0); code = "SAME_LEVEL";
+                next = Set($"{(original.IsRepair ? "Rèn lại" : "Rèn kỹ năng")}: {milestone.Title} · bộ {nextMainNumber}", target, original.IsRepair, 0); code = "SAME_LEVEL";
             }
             else
             {
                 explanation = $"Bộ {setNo} đạt {pct}%: nên xem lại phần Tìm hiểu và ví dụ mẫu (nút Học lại), rồi làm bộ dễ hơn.";
-                next = Set($"{(original.IsRepair ? "Rèn lại" : "Rèn kỹ năng")}: {milestone.Title} · bộ {lastSet + 1}", (byte)Math.Max(1, target - 1), original.IsRepair, 0); code = "STEP_DOWN";
+                next = Set($"{(original.IsRepair ? "Rèn lại" : "Rèn kỹ năng")}: {milestone.Title} · bộ {nextMainNumber}", (byte)Math.Max(1, target - 1), original.IsRepair, 0); code = "STEP_DOWN";
             }
         }
         else return;
 
-        foreach (var (mission, reason) in new[] { (next, explanation), (extra, extra?.SelectionReason ?? "") })
+        foreach (var (mission, reason) in new[] { (supportStudy, supportStudy?.SelectionReason ?? ""), (next, explanation), (extra, extra?.SelectionReason ?? "") })
         {
             if (mission == null) continue;
             mission.SelectionReason = reason;
             // New practice sets sit before the check so the route reads in learning order; reviews and checks go last.
             var checkIndex = checkMission == null ? -1 : milestone.Missions.IndexOf(checkMission);
-            if (mission.Purpose == "Practice" && checkIndex >= 0) milestone.Missions.Insert(checkIndex, mission); else milestone.Missions.Add(mission);
+            var sourceIndex = milestone.Missions.FindIndex(item => item.MissionId == original?.MissionId);
+            if (mission.RemediationSourceMissionId != null && sourceIndex >= 0)
+                milestone.Missions.Insert(sourceIndex + (mission == next && supportStudy != null ? 2 : 1), mission);
+            else if (mission.Purpose == "Practice" && checkIndex >= 0) milestone.Missions.Insert(checkIndex, mission); else milestone.Missions.Add(mission);
             db.LearningPathSessions.Add(new LearningPathSession { CenterId = run.CenterId, LearningPathId = path.LearningPathId,
                 SessionId = Guid.Parse(mission.MissionId), TopicNodeId = run.Session.TopicNodeId, ClassId = run.Session.ClassId,
                 PhaseNumber = run.Session.PhaseNumber, WeekNumber = run.Session.WeekNumber,
-                SessionOrder = (await db.LearningPathSessions.Where(s => s.CenterId == run.CenterId && s.LearningPathId == path.LearningPathId).MaxAsync(s => (uint?)s.SessionOrder, ct) ?? 0) + 1
-                    + (mission == extra ? 1u : 0u),
+                SessionOrder = Math.Max((await db.LearningPathSessions.Where(s => s.CenterId == run.CenterId && s.LearningPathId == path.LearningPathId).MaxAsync(s => (uint?)s.SessionOrder, ct) ?? 0),
+                    db.LearningPathSessions.Local.Where(s => s.LearningPathId == path.LearningPathId).Select(s => s.SessionOrder).DefaultIfEmpty(0u).Max()) + 1,
                 Title = mission.Title, Objective = mission.Purpose, Rationale = reason, MinimumQuestions = mission.Purpose == "IndependentCheck" ? 5u : mission.QuestionCount,
                 RequiredCorrectRate = .8m, PolicyVersion = LearningPathV4Data.Policy, CreatedAt = now, UpdatedAt = now, RowVersion = 1 });
         }

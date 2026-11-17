@@ -16,6 +16,8 @@ import { dashboardGreeting, dashboardNudge } from "../utils/studentDashboardNudg
 import { isAssignmentPastDue } from "../utils/assignmentReviewTiming";
 import { formatDayMonth, formatTimeDayMonth } from "../utils/dateInput";
 
+const StudentMasteryTrendChart = React.lazy(() => import("../components/student/StudentMasteryTrendChart"));
+
 const CARD = "st-card st-spot p-5 sm:p-6";
 const PRIMARY_ACTION = "st-btn-primary group inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold whitespace-nowrap [font-family:var(--student-font-display)]";
 const SECONDARY_ACTION = "inline-flex items-center rounded-full border border-[var(--student-border)] bg-[var(--student-surface)] px-4 py-2.5 text-sm font-semibold text-[var(--student-ink)] transition-colors hover:border-[var(--student-brand)] hover:text-[var(--student-brand)]";
@@ -76,7 +78,7 @@ export const StudentDashboardPage: React.FC = () => {
     staleTime: 60 * 1000,
   });
 
-  const { data: twinHistory } = useQuery<TwinUpdateHistoryItemDto[]>({
+  const { data: twinHistory, isPending: trendLoading, isError: trendError, refetch: refetchTrend } = useQuery<TwinUpdateHistoryItemDto[]>({
     queryKey: ["studentTwinHistory", selectedSubjectId, selectedClassId],
     queryFn: () => getStudentTwinHistory(selectedSubjectId, undefined, selectedClassId || undefined),
     enabled: !!selectedSubjectId && !isHistory,
@@ -365,6 +367,15 @@ export const StudentDashboardPage: React.FC = () => {
             </Link>
           </section>
 
+          {!!selectedSubjectId && !isHistory && (
+            <section aria-labelledby="trend-heading" className={`lg:col-span-12 min-w-0 ${CARD} st-rise`} style={{ ["--d" as string]: 2 }}>
+              {trendLoading ? <div role="status" className="h-80 animate-pulse rounded-2xl bg-[var(--student-surface-subtle)] p-5 text-sm text-[var(--student-muted)]"><h2 id="trend-heading" className="font-bold">Nhịp tiến bộ của bạn</h2><p className="mt-2">Đang tải diễn biến năng lực…</p></div>
+                : trendError ? <div><h2 id="trend-heading" className="text-lg font-bold">Nhịp tiến bộ của bạn</h2><p className="mt-2 text-sm text-[var(--student-muted)]">Chưa tải được diễn biến năng lực.</p><button type="button" onClick={() => void refetchTrend()} className={`mt-3 ${SECONDARY_ACTION}`}>Thử lại</button></div>
+                : <React.Suspense fallback={<div role="status" className="h-80 text-sm text-[var(--student-muted)]">Đang tải biểu đồ…</div>}>
+                  <StudentMasteryTrendChart key={`${selectedSubjectId}:${selectedClassId}`} history={twinHistory ?? []} />
+                </React.Suspense>}
+            </section>
+          )}
           {/* Today's plan from the learning path: read-only, each row opens the path */}
           <section aria-labelledby="plan-heading" className={`lg:col-span-6 xl:col-span-5 ${CARD} st-rise`} style={{ ["--d" as string]: 3 }}>
             <div className="mb-3 flex items-start justify-between gap-3">

@@ -67,6 +67,8 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         var plan = JsonSerializer.Deserialize<PathProposalDto>(session.LearningPath.PlanJson!.RootElement.GetRawText(), LearningPathV4Data.Json);
         var definition = plan?.Milestones.SelectMany(m => m.Missions).FirstOrDefault(m => m.MissionId == missionId.ToString())
             ?? throw new InvalidOperationException("Nhiệm vụ không có trong bản kế hoạch đã xác nhận.");
+        var checkBlock = LearningPathRemediation.CheckBlockReason(plan!, definition);
+        if (checkBlock != null) throw new InvalidOperationException(checkBlock);
         if (!definition.CanStart && definition.Purpose is not ("Practice" or "Review" or "IndependentCheck")) throw new InvalidOperationException(definition.SelectionReason);
         if (definition.Deferred) throw new InvalidOperationException("Nhiệm vụ này đã hoãn vì vượt ngân sách học. Hãy điều chỉnh phạm vi hoặc lịch học trước.");
         if (definition.TimeLimitMinutes.HasValue)
@@ -182,6 +184,9 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
             var target = definition.TargetDifficulty;
             pool = pool.OrderBy(q => wrong.Contains(q.QuestionId) ? 0 : used.Contains(q.QuestionId) ? 2 : 1)
                 .ThenBy(q => target.HasValue ? Math.Abs(q.Difficulty - target.Value) : q.Difficulty).ThenBy(q => q.Difficulty).ThenBy(q => q.QuestionId).ToList();
+            if (definition.RemediationFocuses.Count > 0 && !pool.Any(question => LearningPathRemediation.Focuses(question)
+                .Any(focus => definition.RemediationFocuses.Contains(focus, StringComparer.OrdinalIgnoreCase))))
+                throw new InvalidOperationException("Chưa có câu đúng phần cần củng cố ngoài thời gian chờ và phần giữ riêng cho tự kiểm tra. Hãy xem lại ví dụ, học phần khác hoặc nhờ giáo viên bổ sung câu.");
             if (pool.Count == 0) throw new InvalidOperationException("Chưa có câu hỏi hợp lệ sẵn sàng cho nhiệm vụ này. Câu vừa dùng cần qua thời gian chờ; hãy học phần khác hoặc quay lại sau.");
         }
         var number = (run?.RunNumber ?? 0) + 1;
@@ -216,6 +221,8 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         }
         else if (definition.Purpose == "Study")
         {
+            if (definition.RemediationFocuses.Count > 0)
+                pool = pool.Where(question => LearningPathRemediation.Focuses(question).Any(focus => definition.RemediationFocuses.Contains(focus, StringComparer.OrdinalIgnoreCase))).ToList();
             var used = await db.Attempts.Where(a => a.CenterId == centerId && a.StudentId == studentId).Select(a => a.QuestionId).Distinct().ToListAsync(cancellationToken);
             // Reserve five unseen questions for confirmation instead of exposing their solutions during the lesson.
             // Up to two worked examples: answered questions first, unseen ones only when the bank still keeps 5 for the check.
@@ -234,6 +241,14 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
             var size = requested > 0 ? (int)Math.Clamp(requested, 1u, LearningPathPacing.MaxPracticeQuestions) : 6;
             var picked = independent ? definition.IsMilestoneExam && assessedNodes.Length > 1
                 ? assessedNodes.SelectMany(id => MixedCheck(pool.Where(q => q.PrimaryTopicNodeId == id).ToList(), studentId)).ToList() : MixedCheck(pool, studentId) : pool.Take(size).ToList();
+            if (!independent && definition.RemediationFocuses.Count > 0)
+            {
+                var used = (await db.Attempts.Where(attempt => attempt.CenterId == centerId && attempt.StudentId == studentId)
+                    .Select(attempt => attempt.QuestionId).Distinct().ToListAsync(cancellationToken)).ToHashSet();
+                var wrong = (await db.Attempts.Where(attempt => attempt.CenterId == centerId && attempt.StudentId == studentId && attempt.IsCorrect == false)
+                    .Select(attempt => attempt.QuestionId).Distinct().ToListAsync(cancellationToken)).ToHashSet();
+                picked = LearningPathRemediation.Select(pool, definition.RemediationFocuses, used, wrong, definition.TargetDifficulty, size);
+            }
             foreach (var q in picked) Add(independent ? "IndependentCheck" : "Practice", questionId: q.QuestionId);
         }
         var assigned = activities.SelectMany(a => a.IssuedItems).Where(i => i.QuestionId.HasValue && i.SolutionExposedAt == null).Select(i => i.QuestionId!.Value).ToList();
@@ -626,6 +641,15 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
         var ids = await db.ActivityRuns.Where(a => a.CenterId == run.CenterId && a.SessionRunId == run.SessionRunId)
             .OrderBy(a => a.ActivityOrder).Select(a => a.ActivityRunId).ToListAsync(ct);
         var result = new MissionRunDto { SessionRunId = run.SessionRunId, SessionId = run.SessionId, Title = run.Session.Title, Status = run.Status.ToString(), Outcome = run.Outcome.ToString(), ExpiresAt = LearningAssessmentPolicy.ExpiresAt(run.PolicySnapshot, run.StartedAt) };
+        var proposalJson = await db.LearningPaths.AsNoTracking().Where(path => path.CenterId == run.CenterId && path.LearningPathId == run.Session.LearningPathId)
+            .Select(path => path.PlanJson).SingleAsync(ct);
+        if (proposalJson != null)
+        {
+            var proposal = JsonSerializer.Deserialize<PathProposalDto>(proposalJson.RootElement.GetRawText(), LearningPathV4Data.Json);
+            var definitions = proposal?.Milestones.SelectMany(milestone => milestone.Missions).ToList();
+            var definition = definitions?.FirstOrDefault(mission => mission.MissionId == run.SessionId.ToString());
+            if (definition != null) result.Title = LearningPathRemediation.DisplayTitle(definition, LearningPathRemediation.MainSetNumbers(definitions!));
+        }
         foreach (var id in ids) result.Activities.Add(await GetActivityRunAsync(run.CenterId, run.StudentId, id, ct));
         return result;
     }

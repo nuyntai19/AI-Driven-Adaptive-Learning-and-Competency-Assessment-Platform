@@ -83,6 +83,10 @@ public class ProposedMissionDto
     public uint EstimatedSets { get; set; }
     /// <summary>Repair work created from a failed check or review; shown even when the skill was confirmed earlier.</summary>
     public bool IsRepair { get; set; }
+    public List<string> RemediationFocuses { get; set; } = new();
+    public string? RemediationSourceMissionId { get; set; }
+    public string? RemediationRootMissionId { get; set; }
+    public uint RemediationRound { get; set; }
     /// <summary>A probe (quick try or starting-point check) may run before practice.</summary>
     public bool IsProbe { get; set; }
     /// <summary>A fresh independent target check when every unmet prerequisite is outside this curriculum. Never asserts mastery of those prerequisites.</summary>

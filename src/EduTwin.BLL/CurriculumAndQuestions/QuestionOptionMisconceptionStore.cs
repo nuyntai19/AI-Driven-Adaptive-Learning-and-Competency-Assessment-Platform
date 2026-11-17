@@ -23,6 +23,7 @@ public static class QuestionOptionMisconceptionStore
         {
             SchemaVersion = criteria.SchemaVersion,
             RequiredIdeas = criteria.RequiredIdeas,
+            LearningFocuses = criteria.LearningFocuses,
             CommonErrors = criteria.CommonErrors,
             ScoringNotes = criteria.ScoringNotes,
             Criteria = criteria.Criteria,

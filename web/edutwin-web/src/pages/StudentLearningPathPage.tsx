@@ -44,6 +44,13 @@ function Reason({ text, className = "" }: { text: string; className?: string }) 
 }
 type PathView = "route" | "today" | "map" | "history";
 const isRepairMission = (m: AgendaItemDto) => m.title.startsWith("Rèn lại");
+const remediationLabels: Record<string, string> = {
+  NeedsQuestions: "Chưa đủ câu để đánh giá",
+  NeedsPractice: "Đã làm · cần luyện vòng tiếp",
+  NeedsSupport: "Cần giáo viên hỗ trợ",
+  NotConfirmed: "Đã làm · chưa xác nhận",
+  ReturnedToMain: "Đủ điều kiện quay lại luyện tổng hợp",
+};
 const CALENDAR_ICON = "M7 3v3m10-3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z";
 const purposeIcon: Record<string, string> = {
   Probe: "M13 2 4 14h7l-1 8 9-12h-7Z",
@@ -208,12 +215,15 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
   ];
   const stageNumber = (key: string) => timeline.filter(e => e.kind === "stage").findIndex(e => e.key === key) + 1;
   const missionKind = (m: AgendaItemDto) => m.isSelfAssessedCheck ? "Ôn xác nhận" : m.title.startsWith("Thử nhanh") ? "Thử nhanh"
-    : isRepairMission(m) ? "Rèn lại" : activityLabels[m.purpose] ?? m.purpose;
-  const missionState = (m: AgendaItemDto): "ok" | "fail" | "skip" | "now" | "open" | "wait" | "lock" => {
+    : m.remediationRound && m.purpose === "Practice" ? "Bài tập phần yếu" : isRepairMission(m) ? "Rèn lại" : activityLabels[m.purpose] ?? m.purpose;
+  const missionState = (m: AgendaItemDto): "ok" | "support" | "fail" | "skip" | "now" | "open" | "wait" | "lock" => {
     const last = m.runs?.length ? m.runs[m.runs.length - 1] : undefined;
     if (m.activeRunId) return "now";
     if (m.status === "Skipped") return "skip";
-    if (m.status === "Completed") return m.purpose === "IndependentCheck" && last?.outcome === "NotPassed" ? "fail" : "ok";
+    if (m.status === "Completed") {
+      if (m.purpose === "Practice" && m.remediationRound && m.remediationStatus !== "ReturnedToMain") return "support";
+      return m.purpose === "IndependentCheck" && last?.outcome === "NotPassed" ? "fail" : "ok";
+    }
     // A failed self-check waiting for its repair set reads as "not passed", not as a fresh task.
     if (m.purpose === "IndependentCheck" && last?.outcome === "NotPassed" && !m.canRetry) return "fail";
     if (m.canStart && !m.deferred) return "open";
@@ -224,6 +234,7 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
   const shortDate = formatDayMonth;
   const nextOpening = (group: AgendaItemDto[]) => group.filter(m => missionState(m) === "wait").map(m => m.availableFrom!).sort()[0];
   const stepDot: Record<string, string> = {
+    support: "border-2 border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200",
     ok: "bg-emerald-600 text-white", fail: "border-2 border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300",
     skip: "bg-[var(--student-surface-subtle)] text-[var(--student-muted)]", now: "st-node-active text-white bg-[linear-gradient(135deg,var(--student-brand),var(--student-brand-2))] shadow-[var(--student-glow)]",
     open: "border-2 border-[var(--student-brand)] bg-[var(--student-surface)] text-[var(--student-brand)]",
@@ -231,27 +242,30 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
   };
   const renderStep = (m: AgendaItemDto, last: boolean, repairHead: boolean) => {
     const st = missionState(m);
-    const repair = isRepairMission(m);
-    const icon = st === "ok" ? "m5 12 5 5 9-10" : st === "fail" ? "M6 6l12 12M18 6 6 18" : st === "lock" ? "M7 11V7a5 5 0 0 1 10 0v4M5 11h14v10H5Z"
+    const repair = isRepairMission(m) || (m.remediationRound ?? 0) > 0;
+    const icon = st === "ok" ? "m5 12 5 5 9-10" : st === "support" ? "M12 6v8M12 18h.01" : st === "fail" ? "M6 6l12 12M18 6 6 18" : st === "lock" ? "M7 11V7a5 5 0 0 1 10 0v4M5 11h14v10H5Z"
       : st === "wait" ? CALENDAR_ICON : purposeIcon[m.title.startsWith("Thử nhanh") ? "Probe" : m.purpose] ?? purposeIcon.Practice;
     const enabled = !(m.deferred || (!m.canStart && !m.activeRunId && !m.latestRunId));
     return <li key={m.missionId} className={repair ? "ml-5 border-l-2 border-dashed border-amber-400 pl-4" : ""}>
-      {repairHead && <span className="mb-1 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-0.5 text-xs font-bold text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">Nhánh rèn lại · ưu tiên câu từng sai</span>}
+      {(repairHead || (m.remediationRound ?? 0) > 0 && m.purpose === "Study") && <span className="mb-1 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-0.5 text-xs font-bold text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">{m.remediationRound ? `Nhánh ôn phần yếu · vòng ${m.remediationRound}` : "Nhánh rèn lại · ưu tiên câu từng sai"}</span>}
       <div className="relative grid grid-cols-[2.25rem_minmax(0,1fr)] gap-x-3 py-3 sm:grid-cols-[2.25rem_minmax(0,1fr)_auto]">
         {!last && !repair && <span aria-hidden="true" className={`absolute left-[1.06rem] top-[3.4rem] bottom-[-0.75rem] w-0.5 ${st === "ok" ? "bg-emerald-500" : "bg-[var(--student-border)]"}`} />}
         <span className={`relative z-[1] flex h-9 w-9 items-center justify-center rounded-full ${stepDot[st]}`}><PathIcon d={icon} /></span>
         <div className="min-w-0">
           <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--student-muted)]">{missionKind(m)}{m.plannedDate ? ` · Dự kiến ${m.plannedDate.split("-").reverse().join("/")}` : ""}</p>
           <h4 className="text-[15px] font-bold leading-snug">{m.title}</h4>
+          {!!m.remediationFocuses?.length && <p className="mt-1 text-xs font-semibold text-amber-700 dark:text-amber-300">Tập trung: {m.remediationFocuses.join(" + ")}</p>}
+          {m.remediationOriginLabel && <p className="mt-1 text-xs text-[var(--student-muted)]">{m.remediationOriginLabel}</p>}
           <p className="mt-0.5 text-xs text-[var(--student-muted)]">
-            {m.questionCount > 0 ? `${m.setNumber ? `Bộ ${m.setNumber}${m.estimatedSets ? ` (dự kiến ${m.estimatedSets} bộ)` : ""} · ` : ""}${m.questionCount} câu · khoảng ${m.questionCount * 2 > 0 && (m.purpose === "Practice" || m.purpose === "Review") ? m.questionCount * 2 : m.estimatedDurationMinutes} phút` : `khoảng ${m.estimatedDurationMinutes} phút`}
+            {m.questionCount > 0 ? `${m.remediationRound && m.purpose === "Practice" ? `Bài tập ôn vòng ${m.remediationRound} · ` : m.setNumber ? `Bộ luyện chính ${m.setNumber}${m.estimatedSets ? ` (dự kiến ${m.estimatedSets} bộ)` : ""} · ` : ""}${m.questionCount} câu · khoảng ${m.questionCount * 2 > 0 && (m.purpose === "Practice" || m.purpose === "Review") ? m.questionCount * 2 : m.estimatedDurationMinutes} phút` : `khoảng ${m.estimatedDurationMinutes} phút`}
             {m.availableFrom ? ` · hẹn ôn ${new Date(m.availableFrom).toLocaleDateString("vi-VN")}` : ""}
           </p>
           {st === "fail" && <span className="mt-1.5 inline-block rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-bold text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">Chưa đạt</span>}
+          {m.remediationStatus && <span className={`mt-1.5 inline-block rounded-full px-2.5 py-0.5 text-xs font-bold ${m.remediationStatus === "ReturnedToMain" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300" : "bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200"}`}>{remediationLabels[m.remediationStatus]}</span>}
           {st === "skip" && <span className="mt-1.5 inline-block rounded-full bg-[var(--student-surface-subtle)] px-2.5 py-0.5 text-xs font-bold text-[var(--student-muted)]">Đã bỏ qua</span>}
           {m.skipReason === "MissedStudyDate" && <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-300">Đã bỏ lượt dự kiến; phần chưa học được xếp lại trong lộ trình.</p>}
           {!!m.remainingUnscheduledMinutes && <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-300">Có phần có thể học ngay; còn khoảng {m.remainingUnscheduledMinutes} phút chưa xếp được trước ngày đích.</p>}
-          {m.advice && <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-300">{m.advice}</p>}
+          {m.advice && <p className={`mt-1.5 text-xs ${m.remediationStatus === "ReturnedToMain" ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}`}>{m.advice}</p>}
           {m.recommendationReason && <details className="mt-1.5 text-xs text-[var(--student-ink-secondary)]"><summary className="cursor-pointer font-semibold text-[var(--student-brand-ink)]">Vì sao?</summary><Reason className="mt-1" text={m.recommendationReason} /></details>}
           {!m.activeRunId && !m.canRetry && m.retryBlockedReason && <p className="mt-1.5 text-xs text-[var(--student-muted)]">{m.retryBlockedReason}</p>}
           {(m.runs?.length ?? 0) > 0 && <details className="mt-1.5 text-xs"><summary className="cursor-pointer font-semibold text-[var(--student-brand-ink)]">Lịch sử {m.runs!.length} lượt</summary>
@@ -261,8 +275,8 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
             </li>)}</ul></details>}
         </div>
         <div className="col-start-2 mt-2 flex flex-wrap gap-2 sm:col-start-3 sm:row-start-1 sm:mt-0 sm:flex-col sm:items-stretch">
-          <button className={st === "ok" || st === "fail" || st === "skip" ? secondary : action} disabled={!enabled} onClick={() => setMission({ ...m, reviewOnly: missionAction(m).reviewOnly })}>
-            {m.deferred ? "Đã hoãn · cần điều chỉnh mục tiêu" : st === "wait" ? `Mở ngày ${shortDate(m.availableFrom!)}` : missionAction(m).label}</button>
+          <button className={st === "ok" || st === "support" || st === "fail" || st === "skip" ? secondary : action} disabled={!enabled} onClick={() => setMission({ ...m, reviewOnly: missionAction(m).reviewOnly })}>
+            {m.deferred ? "Đã hoãn · cần điều chỉnh mục tiêu" : st === "wait" ? `Mở ngày ${shortDate(m.availableFrom!)}` : st === "open" && m.purpose === "Practice" && m.remediationRound ? "Làm bài ôn" : missionAction(m).label}</button>
           {!m.activeRunId && m.canRetry && <button className={secondary} onClick={() => setMission({ ...m, retry: true, reviewOnly: false })}>{m.retryLabel ?? "Làm lại"}</button>}
         </div>
       </div>

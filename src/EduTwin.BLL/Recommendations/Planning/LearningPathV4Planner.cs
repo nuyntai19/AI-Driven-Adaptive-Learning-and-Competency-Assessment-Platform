@@ -608,6 +608,12 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         var finalChecks = new List<AgendaItemDto>();
         var poolSizes = new Dictionary<string, int>();
         var weaknessBySkill = new Dictionary<string, decimal>();
+        var missionDefinitions = plan.Milestones.SelectMany(milestone => milestone.Missions).ToDictionary(mission => mission.MissionId);
+        var mainSetNumbers = LearningPathRemediation.MainSetNumbers(missionDefinitions.Values);
+        var followUpDecisions = (await db.PathDecisions.AsNoTracking().Where(decision => decision.CenterId == centerId &&
+            decision.LearningPathId == path.LearningPathId && decision.SessionRunId != null && decision.TriggerType.StartsWith("FollowUp:"))
+            .OrderByDescending(decision => decision.DecisionId).ToListAsync(cancellationToken))
+            .GroupBy(decision => decision.SessionRunId!.Value).ToDictionary(group => group.Key, group => group.First());
         foreach (var milestone in plan.Milestones)
         foreach (var m in milestone.Missions)
         {
@@ -628,12 +634,14 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 IsMilestoneExam = m.IsMilestoneExam, TimeLimitMinutes = m.TimeLimitMinutes,
                 IsMockExam = m.IsMilestoneExam && m.IsProbe,
                 QuestionCount = m.QuestionCount, DefaultQuestionCount = m.QuestionCount, AvailableFrom = m.AvailableFrom,
-                MissionId = m.MissionId, Title = m.Title, Objective = milestone.OutcomeDescription, Purpose = m.Purpose,
+                MissionId = m.MissionId, Title = LearningPathRemediation.DisplayTitle(m, mainSetNumbers), Objective = milestone.OutcomeDescription, Purpose = m.Purpose,
                 SkillId = m.SkillId, SkillName = skill.SkillName, EstimatedDurationMinutes = m.EstimatedMinutes, ActivityTypes = m.ActivityTypes,
                 // The route text may already quote the skill rationale; never repeat it.
                 RecommendationReason = string.IsNullOrWhiteSpace(skill.Rationale) || m.SelectionReason.Contains(skill.Rationale) ? m.SelectionReason : $"{m.SelectionReason} {skill.Rationale}",
                 Status = session.Status.ToString(), ActiveRunId = active?.SessionRunId,
-                LatestRunId = latest?.SessionRunId, IsSelfAssessedCheck = m.IsSelfAssessedCheck, WeaknessLevel = m.IsSelfAssessedCheck ? null : LearningPathPacing.Level(weakness), SetNumber = m.SetNumber, EstimatedSets = m.EstimatedSets,
+                LatestRunId = latest?.SessionRunId, IsSelfAssessedCheck = m.IsSelfAssessedCheck, WeaknessLevel = m.IsSelfAssessedCheck ? null : LearningPathPacing.Level(weakness), SetNumber = mainSetNumbers.GetValueOrDefault(m.MissionId), EstimatedSets = m.RemediationRound > 0 ? 0 : m.EstimatedSets,
+                RemediationFocuses = m.RemediationFocuses, RemediationRound = m.RemediationRound, RemediationSourceMissionId = m.RemediationSourceMissionId,
+                RemediationOriginLabel = LearningPathRemediation.OriginLabel(m, missionDefinitions, mainSetNumbers),
                 CanStart = m.CanStart && (!m.AvailableFrom.HasValue || m.AvailableFrom <= Now) && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped &&
                     (plan.IsPlacement || m.IsProbe || m.Purpose != "IndependentCheck" || LearningGoalScope.PrerequisitesSatisfied(skill, map, vouched)),
                 Runs = sessionRuns.OrderBy(r => r.RunNumber).Select(r => new MissionRunSummaryDto
@@ -699,16 +707,28 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 var relevantQuestions = allRelevant.Where(q => !cooling.Contains(q.QuestionId)).ToList();
                 var pool = m.DifficultyFloor.HasValue ? relevantQuestions.Count(q => q.Difficulty >= m.DifficultyFloor)
                     : LearningPathInsights.PracticePool(relevantQuestions, usedIds.ToHashSet()).Count;
+                var skillSetSize = plan.PracticeQuestionsBySkill.GetValueOrDefault(m.SkillId, plan.PracticeQuestionsPerSet);
+                var requestedSetSize = (int)Math.Min(m.QuestionCount == 0 ? skillSetSize : m.QuestionCount, skillSetSize);
+                if (m.RemediationFocuses.Count > 0)
+                {
+                    var eligible = (m.DifficultyFloor.HasValue ? allRelevant.Where(question => question.Difficulty >= m.DifficultyFloor).ToList()
+                        : LearningPathInsights.PracticePool(allRelevant, usedIds.ToHashSet())).Where(question => !cooling.Contains(question.QuestionId)).ToList();
+                    var focusedCount = eligible.Count(question => LearningPathRemediation.Focuses(question)
+                        .Any(focus => m.RemediationFocuses.Contains(focus, StringComparer.OrdinalIgnoreCase)));
+                    var composition = LearningPathRemediation.Composition(focusedCount, eligible.Count - focusedCount, requestedSetSize);
+                    pool = composition.Target + composition.Contrast;
+                    if (focusedCount == 0) item.RecommendationReason = "Chưa có câu đúng phần yếu ngoài thời gian chờ và phần giữ riêng cho tự kiểm tra. Xem lại ví dụ hoặc nhờ giáo viên bổ sung câu; không thay bằng một bộ ngẫu nhiên của cả chủ đề.";
+                    else if (pool < requestedSetSize) item.RecommendationReason += $" Chỉ có {focusedCount} câu thuộc phần yếu sẵn sàng; bài ôn rút còn {pool} câu để tập trung đúng phần cần luyện.";
+                }
                 poolSizes[m.MissionId] = pool;
                 // Sets keep a fixed size; routes built before the loop may hold larger sets, which are capped here.
-                var skillSetSize = plan.PracticeQuestionsBySkill.GetValueOrDefault(m.SkillId, plan.PracticeQuestionsPerSet);
                 item.QuestionCount = (uint)Math.Min(Math.Min(m.QuestionCount == 0 ? skillSetSize : m.QuestionCount, skillSetSize), pool);
                 item.DefaultQuestionCount = item.QuestionCount;
                 item.CanStart = item.QuestionCount > 0 && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped && (!m.AvailableFrom.HasValue || m.AvailableFrom <= Now);
                 var poolSeconds = LearningPathPacing.AverageSecondsPerQuestion(relevantQuestions.Select(q => q.EstimatedTimeSeconds));
                 item.EstimatedSecondsPerQuestion = (uint)Math.Round(poolSeconds);
                 item.EstimatedDurationMinutes = LearningPathPacing.EstimatedMinutes(item.QuestionCount, poolSeconds);
-                if (pool == 0 && cooling.Count > 0)
+                if (pool == 0 && cooling.Count > 0 && m.RemediationFocuses.Count == 0)
                 {
                     // Say exactly why the set waits: unused questions are kept for the self-check, used ones are cooling down.
                     var unused = allRelevant.Count(q => !usedIds.Contains(q.QuestionId));
@@ -724,6 +744,23 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 }
             }
             ApplyRetryRule(item, m, session, latest, active, runs, path, fresh, poolSizes.GetValueOrDefault(m.MissionId));
+            if (m.Purpose == "Practice" && m.RemediationRound > 0 && latest?.Status == SessionRunStatus.Completed)
+            {
+                var decision = followUpDecisions.GetValueOrDefault(latest.SessionRunId);
+                var code = decision?.ReasonCodes.RootElement.ValueKind == JsonValueKind.Array
+                    ? decision.ReasonCodes.RootElement.EnumerateArray().Select(value => value.GetString()).FirstOrDefault() : null;
+                var missingQuestions = m.RemediationFocuses.Any(focus => subjectQuestions.Count(question => question.PrimaryTopicNodeId.ToString() == m.SkillId &&
+                    LearningPathRemediation.Focuses(question).Contains(focus, StringComparer.OrdinalIgnoreCase)) < 3);
+                item.RemediationStatus = LearningPathRemediation.ProgressStatus(code, missingQuestions);
+                item.Advice = decision?.DecisionSummary ?? "Đã làm xong lượt ôn; chưa có kết luận đủ điều kiện trở lại luyện tổng hợp.";
+            }
+            var checkBlock = active == null ? LearningPathRemediation.CheckBlockReason(plan, m) : null;
+            if (checkBlock != null)
+            {
+                item.CanStart = item.CanRetry = false;
+                item.Advice = item.RetryBlockedReason = checkBlock;
+                item.RecommendationReason = checkBlock;
+            }
             if (m.Purpose is "Practice" or "Review" && LearningGoalScope.NeedsExternalAssessment(skill, map, vouched))
             {
                 item.CanStart = item.CanRetry = false;
@@ -1027,6 +1064,9 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         LegacySessionId = i.LegacySessionId, Title = i.Title, Objective = i.Objective, Purpose = i.Purpose, SkillId = i.SkillId, SkillName = i.SkillName,
         EstimatedDurationMinutes = i.EstimatedDurationMinutes, EstimatedSecondsPerQuestion = i.EstimatedSecondsPerQuestion, ActivityTypes = i.ActivityTypes, RecommendationReason = i.RecommendationReason,
         CanStart = i.CanStart, Status = i.Status, ActiveRunId = i.ActiveRunId, LatestRunId = i.LatestRunId, WeaknessLevel = i.WeaknessLevel,
+        RemediationFocuses = i.RemediationFocuses, RemediationRound = i.RemediationRound, RemediationSourceMissionId = i.RemediationSourceMissionId,
+        RemediationOriginLabel = i.RemediationOriginLabel,
+        RemediationStatus = i.RemediationStatus,
         CanRetry = i.CanRetry, RetryLabel = i.RetryLabel, RetryBlockedReason = i.RetryBlockedReason, Runs = i.Runs,
         PlannedSets = i.PlannedSets, SetNumber = i.SetNumber, EstimatedSets = i.EstimatedSets, Advice = i.Advice,
         PlannedDate = i.PlannedDate, Deferred = i.Deferred, RemainingUnscheduledMinutes = i.RemainingUnscheduledMinutes, SkipReason = i.SkipReason, IsMilestoneExam = i.IsMilestoneExam, IsMockExam = i.IsMockExam, TimeLimitMinutes = i.TimeLimitMinutes

@@ -449,6 +449,11 @@ export interface CapabilityMapDto {
 }
 
 export interface AgendaItemDto {
+  remediationFocuses?: string[];
+  remediationRound?: number;
+  remediationSourceMissionId?: string | null;
+  remediationOriginLabel?: string | null;
+  remediationStatus?: "NeedsPractice" | "NeedsQuestions" | "NeedsSupport" | "ReturnedToMain" | "NotConfirmed" | null;
   milestoneOrder?: number;
   milestoneTitle?: string;
   remainingUnscheduledMinutes?: number;

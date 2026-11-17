@@ -21,6 +21,7 @@ export interface KnowledgeMapping {
 }
 
 export interface GradingCriteria {
+  learningFocuses?: string[];
   optionMisconceptions?: Record<string, string>;
   schemaVersion: string;
   requiredIdeas: string[];

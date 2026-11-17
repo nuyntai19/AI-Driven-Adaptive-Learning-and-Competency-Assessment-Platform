@@ -80,6 +80,8 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
     <section role="dialog" aria-modal="true" aria-labelledby="mission-title" className="flex h-full w-full flex-col overflow-hidden bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
       <header className="z-10 flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
         <div>{contextLabel && <p className="mb-1 text-xs font-medium text-slate-500">{contextLabel}</p>}<p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">{mission.skillName}</p><h2 id="mission-title" className="mt-1 text-xl font-semibold">{mission.title}</h2>
+          {mission.remediationOriginLabel && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{mission.remediationOriginLabel}</p>}
+          {!!mission.remediationRound && mission.purpose === "Practice" && <p className="mt-1 text-sm text-slate-500">Làm bài tập tập trung vào {mission.remediationFocuses?.join(" + ") ?? mission.skillName}.</p>}
           {run.data && <p className="mt-2 text-xs text-slate-500">{run.data.activities.filter(done).length}/{run.data.activities.length} hoạt động đã nộp · Tiến độ lưu theo tài khoản</p>}</div>
         <div className="flex shrink-0 items-center gap-2">
           {runActive && <span className="font-mono text-sm tabular-nums text-slate-500" title={remainingSeconds != null ? "Thời gian làm bài còn lại" : "Thời gian học thực tế (không tính lúc tạm dừng)"}>{clock(remainingSeconds ?? activeSeconds)}</span>}

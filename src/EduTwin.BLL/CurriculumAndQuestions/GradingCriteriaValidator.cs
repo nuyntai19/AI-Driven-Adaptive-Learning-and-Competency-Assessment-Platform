@@ -31,6 +31,10 @@ public class GradingCriteriaValidator
         {
             errors.Add("CommonErrors cannot be null.");
         }
+        if (criteria.LearningFocuses == null || criteria.LearningFocuses.Count > 5 ||
+            criteria.LearningFocuses.Any(value => string.IsNullOrWhiteSpace(value) || value.Length > 100) ||
+            criteria.LearningFocuses.Distinct(StringComparer.OrdinalIgnoreCase).Count() != criteria.LearningFocuses.Count)
+            errors.Add("LearningFocuses must contain at most 5 unique, nonempty subskill labels of 100 characters.");
 
         if (criteria.Criteria == null)
         {

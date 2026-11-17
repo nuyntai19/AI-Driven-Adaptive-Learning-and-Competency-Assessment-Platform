@@ -453,6 +453,7 @@ function CenterManagerQuestionEditorView() {
     setFormData((prev) => ({
       ...prev,
       gradingCriteria: {
+        ...prev.gradingCriteria,
         schemaVersion: "1.0",
         requiredIdeas: [...(prev.gradingCriteria?.requiredIdeas || []), trimmed],
         commonErrors: prev.gradingCriteria?.commonErrors || [],
@@ -466,6 +467,7 @@ function CenterManagerQuestionEditorView() {
     setFormData((prev) => ({
       ...prev,
       gradingCriteria: {
+        ...prev.gradingCriteria,
         schemaVersion: "1.0",
         requiredIdeas: (prev.gradingCriteria?.requiredIdeas || []).filter((_, i) => i !== index),
         commonErrors: prev.gradingCriteria?.commonErrors || [],
@@ -480,6 +482,7 @@ function CenterManagerQuestionEditorView() {
     setFormData((prev) => ({
       ...prev,
       gradingCriteria: {
+        ...prev.gradingCriteria,
         schemaVersion: "1.0",
         requiredIdeas: prev.gradingCriteria?.requiredIdeas || [],
         commonErrors: [...(prev.gradingCriteria?.commonErrors || []), trimmed],
@@ -493,6 +496,7 @@ function CenterManagerQuestionEditorView() {
     setFormData((prev) => ({
       ...prev,
       gradingCriteria: {
+        ...prev.gradingCriteria,
         schemaVersion: "1.0",
         requiredIdeas: prev.gradingCriteria?.requiredIdeas || [],
         commonErrors: (prev.gradingCriteria?.commonErrors || []).filter((_, i) => i !== index),
@@ -887,6 +891,15 @@ function CenterManagerQuestionEditorView() {
 
         {/* Main Editor Form Card */}
         <div className="rounded-2xl border border-[var(--cm-border)] bg-[var(--cm-surface)] p-6 lg:p-8 space-y-6 shadow-xl">
+          <div>
+            <label htmlFor="question-learning-focuses" className="mb-1 block text-xs font-semibold text-[var(--cm-text-muted)]">Phần kiến thức nhỏ dùng để ôn tập thích ứng</label>
+            <input id="question-learning-focuses" className="cm-input w-full text-sm" disabled={isReadOnly}
+              placeholder="Ví dụ: Hiện tại đơn; Hiện tại tiếp diễn"
+              value={(formData.gradingCriteria?.learningFocuses ?? []).join("; ")}
+              onChange={event => setFormData(previous => ({ ...previous, gradingCriteria: { ...previous.gradingCriteria!, learningFocuses: event.target.value.split(";").map(value => value.trimStart()) } }))}
+              onBlur={() => setFormData(previous => ({ ...previous, gradingCriteria: { ...previous.gradingCriteria!, learningFocuses: [...new Set((previous.gradingCriteria?.learningFocuses ?? []).map(value => value.trim()).filter(Boolean))] } }))} />
+            <p className="mt-1 text-xs text-[var(--cm-text-muted)]">Tối đa 5 phần, phân cách bằng dấu ;. Ghi tên nội dung được kiểm tra, không ghi đáp án. Lộ trình dùng các nhãn này để tạo nhánh ôn đúng phần học sinh còn yếu.</p>
+          </div>
           {/* Metadata Section: Subject, Topic Node, Teacher */}
           <div className="grid grid-cols-1 gap-5 md:grid-cols-3 border-b border-[var(--cm-border-subtle)] pb-6">
             {/* Subject Selector (Immutable in Edit Mode) */}
