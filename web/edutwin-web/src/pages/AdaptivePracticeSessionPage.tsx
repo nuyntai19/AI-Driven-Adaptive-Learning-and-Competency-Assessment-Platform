@@ -118,6 +118,10 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
     for (const part of ["active-session", "history", "proposal"]) {
       void queryClient.invalidateQueries({ queryKey: ["adaptive-practice", part] });
     }
+    // Returning from practice must also refresh the notebook and the dashboard.
+    for (const key of ["learning-agenda", "studentDashboard", "studentTwinHistory", "student-workspace-summary"]) {
+      void queryClient.invalidateQueries({ queryKey: [key] });
+    }
   }, [sessionClosed, queryClient]);
 
   // The server's count survives a reload; the page only ticks between syncs.

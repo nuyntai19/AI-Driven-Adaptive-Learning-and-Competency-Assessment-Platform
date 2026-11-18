@@ -23,6 +23,7 @@ const SubjectListPage = lazy(() => import("./pages/SubjectListPage").then((modul
 const StudentAssignmentsPage = lazy(() => import("./pages/StudentAssignmentsPage").then((module) => ({ default: module.StudentAssignmentsPage })));
 const StudentAssignmentDetailPage = lazy(() => import("./pages/StudentAssignmentDetailPage").then((module) => ({ default: module.StudentAssignmentDetailPage })));
 const StudentDashboardPage = lazy(() => import("./pages/StudentDashboardPage").then((module) => ({ default: module.StudentDashboardPage })));
+const StudentNotebookPage = lazy(() => import("./pages/StudentNotebookPage").then((module) => ({ default: module.StudentNotebookPage })));
 const StudentTwinPage = lazy(() => import("./pages/StudentTwinPage").then((module) => ({ default: module.StudentTwinPage })));
 const StudentLearningPathPage = lazy(() => import("./pages/StudentLearningPathPage").then((module) => ({ default: module.StudentLearningPathPage })));
 const LearningPlayerPage = lazy(() => import("./pages/LearningPlayerPage").then((module) => ({ default: module.LearningPlayerPage })));
@@ -104,6 +105,9 @@ function App() {
             </Route>
             <Route element={<PermissionRoute allOf={[permissions.recommendationsStudentReadOwn]} />}>
               <Route path="/hoc-tap/lo-trinh-hoc-tap" element={<StudentLearningPathPage />} />
+            </Route>
+            <Route element={<PermissionRoute allOf={[permissions.recommendationsStudentReadOwn]} accountTypes={["Student"]} />}>
+              <Route path="/hoc-tap/so-tay" element={<StudentNotebookPage />} />
             </Route>
             <Route element={<PermissionRoute allOf={[permissions.twinStudentReadOwn]} />}>
               <Route path="/hoc-tap/ho-so-nang-luc" element={<StudentTwinPage />} />

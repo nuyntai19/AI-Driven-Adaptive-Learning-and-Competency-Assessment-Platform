@@ -491,6 +491,8 @@ export const StudentDashboardPage: React.FC = () => {
         <Link to={studentScopeUrl("/hoc-tap/ho-so-nang-luc", searchParams)} className="st-explore-card st-explore-twin"><span className="st-explore-number">03 / HIỂU BẢN THÂN</span><span aria-hidden="true" className="st-explore-symbol">◎</span><h3>Gặp bản sao học tập</h3><p>Điểm mạnh, khoảng trống và tiến bộ có bằng chứng.</p><span className="st-explore-cta">Khám phá năng lực <span aria-hidden="true">→</span></span></Link>
       </section>}
 
+      {!isHistory && <Link to={studentScopeUrl("/hoc-tap/so-tay", searchParams)} className="st-notebook-door"><span className="st-notebook-door-icon" aria-hidden="true">▤</span><span><span className="st-eyebrow">Mới / Sổ tay học tập</span><b>Biến chỗ từng vấp thành bước tiến tiếp theo.</b><span>Xem câu cần sửa, nhìn lại bài làm và ôn bằng thẻ của bạn.</span></span><span className="st-notebook-door-arrow" aria-hidden="true">↗</span></Link>}
+
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
         <section aria-labelledby="journey-heading" className={`min-w-0 xl:col-span-8 ${CARD} st-rise`} style={{ ["--d" as string]: 6 }}>
           <div className="mb-2 flex items-start justify-between gap-3">

@@ -17,7 +17,7 @@ export const studentScopeChangeUrl = (pathname: string, params: URLSearchParams)
   if (pathname === "/hoc-tap/lo-trinh-hoc-tap" && params.has("pathId")) {
     return studentScopeUrl(pathname, params);
   }
-  if (/^\/hoc-tap\/luyen-tap(?:\/[^/]+)?\/?$/.test(pathname) && params.has("sessionId")) {
+  if (pathname === "/hoc-tap/luyen-tap" || (/^\/hoc-tap\/luyen-tap(?:\/[^/]+)?\/?$/.test(pathname) && params.has("sessionId"))) {
     return studentScopeUrl("/hoc-tap/luyen-tap", params);
   }
   if (/^\/hoc-tap\/bai-tap\/[^/]+\/?$/.test(pathname)) {

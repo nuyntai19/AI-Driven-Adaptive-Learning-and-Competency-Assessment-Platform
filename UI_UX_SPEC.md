@@ -942,3 +942,18 @@ Toàn bộ các workspace hỗ trợ cấu hình theo thuộc tính `actor` (`"t
 - Trong trình tạo/chỉnh sửa câu hỏi (`QuestionEditorPage.tsx`), tùy chọn "Yêu cầu học sinh trình bày lời giải" được đặt giá trị mặc định là `false` (chế độ opt-in).
 - Bổ sung huy hiệu phân loại trực quan: `TÙY CHỌN LỜI GIẢI` (khi tắt) và `BẮT BUỘC LỜI GIẢI` (khi bật).
 - Học sinh khi làm bài không bị ép buộc phải nhập lời giải ở các câu hỏi thông thường; hệ thống vẫn chấm điểm và cập nhật năng lực bình thường. Nếu học sinh tự nguyện nhập lời giải, AI vẫn phân tích và cập nhật Digital Twin đầy đủ.
+
+## Sổ tay học tập — nâng cấp 18/11/2026
+
+Theo yêu cầu nâng cấp trải nghiệm học sinh của chủ đồ án, bổ sung `/hoc-tap/so-tay` trong StudentLayout. Tuyến yêu cầu account Student và `recommendations.student.read_own`; đọc bookmark chỉ khi có `learning.attempts.submit`. Server vẫn là ranh giới quyền cuối cùng.
+
+- Ba phần: Góc nhìn tiến bộ, Câu cần xem lại, Thư viện thẻ ôn. Môn/lớp giữ theo URL và được xác minh bằng academic-context hiện hành.
+- Góc nhìn dùng `learning-agenda.insights`: cửa sổ 30 ngày do backend cung cấp; phân biệt lượt trả lời với câu khác nhau có kết quả. Tỷ lệ đúng không được mô tả như mastery hoặc điểm cuối.
+- Câu cần xem lại dùng tối đa 5 recentAnswers mỗi kỹ năng do API cung cấp, không tự gọi đó là toàn bộ lịch sử. `isCorrect=null/undefined` thuộc Chưa có kết luận; không đẩy vào câu sai. `guided` có nhãn nguồn rõ ràng.
+- Có tìm kiếm không dấu, lọc kết quả và liên kết luyện lại chủ đề giữ môn/lớp, điền trước 10 phút. Liên kết không tự tạo phiên.
+- Thư viện tìm/lọc theo chủ đề; câu chưa công bố đáp án vẫn được liệt kê với trạng thái phù hợp nhưng không vào lượt ôn chủ động. Mỗi lượt tối đa 10 thẻ, mở đáp án rồi tự đánh giá; thẻ chưa nhớ quay lại cuối lượt. Kết quả chỉ tồn tại trong lượt ôn, không ghi vào điểm/Twin/streak và không tuyên bố là spaced repetition bền vững.
+- Chế độ lịch sử chỉ dẫn về hồ sơ tương ứng; không lấy dữ liệu lớp hiện hành để dựng một báo cáo lịch sử giả.
+- Màn hình luyện tập được tổ chức theo thứ tự chọn cách học → đích đến → thời lượng. Chỉ tạo phiên khi phạm vi lớp, đề xuất, quyền và kiểm tra phiên đang học đều hợp lệ. Lỗi tải lịch sử/phiên và lỗi tạo/dừng phiên có thông báo riêng.
+- Khi phiên luyện đóng, làm mới cache cho sổ tay và các thông tin tổng quan có liên quan. Bộ đếm tập trung tải thành chunk riêng.
+
+Bằng chứng kiểm tra và giới hạn: [Learning Notebook verification](docs/verification/learning-notebook-2026-11-18/README.md).

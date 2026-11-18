@@ -882,3 +882,22 @@
     gap: 6px;
   }
 }
+/* A visible bridge from the dashboard to the learning notebook. */
+.student-shell .st-notebook-door { display: flex; align-items: center; gap: 22px; padding: 24px 28px; border-radius: 24px; border: 1px solid var(--student-border); background: var(--student-surface); transition: border-color .2s, transform .2s; }
+.st-notebook-door:hover { border-color: var(--student-brand); transform: translateY(-2px); }
+.st-notebook-door-icon { display: grid; place-items: center; flex-shrink: 0; width: 64px; height: 72px; border-radius: 4px 12px 12px 4px; border-left: 5px solid #657d61; background: #d8dfcf; color: #2c443a; font-size: 35px; transform: rotate(-7deg); }
+.st-notebook-door > span:nth-child(2) { display: flex; flex-direction: column; gap: 6px; }
+.st-notebook-door b { font-size: 21px; line-height: 1.5; letter-spacing: -.035em; }
+.st-notebook-door > span:nth-child(2) > span:last-child { font-size: 13px; color: var(--student-muted); }
+.st-notebook-door-arrow { margin-left: auto; font-size: 36px; }
+@media (max-width: 639px) { .student-shell .st-notebook-door { padding: 20px; gap: 14px; } .st-notebook-door b { font-size: 17px; } .st-notebook-door-icon { width: 42px; height: 54px; font-size: 26px; } .st-notebook-door-arrow { font-size: 24px; } }
+/* Make building a practice session a sequence of decisions. */
+.student-shell .st-practice-builder > header { padding: 30px 34px; background: linear-gradient(125deg, #243d4c, #3d5e63); color: #f7f2e7; border: none; }
+.st-practice-builder > header .st-eyebrow { color: #dfc895; }
+.st-practice-builder > header .st-grad-text { background: none; color: #edcf95; }
+.st-practice-builder > header > p:last-child { color: #d2dfe0; }
+.st-practice-builder section[aria-labelledby="practice-modes-title"] { padding: 24px; border: 1px solid var(--student-border); border-radius: 24px; background: var(--student-surface); }
+.st-practice-builder #practice-modes-title { font-size: 15px; margin-bottom: 18px; }
+.st-practice-builder section[aria-labelledby="practice-modes-title"] button { box-shadow: none; border-radius: 17px; align-items: flex-start; }
+.st-practice-builder [role="radiogroup"] button { box-shadow: none; }
+@media (max-width: 639px) { .student-shell .st-practice-builder > header { padding: 24px; } .st-practice-builder section[aria-labelledby="practice-modes-title"] { padding: 20px; } }

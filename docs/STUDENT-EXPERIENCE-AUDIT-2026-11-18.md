@@ -72,3 +72,9 @@ Không thêm XP giả, huy hiệu không có dữ liệu, đếm thời gian nh�
 - Kiểm tra giao diện mới bằng fixture riêng có nhãn dữ liệu mẫu, render component thật; không dùng dữ liệu mẫu trong sản phẩm.
 - Không thay schema, endpoint, thuật toán mastery hoặc phân quyền backend trong đợt này.
 - Kết quả kiểm thử và ảnh được ghi trong `docs/verification/student-studio-2026-11-18/README.md`.
+
+## Cập nhật tiếp theo: Sổ tay học tập (18/11/2026)
+
+Đã triển khai trang sổ tay riêng, phân tích 30 ngày từ API có sẵn, câu cần xem lại với nguồn dữ liệu rõ ràng, và thư viện/lượt ôn chủ động. Đồng thời cải tiến bộ chọn phiên và các trường hợp lỗi, đồng bộ cache sau phiên, tách tải bộ đếm để giữ ngân sách bundle. Báo cáo tuần và lịch ôn bền vững trong roadmap vẫn là các mục riêng, chưa được coi là hoàn thành bởi chức năng tự đánh giá thẻ ôn này.
+
+Chi tiết và bằng chứng: [Learning Notebook](verification/learning-notebook-2026-11-18/README.md).

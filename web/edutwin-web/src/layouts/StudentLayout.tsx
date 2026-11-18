@@ -19,7 +19,7 @@ import {
 import { readLastStudentSubject, rememberStudentSubject, resolveStudentSubjectId } from "../utils/studentSubjectScope";
 import { useStudentSubjects } from "../utils/useStudentSubjects";
 import { useStudentTheme } from "../hooks/useStudentTheme";
-import { StudentFocusStudio } from "../components/student/StudentFocusStudio";
+const StudentFocusStudio = React.lazy(() => import("../components/student/StudentFocusStudio").then(module => ({ default: module.StudentFocusStudio })));
 
 function getInitials(displayName?: string, username?: string): string {
   if (displayName) {
@@ -145,6 +145,7 @@ export const StudentLayout: React.FC = () => {
     { to: "/hoc-tap/bai-tap", label: "Bài tập của tôi", short: "Bài tập", icon: <NavIcon d="M7 4h10a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2ZM9 4V3h6v1M9 11h6M9 15h4" />, active: location.pathname.startsWith("/hoc-tap/bai-tap"), badge: workspaceLabels.assignmentCount },
     { to: "/hoc-tap/luyen-tap", label: "Luyện tập thích ứng", short: "Luyện tập", icon: <NavIcon d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12" />, active: location.pathname.startsWith("/hoc-tap/luyen-tap") },
     { to: "/hoc-tap/ho-so-nang-luc", label: "Hồ sơ năng lực (Twin)", short: "Hồ sơ năng lực", icon: <NavIcon d="M12 3 20.5 9.2 17.3 19.2H6.7L3.5 9.2ZM12 8l3.5 2.6-1.3 4.2H9.8l-1.3-4.2Z" />, active: location.pathname.startsWith("/hoc-tap/ho-so-nang-luc") },
+    { to: "/hoc-tap/so-tay", label: "Sổ tay học tập", short: "Sổ tay", icon: <NavIcon d="M4 4h15v17H4zM8 4v17M11 9h5M11 13h5M2 8h4M2 13h4M2 18h4" />, active: location.pathname.startsWith("/hoc-tap/so-tay") },
   ];
 
   return (
@@ -174,7 +175,7 @@ export const StudentLayout: React.FC = () => {
                     key={item.to}
                     to={getTabUrl(item.to)}
                     title={item.label}
-                    className={`flex items-center gap-2 rounded-full px-3.5 py-2 text-[15px] font-semibold whitespace-nowrap transition-colors ${
+                    className={`flex items-center gap-2 rounded-full px-2.5 py-2 text-[15px] 2xl:px-3.5 font-semibold whitespace-nowrap transition-colors ${
                       item.active
                         ? "st-nav-active"
                         : "text-[var(--student-ink-secondary)] hover:bg-[var(--student-surface-subtle)] hover:text-[var(--student-ink)]"
@@ -427,13 +428,13 @@ export const StudentLayout: React.FC = () => {
           <Outlet />
         )}
       </main>
-      {!isAccountPage && <StudentFocusStudio key={`${user?.centerId}:${user?.userId}`} />}
+      {!isAccountPage && <React.Suspense fallback={null}><StudentFocusStudio key={`${user?.centerId}:${user?.userId}`} /></React.Suspense>}
       {/* Keeps the last content clear of the phone tab bar. */}
       <div className="h-20 lg:hidden" aria-hidden="true" />
 
       {/* Phone tab bar */}
       <nav
-        className="lg:hidden fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-[var(--student-border)] bg-[color-mix(in_srgb,var(--student-surface)_92%,transparent)] backdrop-blur-xl px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom,0px))]"
+        className="lg:hidden fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-[var(--student-border)] bg-[color-mix(in_srgb,var(--student-surface)_92%,transparent)] backdrop-blur-xl px-2 pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom,0px))]"
         aria-label="Điều hướng nhanh"
       >
         {navItems.map((item) => (
@@ -448,7 +449,7 @@ export const StudentLayout: React.FC = () => {
               {item.icon}
               {item.badge !== undefined && Number(item.badge) > 0 && <span className="absolute -top-1 -right-1.5 h-2 w-2 rounded-full bg-[var(--student-brand)]" aria-hidden="true" />}
             </span>
-            <span className="truncate max-w-full">{item.short === "Hồ sơ năng lực" ? "Năng lực" : item.short}</span>
+            <span className="truncate max-w-full">{item.short === "Hồ sơ năng lực" ? "Năng lực" : item.short === "Tổng quan" ? "Hôm nay" : item.short}</span>
           </Link>
         ))}
       </nav>
