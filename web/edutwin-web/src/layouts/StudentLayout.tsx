@@ -19,6 +19,7 @@ import {
 import { readLastStudentSubject, rememberStudentSubject, resolveStudentSubjectId } from "../utils/studentSubjectScope";
 import { useStudentSubjects } from "../utils/useStudentSubjects";
 import { useStudentTheme } from "../hooks/useStudentTheme";
+import { StudentFocusStudio } from "../components/student/StudentFocusStudio";
 
 function getInitials(displayName?: string, username?: string): string {
   if (displayName) {
@@ -148,6 +149,7 @@ export const StudentLayout: React.FC = () => {
 
   return (
     <div className="student-shell min-h-screen bg-[var(--student-canvas)] text-[var(--student-ink)] flex flex-col antialiased transition-colors duration-200">
+      <a href="#student-main" className="st-skip-link">Đến nội dung học tập</a>
       {/* Top navigation: brand, pill tabs (desktop) and account controls; phones use the bottom tab bar. */}
       <header className="sticky top-0 z-40 bg-[color-mix(in_srgb,var(--student-canvas)_86%,transparent)] backdrop-blur-xl backdrop-saturate-150 border-b border-[var(--student-border)]">
         <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
@@ -418,13 +420,14 @@ export const StudentLayout: React.FC = () => {
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 w-full min-w-0 pb-12">
+      <main id="student-main" tabIndex={-1} className="flex-1 w-full min-w-0 pb-12">
         {isSubjectResolving ? (
           <div role="status" className="p-8 text-center text-sm text-[var(--student-muted)]">Đang tải môn học...</div>
         ) : (
           <Outlet />
         )}
       </main>
+      {!isAccountPage && <StudentFocusStudio key={`${user?.centerId}:${user?.userId}`} />}
       {/* Keeps the last content clear of the phone tab bar. */}
       <div className="h-20 lg:hidden" aria-hidden="true" />
 

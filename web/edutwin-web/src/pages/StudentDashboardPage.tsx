@@ -10,6 +10,7 @@ import type { TwinUpdateHistoryItemDto } from "../types/digitalTwin";
 import type { AgendaItemDto } from "../types/learningPath";
 import { StudentJourneyRoute } from "../components/student/StudentJourneyRoute";
 import { DueCountdown } from "../components/student/DueCountdown";
+import { StudentRecallDeck } from "../components/student/StudentRecallDeck";
 import { studentScopeUrl } from "../utils/studentAcademicNavigation";
 import { goalGapLabel } from "../utils/academicDisplay";
 import { dashboardGreeting, dashboardNudge } from "../utils/studentDashboardNudge";
@@ -60,13 +61,13 @@ export const StudentDashboardPage: React.FC = () => {
     staleTime: 60 * 1000,
   });
 
-  const { data: assignmentsData } = useQuery({
+  const { data: assignmentsData, isError: assignmentsError, refetch: refetchAssignments } = useQuery({
     queryKey: ["studentAssignmentsToday", selectedSubjectId, selectedClassId, isHistory],
     queryFn: () => getStudentAssignments({
       subjectId: selectedSubjectId || undefined,
       classId: selectedClassId || undefined,
       history: isHistory,
-      pageSize: 10,
+      pageSize: 100,
     }),
     staleTime: 60 * 1000,
   });
@@ -85,7 +86,7 @@ export const StudentDashboardPage: React.FC = () => {
     staleTime: 60 * 1000,
   });
 
-  const { data: workspace } = useQuery({
+  const { data: workspace, isError: workspaceError } = useQuery({
     queryKey: ["student-workspace-summary", "dashboard", selectedSubjectId, selectedClassId, isHistory],
     queryFn: () => getStudentWorkspaceSummary(selectedSubjectId || undefined, selectedClassId || undefined, isHistory),
     staleTime: 60 * 1000,
@@ -165,10 +166,10 @@ export const StudentDashboardPage: React.FC = () => {
     evidenceCount: topic.evidenceCount ?? 0,
   }));
   const masteredCount = journeyTopics.filter((topic) => topic.evidenceCount > 0 && topic.mastery >= 75).length;
-  const weakest = masteryRadar.filter((t) => (t.evidenceCount ?? 0) > 0).sort((a, b) => a.mastery - b.mastery).slice(0, 3);
-  const streak = workspace?.dailyStreak ?? 0;
-  const studiedToday = workspace?.studiedToday ?? false;
-  const pendingAssignments = typeof workspace?.assignmentCount === "number" ? workspace.assignmentCount : null;
+  const weakest = masteryRadar.filter((t) => (t.evidenceCount ?? 0) > 0 && t.mastery < 75).sort((a, b) => a.mastery - b.mastery).slice(0, 3);
+  const streak = !workspaceError && workspace ? workspace.dailyStreak : null;
+  const studiedToday = !workspaceError && (workspace?.studiedToday ?? false);
+  const pendingAssignments = !workspaceError && typeof workspace?.assignmentCount === "number" ? workspace.assignmentCount : null;
   const predicted = goal.hasGoal && goal.hasPrediction !== false ? goal.currentPredictedScore : null;
   const todayLabel = new Date().toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit" });
 
@@ -220,7 +221,8 @@ export const StudentDashboardPage: React.FC = () => {
   const planMinutes = plan.reduce((n, m) => n + (m.estimatedDurationMinutes || 0), 0);
 
   return (
-    <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4 min-w-0 student-shell">
+    <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4 min-w-0 student-shell st-dashboard">
+      {assignmentsError && <div role="status" className="st-card px-5 py-3 text-sm text-[var(--student-ink-secondary)]">Chưa tải được bài tập và hạn nộp. <button type="button" onClick={() => void refetchAssignments()} className="st-text-action">Tải lại bài tập</button></div>}
       <section aria-label="Hành trình học tập" className="space-y-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between st-rise">
           <div className="min-w-0">
@@ -229,12 +231,12 @@ export const StudentDashboardPage: React.FC = () => {
               {dashboardGreeting(new Date().getHours())}, <span className="st-grad-text">{student.fullName}</span>
             </h1>
             <p className="mt-1.5 text-sm sm:text-base text-[var(--student-ink-secondary)]">
-              {isHistory ? `${currentSemester} · Đang xem lịch sử học tập` : dashboardNudge({ streak, studiedToday, gainToday: gainToday ? { topicName: gainToday.topicName, delta: gainToday.delta } : null })}
+              {isHistory ? `${currentSemester} · Đang xem lịch sử học tập` : dashboardNudge({ streak: streak ?? undefined, studiedToday, gainToday: gainToday ? { topicName: gainToday.topicName, delta: gainToday.delta } : null })}
             </p>
           </div>
           <dl className="grid grid-cols-2 sm:flex shrink-0 overflow-hidden rounded-[18px] border border-[var(--student-border)] bg-[var(--student-surface)] shadow-[var(--student-shadow)] [&>div]:min-w-0 [&>div]:px-4 [&>div]:py-3 sm:[&>div]:px-5 [&>div+div]:border-l [&>div]:border-[var(--student-border)]">
             <div>
-              <dd className="text-xl font-extrabold tabular-nums leading-tight [font-family:var(--student-font-display)]">{streak}</dd>
+              <dd className="text-xl font-extrabold tabular-nums leading-tight [font-family:var(--student-font-display)]">{streak ?? "—"}</dd>
               <dt className="text-xs font-semibold text-[var(--student-muted)]">ngày liên tiếp</dt>
             </div>
             {journeyTopics.length > 0 && (
@@ -261,6 +263,8 @@ export const StudentDashboardPage: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* The one thing to do now */}
           <div className="lg:col-span-8 st-card st-spot st-hero p-5 sm:p-7 flex flex-col gap-5 st-rise" style={{ ["--d" as string]: 1 }}>
+            <div className="st-mission-masthead"><span>KHÔNG GIAN HỌC TẬP CỦA BẠN</span><span aria-hidden="true">✦</span><span>EDUTWIN / 01</span></div>
+            <div className="st-mission-orbit" aria-hidden="true"><span>✦</span><i /><b>HỌC<br />THEO CÁCH<br />CỦA BẠN.</b></div>
             {isHistory ? (
               <div>
                 <p className="st-eyebrow">Lịch sử học tập</p>
@@ -287,7 +291,7 @@ export const StudentDashboardPage: React.FC = () => {
                   )}
                 </div>
                 <div>
-                  <h2 className="text-xl sm:text-[1.75rem] font-extrabold leading-tight max-w-[28ch]">{topTask.title}</h2>
+                  <h2 className="st-mission-title text-xl sm:text-[1.75rem] font-extrabold leading-tight max-w-[28ch]">{topTask.title}</h2>
                   <p className="mt-2 max-w-[62ch] text-sm sm:text-base text-[var(--student-ink-secondary)]">
                     {topTask.detail}{heroIsAssignment && urgentAssignment?.summary?.estimatedMinutes != null ? ` · khoảng ${urgentAssignment.summary.estimatedMinutes} phút` : ""}
                   </p>
@@ -367,15 +371,6 @@ export const StudentDashboardPage: React.FC = () => {
             </Link>
           </section>
 
-          {!!selectedSubjectId && !isHistory && (
-            <section aria-labelledby="trend-heading" className={`lg:col-span-12 min-w-0 ${CARD} st-rise`} style={{ ["--d" as string]: 2 }}>
-              {trendLoading ? <div role="status" className="h-80 animate-pulse rounded-2xl bg-[var(--student-surface-subtle)] p-5 text-sm text-[var(--student-muted)]"><h2 id="trend-heading" className="font-bold">Nhịp tiến bộ của bạn</h2><p className="mt-2">Đang tải diễn biến năng lực…</p></div>
-                : trendError ? <div><h2 id="trend-heading" className="text-lg font-bold">Nhịp tiến bộ của bạn</h2><p className="mt-2 text-sm text-[var(--student-muted)]">Chưa tải được diễn biến năng lực.</p><button type="button" onClick={() => void refetchTrend()} className={`mt-3 ${SECONDARY_ACTION}`}>Thử lại</button></div>
-                : <React.Suspense fallback={<div role="status" className="h-80 text-sm text-[var(--student-muted)]">Đang tải biểu đồ…</div>}>
-                  <StudentMasteryTrendChart key={`${selectedSubjectId}:${selectedClassId}`} history={twinHistory ?? []} />
-                </React.Suspense>}
-            </section>
-          )}
           {/* Today's plan from the learning path: read-only, each row opens the path */}
           <section aria-labelledby="plan-heading" className={`lg:col-span-6 xl:col-span-5 ${CARD} st-rise`} style={{ ["--d" as string]: 3 }}>
             <div className="mb-3 flex items-start justify-between gap-3">
@@ -436,7 +431,7 @@ export const StudentDashboardPage: React.FC = () => {
                 })}
               </ul>
             ) : (
-              <p className="text-sm text-[var(--student-muted)]">Chưa có chuyên đề nào có bằng chứng. Làm bài kiểm tra đầu vào trong lộ trình để biết phần nào cần ưu tiên.</p>
+              <p className="text-sm text-[var(--student-muted)]">{journeyTopics.some(t => t.evidenceCount > 0) ? "Các chuyên đề đã có bằng chứng đều đạt từ 75%. Bạn có thể tiếp tục lộ trình hoặc ôn lại để giữ vững kiến thức." : "Chưa có chuyên đề nào có bằng chứng. Làm bài kiểm tra đầu vào trong lộ trình để biết phần nào cần ưu tiên."}</p>
             )}
           </section>
 
@@ -468,8 +463,33 @@ export const StudentDashboardPage: React.FC = () => {
               {goal.hasGoal ? "Xem hồ sơ chi tiết" : "Đặt mục tiêu"} {ARROW}
             </Link>
           </section>
+          {!!selectedSubjectId && !isHistory && (
+            <section aria-labelledby="trend-heading" className={`lg:col-span-12 min-w-0 ${CARD} st-rise st-dashboard-trend`} style={{ ["--d" as string]: 2 }}>
+              {trendLoading ? <div role="status" className="h-80 animate-pulse rounded-2xl bg-[var(--student-surface-subtle)] p-5 text-sm text-[var(--student-muted)]"><h2 id="trend-heading" className="font-bold">Nhịp tiến bộ của bạn</h2><p className="mt-2">Đang tải diễn biến năng lực…</p></div>
+                : trendError ? <div><h2 id="trend-heading" className="text-lg font-bold">Nhịp tiến bộ của bạn</h2><p className="mt-2 text-sm text-[var(--student-muted)]">Chưa tải được diễn biến năng lực.</p><button type="button" onClick={() => void refetchTrend()} className={`mt-3 ${SECONDARY_ACTION}`}>Thử lại</button></div>
+                : <React.Suspense fallback={<div role="status" className="h-80 text-sm text-[var(--student-muted)]">Đang tải biểu đồ…</div>}>
+                  <StudentMasteryTrendChart key={`${selectedSubjectId}:${selectedClassId}`} history={twinHistory ?? []} />
+                </React.Suspense>}
+            </section>
+          )}
         </div>
       </section>
+
+      {!isHistory && (!goal.hasGoal || !journeyTopics.some(t => t.evidenceCount > 0)) && <section className="st-start-guide" aria-labelledby="start-guide-heading">
+        <div><p className="st-eyebrow">Bắt đầu thật dễ</p><h2 id="start-guide-heading" className="mt-1 text-lg font-bold">Ba bước để học đúng hướng</h2><p className="mt-2 text-sm text-[var(--student-muted)]">Bạn không cần khám phá mọi thứ cùng lúc.</p></div>
+        {[
+          { label: "Đặt đích đến", detail: "Chọn mục tiêu điểm phù hợp với mình.", done: goal.hasGoal, to: studentScopeUrl("/hoc-tap/ho-so-nang-luc", searchParams) },
+          { label: "Hiểu điểm xuất phát", detail: "Mở lộ trình và thực hiện đánh giá đầu vào.", done: journeyTopics.some(t => t.evidenceCount > 0), to: pathLink },
+          { label: "Học một chút hôm nay", detail: "Hoàn thành bài tập hoặc buổi luyện đầu tiên.", done: studiedToday, to: topTask?.to || pathLink },
+        ].map((step, i) => <Link key={step.label} to={step.to} className="st-start-step"><span className={step.done ? "is-done" : ""} aria-label={step.done ? "Đã có dữ liệu xác nhận" : `Bước ${i + 1}`}>{step.done ? "✓" : `0${i + 1}`}</span><div><h3>{step.label}</h3><p>{step.detail}</p></div><span aria-hidden="true">↗</span></Link>)}
+      </section>}
+
+      {!isHistory && <section className="st-explore" aria-labelledby="explore-heading">
+        <div className="st-explore-intro"><p className="st-eyebrow">Không gian của bạn</p><h2 id="explore-heading">Hôm nay, bạn muốn <br /><em>tiến thêm ở đâu?</em></h2><p>Chọn một bước nhỏ. Tạo một thay đổi lớn.</p></div>
+        <Link to={pathLink} className="st-explore-card st-explore-plan"><span className="st-explore-number">01 / CÓ ĐỊNH HƯỚNG</span><span aria-hidden="true" className="st-explore-symbol">↗</span><h3>Đi theo lộ trình</h3><p>Biết mình học gì tiếp theo, từng bước một.</p><span className="st-explore-cta">Mở hành trình <span aria-hidden="true">→</span></span></Link>
+        <Link to={studentScopeUrl("/hoc-tap/luyen-tap", searchParams)} className="st-explore-card st-explore-practice"><span className="st-explore-number">02 / THỬ SỨC MÌNH</span><span aria-hidden="true" className="st-explore-symbol">✳</span><h3>Luyện đúng phần cần</h3><p>Câu hỏi thích ứng với năng lực hiện tại của bạn.</p><span className="st-explore-cta">Vào luyện tập <span aria-hidden="true">→</span></span></Link>
+        <Link to={studentScopeUrl("/hoc-tap/ho-so-nang-luc", searchParams)} className="st-explore-card st-explore-twin"><span className="st-explore-number">03 / HIỂU BẢN THÂN</span><span aria-hidden="true" className="st-explore-symbol">◎</span><h3>Gặp bản sao học tập</h3><p>Điểm mạnh, khoảng trống và tiến bộ có bằng chứng.</p><span className="st-explore-cta">Khám phá năng lực <span aria-hidden="true">→</span></span></Link>
+      </section>}
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
         <section aria-labelledby="journey-heading" className={`min-w-0 xl:col-span-8 ${CARD} st-rise`} style={{ ["--d" as string]: 6 }}>
@@ -485,7 +505,7 @@ export const StudentDashboardPage: React.FC = () => {
 
         {!isHistory && (
           <section aria-labelledby="recent-heading" className={`xl:col-span-4 ${CARD} min-w-0 st-rise`} style={{ ["--d" as string]: 7 }}>
-            <h2 id="recent-heading" className="mb-3 text-base font-bold">Vừa tiến bộ</h2>
+            <h2 id="recent-heading" className="mb-3 text-base font-bold">Năng lực vừa thay đổi</h2>
             {recentChanges.length > 0 ? (
               <ul className="space-y-2.5">
                 {recentChanges.map((change) => (
@@ -508,6 +528,7 @@ export const StudentDashboardPage: React.FC = () => {
           </section>
         )}
       </div>
+      {selectedSubjectId && !isHistory && <StudentRecallDeck key={`${selectedSubjectId}:${selectedClassId}`} subjectId={selectedSubjectId} />}
     </div>
   );
 };

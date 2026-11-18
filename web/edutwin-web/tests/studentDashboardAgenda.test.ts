@@ -62,7 +62,7 @@ test("dashboard uses the current agenda and keeps subject/class context when con
   assert.match(h.html, /Tìm hiểu: Hàm số/);
   assert.match(h.html, /Tiếp tục học ngay/);
   assert.match(h.html, /href="\/hoc-tap\/lo-trinh-hoc-tap\?subjectId=math&amp;classId=class-10"/);
-  assert.doesNotMatch(h.html, /href="\/hoc-tap\/luyen-tap/);
+  assert.doesNotMatch(h.html, /<a[^>]*href="\/hoc-tap\/luyen-tap[^>]*>Tiếp tục học ngay/);
 });
 
 test("an unfinished assignment remains the primary action; a ready agenda mission is shown next", () => {

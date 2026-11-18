@@ -133,7 +133,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
   return (
     <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5 min-w-0 student-shell">
       {/* Header */}
-      <header className="st-rise">
+      <header className="st-page-intro st-rise">
         <p className="st-eyebrow">Phiên luyện tập cá nhân hoá</p>
         <h1 className="mt-1.5 text-2xl font-extrabold tracking-tight sm:text-3xl [font-family:var(--student-font-display)]">
           Luyện tập <span className="st-grad-text">thích ứng</span>

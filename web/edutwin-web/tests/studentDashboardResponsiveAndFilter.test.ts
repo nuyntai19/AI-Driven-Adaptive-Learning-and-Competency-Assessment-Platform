@@ -14,7 +14,7 @@ test("Phase 11: No overflow-x: hidden hack on body or html", () => {
 
 test("Phase 11: StudentLayout header and main container responsive constraints", () => {
   // Main must have min-w-0 to prevent flex blowout
-  assert.match(layoutSource, /<main className="flex-1 w-full min-w-0 pb-12">/);
+  assert.match(layoutSource, /<main[^>]*className="flex-1 w-full min-w-0 pb-12"[^>]*>/);
   // Larger student workspace still has a bounded responsive container.
   assert.match(layoutSource, /max-w-\[1440px\] mx-auto px-4 sm:px-6 lg:px-8/);
   // Header row must have min-w-0; only this slim row stays sticky.

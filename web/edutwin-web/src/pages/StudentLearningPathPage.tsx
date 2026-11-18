@@ -286,7 +286,7 @@ function LearningPathWorkspace({ subject }: { subject: SubjectDto }) {
   if (access.readOnly) return <StudentLearningReadOnlyNotice reason={access.reason} />;
   return <div className="mx-auto w-full max-w-[1440px] space-y-5 px-4 py-6 sm:px-6 lg:px-8 text-[var(--student-ink)]">
     {acceptedNotice && <div role="status" className="flex items-start justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"><p>{acceptedNotice}</p><button aria-label="Đóng thông báo đã chọn tuyến" onClick={() => setAcceptedNotice("")}>×</button></div>}
-    <header className="flex flex-wrap items-end justify-between gap-4 st-rise">
+    <header className="st-page-intro flex flex-wrap items-end justify-between gap-4 st-rise">
       <div className="min-w-0"><p className="st-eyebrow">Lộ trình cá nhân · {subject.subjectName}</p>
         <h1 className="mt-1.5 text-2xl sm:text-3xl font-extrabold">{agenda.data?.goalTitle ? agenda.data.goalTitle : <>Lộ trình học tập <span className="st-grad-text">cá nhân</span></>}</h1>
         <p className="mt-1.5 text-sm text-[var(--student-ink-secondary)]">Học theo mục tiêu, luyện phần còn yếu và theo dõi tiến bộ qua từng chặng.</p>

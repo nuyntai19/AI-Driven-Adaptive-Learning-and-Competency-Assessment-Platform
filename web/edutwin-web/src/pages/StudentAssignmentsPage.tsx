@@ -160,7 +160,7 @@ export const StudentAssignmentsPage: React.FC = () => {
   return (
     <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5 min-w-0 student-shell">
       {/* Page header */}
-      <header className="st-rise flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <header className="st-page-intro st-rise flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <p className="st-eyebrow">Bài giáo viên giao · theo mốc thời gian</p>
           <h1 className="mt-1.5 text-2xl font-extrabold tracking-tight sm:text-3xl [font-family:var(--student-font-display)]">
