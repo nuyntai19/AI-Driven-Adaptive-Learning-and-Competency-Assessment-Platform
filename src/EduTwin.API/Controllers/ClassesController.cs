@@ -239,6 +239,18 @@ public class ClassesController : ControllerBase
             });
         }
 
+        if (result.ErrorCode == ErrorCodes.ConcurrencyConflict)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Dữ liệu môn học vừa thay đổi",
+                Detail = "Môn học vừa được cập nhật. Vui lòng tải lại danh sách môn học trước khi tạo lớp.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["errorCode"] = result.ErrorCode, ["traceId"] = HttpContext.TraceIdentifier }
+            });
+        }
+
         throw new System.InvalidOperationException($"Unexpected error code: {result.ErrorCode}");
     }
 
@@ -302,6 +314,18 @@ public class ClassesController : ControllerBase
                 Detail = "Lớp học với tên và năm học này đã tồn tại trong trung tâm.",
                 Instance = HttpContext.Request.Path,
                 Extensions = { ["traceId"] = System.Diagnostics.Activity.Current?.Id ?? HttpContext.TraceIdentifier, ["errorCode"] = result.ErrorCode }
+            });
+        }
+
+        if (result.ErrorCode == ErrorCodes.InvalidStateTransition)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Không thể cập nhật trạng thái lớp",
+                Detail = "Hãy kiểm tra môn học đang hoạt động và các dữ liệu học tập liên quan trước khi cập nhật hoặc mở lại lớp.",
+                Instance = HttpContext.Request.Path,
+                Extensions = { ["errorCode"] = result.ErrorCode, ["traceId"] = HttpContext.TraceIdentifier }
             });
         }
 

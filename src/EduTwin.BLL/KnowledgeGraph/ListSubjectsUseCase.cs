@@ -74,6 +74,10 @@ public class ListSubjectsUseCase : IListSubjectsUseCase
                 SubjectName = s.SubjectName,
                 Description = s.Description,
                 IsActive = s.IsActive,
+                ActiveClassCount = _tenantContext.Role == nameof(UserRole.CenterManager)
+                    ? _dbContext.Classes.Count(c => c.CenterId == s.CenterId && c.SubjectId == s.SubjectId &&
+                        !c.IsDeleted && c.Status == EduTwin.Contracts.Organization.ClassStatus.Active)
+                    : (int?)null,
                 RowVersion = s.RowVersion.ToString(CultureInfo.InvariantCulture)
             })
             .ToListAsync(cancellationToken);

@@ -47,8 +47,8 @@ export const TeacherCurriculumListView: React.FC = () => {
 
   // Fetch subjects
   const { data: subjectsData } = useQuery({
-    queryKey: ["teacherSubjectsList", centerId, actorId],
-    queryFn: () => organizationApi.listSubjects(true),
+    queryKey: ["teacherSubjectsList", centerId, actorId, history],
+    queryFn: () => organizationApi.listSubjects(history ? undefined : true),
   });
 
   const subjects = subjectsData?.data ?? [];

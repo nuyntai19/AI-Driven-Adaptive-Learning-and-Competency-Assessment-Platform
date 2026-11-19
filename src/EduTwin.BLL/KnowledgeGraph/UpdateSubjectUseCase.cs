@@ -97,6 +97,16 @@ public class UpdateSubjectUseCase : IUpdateSubjectUseCase
             return UpdateSubjectResult.Failure(ErrorCodes.DuplicateResource);
         }
 
+        var activeClassCount = await _dbContext.Classes.CountAsync(c =>
+            c.CenterId == centerId && c.SubjectId == subjectId && !c.IsDeleted &&
+            c.Status == EduTwin.Contracts.Organization.ClassStatus.Active, cancellationToken);
+        if (subject.IsActive && request.IsActive == false && activeClassCount > 0)
+        {
+            return UpdateSubjectResult.Failure(ErrorCodes.InvalidStateTransition,
+                $"Không thể ngừng giảng dạy môn {subject.SubjectName} vì còn {activeClassCount} lớp đang hoạt động. Vui lòng kết thúc hoặc lưu trữ các lớp này trước.",
+                activeClassCount);
+        }
+
         subject.SubjectCode = subjectCode;
         subject.SubjectName = subjectName;
         subject.Description = description;
@@ -137,6 +147,7 @@ public class UpdateSubjectUseCase : IUpdateSubjectUseCase
             SubjectName = subject.SubjectName,
             Description = subject.Description,
             IsActive = subject.IsActive,
+            ActiveClassCount = _tenantContext.Role == nameof(UserRole.CenterManager) ? activeClassCount : null,
             RowVersion = subject.RowVersion.ToString(CultureInfo.InvariantCulture)
         };
 

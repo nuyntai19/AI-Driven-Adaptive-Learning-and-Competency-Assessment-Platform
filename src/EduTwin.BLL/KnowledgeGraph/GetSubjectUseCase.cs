@@ -72,6 +72,10 @@ public class GetSubjectUseCase : IGetSubjectUseCase
             SubjectName = subject.SubjectName,
             Description = subject.Description,
             IsActive = subject.IsActive,
+            ActiveClassCount = _tenantContext.Role == nameof(UserRole.CenterManager)
+                ? await _dbContext.Classes.CountAsync(c => c.CenterId == centerId && c.SubjectId == subjectId &&
+                    !c.IsDeleted && c.Status == EduTwin.Contracts.Organization.ClassStatus.Active, cancellationToken)
+                : null,
             RowVersion = subject.RowVersion.ToString(CultureInfo.InvariantCulture)
         };
 

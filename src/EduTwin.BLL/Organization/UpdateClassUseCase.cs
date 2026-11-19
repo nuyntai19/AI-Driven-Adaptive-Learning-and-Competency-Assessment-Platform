@@ -104,7 +104,7 @@ public class UpdateClassUseCase : IUpdateClassUseCase
                     .FirstOrDefault(),
                 Subject = _context.Subjects
                     .Where(s => s.SubjectId == existingClass.SubjectId && s.CenterId == centerId && !s.IsDeleted)
-                    .Select(s => new { s.SubjectId, s.SubjectName })
+                    .Select(s => new { s.SubjectId, s.SubjectName, s.IsActive, s.RowVersion })
                     .FirstOrDefault()
             })
             .FirstOrDefaultAsync(cancellationToken);
@@ -232,6 +232,19 @@ public class UpdateClassUseCase : IUpdateClassUseCase
                     return UpdateClassResult.Failure(ErrorCodes.InvalidStateTransition);
                 }
             }
+        }
+
+        if (existingClass.Status != ClassStatus.Active && request.Status == ClassStatus.Active)
+        {
+            if (!centerAndTeacher.Subject.IsActive)
+                return UpdateClassResult.Failure(ErrorCodes.InvalidStateTransition);
+            var subject = await _context.Subjects.FirstOrDefaultAsync(s => s.CenterId == centerId &&
+                s.SubjectId == existingClass.SubjectId && s.IsActive && !s.IsDeleted, cancellationToken);
+            if (subject == null)
+                return UpdateClassResult.Failure(ErrorCodes.InvalidStateTransition);
+            var subjectEntry = _context.Entry(subject).Property(s => s.RowVersion);
+            subjectEntry.OriginalValue = centerAndTeacher.Subject.RowVersion;
+            subjectEntry.IsModified = true;
         }
 
         _context.Entry(existingClass).Property(c => c.RowVersion).OriginalValue = expectedRowVersion;

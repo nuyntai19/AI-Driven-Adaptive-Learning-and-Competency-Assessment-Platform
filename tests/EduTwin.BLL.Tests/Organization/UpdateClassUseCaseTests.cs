@@ -89,7 +89,7 @@ public class UpdateClassUseCaseTests
         newUserCenterId ??= centerId;
 
         context.Centers.Add(new Center { CenterId = centerId, CenterName = "C", CenterCode="C", Timezone="UTC", Status = centerStatus, IsDeleted = centerDeleted, CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc });
-        context.Subjects.Add(new Subject { SubjectId = subjectId, CenterId = centerId, SubjectName = "S", SubjectCode="S", CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc });
+        context.Subjects.Add(new Subject { SubjectId = subjectId, CenterId = centerId, SubjectName = "S", SubjectCode="S", IsActive = true, CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc });
 
         var originalUser = new User { UserId = originalTeacherId, CenterId = centerId, DisplayName = "T1", RoleName = originalRole, Username="T1", PasswordHash="H", CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc, IsDeleted = originalUserDeleted };
         var newUser = new User { UserId = newTeacherId, CenterId = newUserCenterId.Value, DisplayName = "T2", RoleName = newRole, Username="T2", PasswordHash="H", CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc, IsDeleted = newUserDeleted };

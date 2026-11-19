@@ -257,6 +257,23 @@ public class SubjectsController : ControllerBase
             });
         }
 
+        if (result.ErrorCode == ErrorCodes.InvalidStateTransition)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Title = "Không thể ngừng giảng dạy môn học",
+                Status = StatusCodes.Status409Conflict,
+                Detail = result.ErrorMessage,
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.InvalidStateTransition,
+                    ["activeClassCount"] = result.ActiveClassCount
+                }
+            });
+        }
+
         if (result.ErrorCode == ErrorCodes.ConcurrencyConflict)
         {
             return Conflict(new ProblemDetails

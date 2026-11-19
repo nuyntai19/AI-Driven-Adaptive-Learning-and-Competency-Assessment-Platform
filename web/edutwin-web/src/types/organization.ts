@@ -116,6 +116,7 @@ export interface TeacherListParams {
 }
 
 export interface SubjectDto {
+  activeClassCount?: number;
   subjectId: string;
   subjectCode: string;
   subjectName: string;

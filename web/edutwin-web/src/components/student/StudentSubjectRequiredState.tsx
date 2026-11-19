@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "../../stores/authStore";
 import { readLastStudentSubject, rememberStudentSubject } from "../../utils/studentSubjectScope";
 import { useStudentSubjects } from "../../utils/useStudentSubjects";
@@ -11,7 +11,8 @@ interface StudentSubjectRequiredStateProps {
 
 export const StudentSubjectRequiredState: React.FC<StudentSubjectRequiredStateProps> = ({ onSelect }) => {
   const userId = useAuthStore((state) => state.user?.userId);
-  const subjectsQuery = useStudentSubjects();
+  const [params] = useSearchParams();
+  const subjectsQuery = useStudentSubjects(params.get("history") === "true");
   const { subjects } = subjectsQuery;
   const subjectIds = subjects.map((s) => s.subjectId).join();
 

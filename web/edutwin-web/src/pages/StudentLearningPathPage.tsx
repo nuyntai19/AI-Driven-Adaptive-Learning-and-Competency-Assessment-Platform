@@ -73,8 +73,9 @@ const stateLabels: Record<string, string> = { Unknown: "Chưa đủ bằng chứ
 export function StudentLearningPathPage() {
   const [params, setParams] = useSearchParams();
   const actor = useAuthStore(s => s.user);
-  const subjects = useQuery({ queryKey: ["subjects", "student-learning-path", actor?.centerId, actor?.userId],
-    queryFn: () => organizationApi.listSubjects(true) });
+  const history = params.get("history") === "true";
+  const subjects = useQuery({ queryKey: ["subjects", "student-learning-path", actor?.centerId, actor?.userId, history],
+    queryFn: () => organizationApi.listSubjects(history ? undefined : true) });
   const storedSubjectId = (() => { try { return localStorage.getItem("edutwin_last_subject_id"); } catch { return null; } })();
   const subject = subjects.data?.data.find(s => s.subjectId === params.get("subjectId"))
     ?? subjects.data?.data.find(s => s.subjectId === storedSubjectId)

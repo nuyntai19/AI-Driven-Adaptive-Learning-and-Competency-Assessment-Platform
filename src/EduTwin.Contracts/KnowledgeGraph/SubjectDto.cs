@@ -10,5 +10,8 @@ public class SubjectDto
     public string Code => SubjectCode;
     public string? Description { get; set; }
     public bool IsActive { get; set; }
+    // Administrative metadata; omitted for teacher/student catalogue requests.
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? ActiveClassCount { get; set; }
     public string RowVersion { get; set; } = null!;
 }

@@ -78,6 +78,22 @@ public sealed class TeacherSubjectBindingTests : IDisposable
     }
 
     [Fact]
+    public async Task UpdateClass_CannotReopenWhileSubjectIsInactive()
+    {
+        var teacher = AddTeacher(_mathId);
+        var entity = AddClass(teacher);
+        entity.Status = ClassStatus.Archived;
+        entity.LearningScope = ClassLearningScope.History;
+        (await _db.Subjects.SingleAsync(s => s.SubjectId == _mathId)).IsActive = false;
+        await _db.SaveChangesAsync();
+        var result = await new UpdateClassUseCase(_db, _tenant, TimeProvider.System, NullLogger<UpdateClassUseCase>.Instance)
+            .ExecuteAsync(entity.ClassId, new UpdateClassRequest { ClassName = entity.ClassName, TeacherId = teacher.TeacherId,
+                GradeLevel = 10, Status = ClassStatus.Active, LifecycleReason = "Mở lại", RowVersion = entity.RowVersion.ToString() });
+        Assert.Equal(ErrorCodes.InvalidStateTransition, result.ErrorCode);
+        Assert.Equal(ClassStatus.Archived, (await _db.Classes.SingleAsync()).Status);
+    }
+
+    [Fact]
     public async Task UpdateClass_RejectsReplacementTeacherFromDifferentSubject()
     {
         var original = AddTeacher(_mathId);

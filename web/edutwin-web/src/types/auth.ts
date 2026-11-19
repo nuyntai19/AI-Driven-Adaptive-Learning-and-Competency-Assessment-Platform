@@ -53,6 +53,7 @@ export interface CurrentUserResponse {
 }
 
 export interface ProblemDetails {
+  activeClassCount?: number;
   type?: string;
   title?: string;
   status?: number;

@@ -49,6 +49,20 @@ public class SubjectsControllerTests
     }
 
     [Fact]
+    public async Task UpdateSubject_ActiveClasses_ReturnsBusinessConflictWithCountAndMessage()
+    {
+        const string message = "Không thể ngừng giảng dạy môn Toán vì còn 4 lớp đang hoạt động.";
+        _updateUseCaseMock.Setup(x => x.ExecuteAsync(It.IsAny<Guid>(), It.IsAny<UpdateSubjectRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateSubjectResult.Failure(ErrorCodes.InvalidStateTransition, message, 4));
+        var result = await _controller.UpdateSubject(Guid.NewGuid(), new UpdateSubjectRequest(), CancellationToken.None);
+        var problem = Assert.IsType<ProblemDetails>(Assert.IsType<ConflictObjectResult>(result).Value);
+        Assert.Equal(409, problem.Status);
+        Assert.Equal(message, problem.Detail);
+        Assert.Equal(ErrorCodes.InvalidStateTransition, problem.Extensions["errorCode"]);
+        Assert.Equal(4, problem.Extensions["activeClassCount"]);
+    }
+
+    [Fact]
     public async Task Success_Returns200SubjectListResponse()
     {
         var data = new List<SubjectDto>

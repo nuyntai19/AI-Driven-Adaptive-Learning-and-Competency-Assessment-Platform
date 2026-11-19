@@ -845,6 +845,12 @@ Responses:
 
 ## 37. Subject endpoints
 
+`GET /subjects` và `GET /subjects/{subjectId}` trả thêm `activeClassCount` cho CenterManager. Số này đếm lớp cùng trung tâm/môn có `Status=Active`, chưa bị xóa, kể cả lớp chưa có học sinh. Trường này được bỏ qua trong DTO của Teacher/Student.
+
+`PATCH /subjects/{subjectId}` chỉ cho chuyển `isActive` từ `true` sang `false` khi `activeClassCount=0`. Nếu còn lớp hoạt động, trả HTTP 409 `INVALID_STATE_TRANSITION`, `detail` nêu tên môn/số lớp và extension `activeClassCount`; toàn bộ cập nhật bị từ chối. Lớp đã lưu trữ không chặn; bật lại môn và sửa thông tin khi giữ trạng thái hoạt động vẫn được phép. Tạo/mở lại lớp phối hợp bằng `subjects.row_version` trong cùng transaction; xung đột trả 409 `CONCURRENCY_CONFLICT`. Mở lại lớp thuộc môn ngừng hoạt động trả 409 `INVALID_STATE_TRANSITION`.
+
+Trong chế độ lịch sử, danh sách chọn môn của học sinh lấy catalogue không lọc `isActive`, sau đó giới hạn theo các lớp lịch sử của chính học sinh. Chế độ đang học tiếp tục dùng `isActive=true`. Lớp, giáo trình, bài làm, điểm và lịch sử không bị xóa khi môn ngừng hoạt động.
+
 | Method | Path | Role | Request | Response |
 |---|---|---|---|---|
 | POST | /subjects | Teacher, CenterManager | CreateSubjectRequest | 201 Subject DTO |

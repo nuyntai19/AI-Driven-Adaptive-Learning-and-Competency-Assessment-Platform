@@ -201,8 +201,8 @@ export const TeacherKnowledgeGraphView: React.FC = () => {
     isLoading: isLoadingSubjects,
     isError: isErrorSubjects,
   } = useQuery({
-    queryKey: ["teacherSubjectsList", user?.centerId, user?.userId],
-    queryFn: () => organizationApi.listSubjects(true),
+    queryKey: ["teacherSubjectsList", user?.centerId, user?.userId, showClassHistory],
+    queryFn: () => organizationApi.listSubjects(showClassHistory ? undefined : true),
     enabled: Boolean(user?.centerId && canReadSubjects),
   });
 

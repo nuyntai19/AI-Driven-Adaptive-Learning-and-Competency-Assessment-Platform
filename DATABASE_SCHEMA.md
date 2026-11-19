@@ -381,6 +381,8 @@ Indexes:
 
 Subject là tenant-owned để Teacher của Center này không làm thay đổi catalog của Center khác.
 
+BLL chặn chuyển `subjects.is_active` từ 1 sang 0 khi còn lớp cùng môn/trung tâm có `status='Active'` và `is_deleted=0`, kể cả lớp không có học sinh. Lớp Archived không chặn. Tạo/mở lại lớp cập nhật concurrency token của môn trong cùng SaveChanges transaction, để thao tác ngừng môn và tạo/mở lớp không cùng commit từ một phiên bản cũ. Không thêm cột/bảng; dữ liệu lịch sử của môn đã ngừng vẫn được giữ và truy cập ở chế độ lịch sử.
+
 ## 10. classes [MTA]
 
 | Column | Type | Null | Constraint/Ý nghĩa |

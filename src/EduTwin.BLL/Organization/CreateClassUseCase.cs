@@ -78,7 +78,7 @@ public class CreateClassUseCase : ICreateClassUseCase
             {
                 Subject = _context.Subjects
                     .Where(s => s.SubjectId == request.SubjectId && s.CenterId == centerId && !s.IsDeleted && s.IsActive)
-                    .Select(s => new { s.SubjectId, s.SubjectName })
+                    .Select(s => new { s.SubjectId, s.SubjectName, s.RowVersion })
                     .FirstOrDefault(),
                 Teacher = _context.Teachers
                     .Where(t => t.TeacherId == request.TeacherId && t.CenterId == centerId && !t.IsDeleted &&
@@ -108,6 +108,16 @@ public class CreateClassUseCase : ICreateClassUseCase
         var classId = Guid.NewGuid();
         var now = _timeProvider.GetUtcNow().UtcDateTime;
 
+        // Coordinate class creation with subject deactivation in the same SaveChanges transaction.
+        // Both operations update the subject's concurrency token, so only one can commit first.
+        var subject = await _context.Subjects.FirstOrDefaultAsync(s => s.CenterId == centerId &&
+            s.SubjectId == request.SubjectId && s.IsActive && !s.IsDeleted, cancellationToken);
+        if (subject == null)
+            return CreateClassResult.Failure(ErrorCodes.ResourceNotFound);
+        var subjectEntry = _context.Entry(subject).Property(s => s.RowVersion);
+        subjectEntry.OriginalValue = subjectAndTeacher.Subject.RowVersion;
+        subjectEntry.IsModified = true;
+
         var newClass = new Class
         {
             ClassId = classId,
@@ -131,6 +141,11 @@ public class CreateClassUseCase : ICreateClassUseCase
         try
         {
             await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            _context.ChangeTracker.Clear();
+            return CreateClassResult.Failure(ErrorCodes.ConcurrencyConflict);
         }
         catch (DbUpdateException ex)
         {

@@ -53,6 +53,26 @@ public class ClassesControllerTests
     }
 
     [Fact]
+    public async Task CreateClass_SubjectChangedConcurrently_Returns409()
+    {
+        _mockCreateClassUseCase.Setup(x => x.ExecuteAsync(It.IsAny<CreateClassRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(CreateClassResult.Failure(ErrorCodes.ConcurrencyConflict));
+        var result = await _controller.CreateClass(new CreateClassRequest(), CancellationToken.None);
+        var problem = Assert.IsType<ProblemDetails>(Assert.IsType<ConflictObjectResult>(result).Value);
+        Assert.Equal(ErrorCodes.ConcurrencyConflict, problem.Extensions["errorCode"]);
+    }
+
+    [Fact]
+    public async Task UpdateClass_InactiveSubjectCannotReopen_Returns409()
+    {
+        _mockUpdateClassUseCase.Setup(x => x.ExecuteAsync(It.IsAny<Guid>(), It.IsAny<UpdateClassRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(UpdateClassResult.Failure(ErrorCodes.InvalidStateTransition));
+        var result = await _controller.UpdateClass(Guid.NewGuid(), new UpdateClassRequest(), CancellationToken.None);
+        var problem = Assert.IsType<ProblemDetails>(Assert.IsType<ConflictObjectResult>(result).Value);
+        Assert.Equal(ErrorCodes.InvalidStateTransition, problem.Extensions["errorCode"]);
+    }
+
+    [Fact]
     public async Task Controller_SuccessMetaContainsTraceIdAndTimestamp()
     {
         var query = new ClassListQuery { Page = 2, PageSize = 10 };

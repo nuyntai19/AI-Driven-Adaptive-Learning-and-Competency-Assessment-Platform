@@ -57,6 +57,13 @@ const CenterManagerSubjectListView: React.FC = () => {
   const [editDescription, setEditDescription] = useState("");
   const [editIsActive, setEditIsActive] = useState(true);
   const [editError, setEditError] = useState<string | null>(null);
+  const deactivationBlocked = !!editingSubject?.isActive && editIsActive &&
+    (editingSubject.activeClassCount == null || editingSubject.activeClassCount > 0);
+  const deactivationNotice = editingSubject?.isActive && (editingSubject.activeClassCount ?? 0) > 0
+    ? `Không thể ngừng giảng dạy môn ${editingSubject.subjectName} vì còn ${editingSubject.activeClassCount} lớp đang hoạt động. Vui lòng kết thúc hoặc lưu trữ các lớp này trước.`
+    : editingSubject?.isActive && editingSubject.activeClassCount == null
+    ? "Chưa xác định được số lớp đang hoạt động. Vui lòng mở lại form để tải dữ liệu mới nhất trước khi ngừng môn."
+    : null;
 
   const [deletingSubject, setDeletingSubject] = useState<SubjectDto | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -100,7 +107,10 @@ const CenterManagerSubjectListView: React.FC = () => {
   }, [subjectsData?.data, searchTerm]);
 
   const invalidateAllSubjectQueries = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["subjects"] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["subjects"] }),
+      queryClient.invalidateQueries({ queryKey: ["teacherSubjectsList"] }),
+    ]);
   };
 
   // Create Mutation
@@ -139,6 +149,13 @@ const CenterManagerSubjectListView: React.FC = () => {
     },
     onError: async (err) => {
       if (isAxiosError<ProblemDetails>(err)) {
+        if (err.response?.data.errorCode === "INVALID_STATE_TRANSITION") {
+          const count = err.response.data.activeClassCount;
+          setEditingSubject((current) => current ? { ...current, activeClassCount: count } : current);
+          setEditIsActive(true);
+          setEditError(typeof count === "number" && count > 0 ? null : err.response.data.detail || "Không thể ngừng môn khi còn lớp đang hoạt động.");
+          return;
+        }
         if (isConcurrencyConflict(err)) {
           await invalidateAllSubjectQueries();
           if (editingSubject) {
@@ -269,6 +286,12 @@ const CenterManagerSubjectListView: React.FC = () => {
     }
     if (editDescription.length > 500) {
       setEditError("Mô tả không được vượt quá 500 ký tự.");
+      return;
+    }
+
+    if (editingSubject.isActive && !editIsActive &&
+      (editingSubject.activeClassCount == null || editingSubject.activeClassCount > 0)) {
+      setEditError(deactivationNotice || "Không thể ngừng môn khi còn lớp đang hoạt động.");
       return;
     }
 
@@ -641,11 +664,13 @@ const CenterManagerSubjectListView: React.FC = () => {
                       id="checkbox-edit-subject-active"
                       checked={editIsActive}
                       onChange={(e) => setEditIsActive(e.target.checked)}
-                      disabled={updateMutation.isPending}
-                      className="rounded border-[var(--cm-border)] text-indigo-500"
+                      disabled={updateMutation.isPending || deactivationBlocked}
+                      aria-describedby={deactivationNotice ? "subject-deactivation-notice" : undefined}
+                      className="rounded border-[var(--cm-border)] text-indigo-500 disabled:cursor-not-allowed"
                     />
                     <span>Kích hoạt giảng dạy môn học này</span>
                   </label>
+                  {deactivationNotice && <p id="subject-deactivation-notice" role="status" className="mt-2 text-sm text-amber-300">{deactivationNotice}</p>}
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4">
@@ -827,6 +852,13 @@ const LegacySubjectListPage: React.FC = () => {
   const [editDescription, setEditDescription] = useState("");
   const [editIsActive, setEditIsActive] = useState(true);
   const [editError, setEditError] = useState<string | null>(null);
+  const deactivationBlocked = !!editingSubject?.isActive && editIsActive &&
+    (editingSubject.activeClassCount == null || editingSubject.activeClassCount > 0);
+  const deactivationNotice = editingSubject?.isActive && (editingSubject.activeClassCount ?? 0) > 0
+    ? `Không thể ngừng giảng dạy môn ${editingSubject.subjectName} vì còn ${editingSubject.activeClassCount} lớp đang hoạt động. Vui lòng kết thúc hoặc lưu trữ các lớp này trước.`
+    : editingSubject?.isActive && editingSubject.activeClassCount == null
+    ? "Chưa xác định được số lớp đang hoạt động. Vui lòng mở lại form để tải dữ liệu mới nhất trước khi ngừng môn."
+    : null;
 
   const [deletingSubject, setDeletingSubject] = useState<SubjectDto | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -857,7 +889,10 @@ const LegacySubjectListPage: React.FC = () => {
   }, [subjectsData?.data, searchTerm]);
 
   const invalidateAllSubjectQueries = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["subjects"] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["subjects"] }),
+      queryClient.invalidateQueries({ queryKey: ["teacherSubjectsList"] }),
+    ]);
   };
 
   const createMutation = useMutation({
@@ -894,6 +929,13 @@ const LegacySubjectListPage: React.FC = () => {
     },
     onError: async (err) => {
       if (isAxiosError<ProblemDetails>(err)) {
+        if (err.response?.data.errorCode === "INVALID_STATE_TRANSITION") {
+          const count = err.response.data.activeClassCount;
+          setEditingSubject((current) => current ? { ...current, activeClassCount: count } : current);
+          setEditIsActive(true);
+          setEditError(typeof count === "number" && count > 0 ? null : err.response.data.detail || "Không thể ngừng môn khi còn lớp đang hoạt động.");
+          return;
+        }
         if (isConcurrencyConflict(err)) {
           await invalidateAllSubjectQueries();
           if (editingSubject) {
@@ -1023,6 +1065,12 @@ const LegacySubjectListPage: React.FC = () => {
     }
     if (editDescription.length > 500) {
       setEditError("Mô tả không được vượt quá 500 ký tự.");
+      return;
+    }
+
+    if (editingSubject.isActive && !editIsActive &&
+      (editingSubject.activeClassCount == null || editingSubject.activeClassCount > 0)) {
+      setEditError(deactivationNotice || "Không thể ngừng môn khi còn lớp đang hoạt động.");
       return;
     }
 
@@ -1398,12 +1446,15 @@ const LegacySubjectListPage: React.FC = () => {
                     type="checkbox"
                     checked={editIsActive}
                     onChange={(e) => setEditIsActive(e.target.checked)}
+                    disabled={updateMutation.isPending || deactivationBlocked}
+                    aria-describedby={deactivationNotice ? "subject-deactivation-notice" : undefined}
                     className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
                   />
                   <label htmlFor="checkbox-edit-subject-active" className="ml-2 block text-sm font-medium text-slate-900">
                     Đang hoạt động (Kích hoạt giảng dạy)
                   </label>
                 </div>
+                {deactivationNotice && <p id="subject-deactivation-notice" role="status" className="mt-2 text-sm text-amber-700">{deactivationNotice}</p>}
                 <div className="mt-6 flex justify-end gap-3">
                   <button
                     type="button"

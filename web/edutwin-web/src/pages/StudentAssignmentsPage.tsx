@@ -1,9 +1,8 @@
 import React, { useState, useMemo } from "react";
 import { isAxiosError } from "axios";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import { useStudentAssignments } from "../features/assignments/useStudentAssignments";
-import { organizationApi } from "../api/organizationApi";
+import { useStudentSubjects } from "../utils/useStudentSubjects";
 import { getSubjectTheme } from "../components/student/subjectTheme";
 import type { ProgressStatus, StudentAssignmentListItemDto } from "../types/assignments";
 import { studentScopeUrl } from "../utils/studentAcademicNavigation";
@@ -66,14 +65,7 @@ export const StudentAssignmentsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [ignoreSubjectFilter, setIgnoreSubjectFilter] = useState<boolean>(false);
 
-  // Fetch subjects to match subject names
-  const { data: subjectsResponse } = useQuery({
-    queryKey: ["subjects", "student-workspace", "active"],
-    queryFn: () => organizationApi.listSubjects(true),
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const subjects = subjectsResponse?.data || [];
+  const { subjects } = useStudentSubjects(history);
   const currentSubject = subjects.find((s) => s.subjectId === selectedSubjectId);
   const currentSubjectName = currentSubject?.subjectName || "";
 
