@@ -35,6 +35,8 @@ public sealed class StudentAssignmentReportDto
 {
     public Guid AssignmentId { get; set; }
     public string Title { get; set; } = "";
+    public string Kind { get; set; } = nameof(AssignmentKind.Regular);
+    public DateTime? GradingPeriodDate { get; set; }
     public Guid SubjectId { get; set; }
     public string SubjectName { get; set; } = "";
     public DateTime? DueAt { get; set; }

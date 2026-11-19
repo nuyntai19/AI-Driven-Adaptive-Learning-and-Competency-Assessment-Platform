@@ -14,9 +14,10 @@ public static class LearningPathInsights
         var nodes = await LearningPathV4Data.NodesAsync(db, center, student, subject, classId, ct);
         var ids = nodes.Select(n => n.NodeId).ToList();
         var since = now.AddDays(-30);
-        var attempts = await db.Attempts.AsNoTracking().Include(a => a.Question).Where(a => a.CenterId == center &&
-            a.StudentId == student && a.Question.SubjectId == subject && ids.Contains(a.Question.PrimaryTopicNodeId) &&
-            !a.Skipped && a.CreatedAt >= since).ToListAsync(ct);
+        var attempts = await Assignments.ExamResultVisibility.WithVisibleResults(db,
+            db.Attempts.AsNoTracking().Include(a => a.Question).Where(a => a.CenterId == center &&
+                a.StudentId == student && a.Question.SubjectId == subject && ids.Contains(a.Question.PrimaryTopicNodeId) &&
+                !a.Skipped && a.CreatedAt >= since)).ToListAsync(ct);
         var attemptIds = attempts.Select(a => a.AttemptId).ToList();
         var analyses = await db.ReasoningAnalyses.AsNoTracking().Where(a => a.CenterId == center && attemptIds.Contains(a.AttemptId)).ToListAsync(ct);
         var analysis = analyses.ToDictionary(a => a.AttemptId);

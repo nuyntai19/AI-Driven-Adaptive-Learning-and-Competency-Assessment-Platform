@@ -201,10 +201,11 @@ function App() {
                 <Route path="/giao-vien/lop-hoc/:classId" element={<ClassProgressWorkspace actor="teacher" />} />
               </Route>
 
-              {/* Student Roster, Goals, Assignments Tracking & Reports */}
-              <Route element={<PermissionRoute anyOf={[permissions.studentsRead, permissions.dashboardsTeacherRead, permissions.classesRead]} />}>
+              {/* Student roster and academic reports share class and student read scope. */}
+              <Route element={<PermissionRoute allOf={[permissions.classesRead, permissions.studentsRead]} />}>
                 <Route path="/giao-vien/hoc-sinh" element={<TeacherStudentManagementView />} />
                 <Route path="/giao-vien/hoc-sinh/:studentId" element={<TeacherStudentManagementView />} />
+                <Route path="/giao-vien/bao-cao" element={<TeacherStudentManagementView key="reports" reports />} />
               </Route>
 
               {/* Question Bank & Question Authoring */}

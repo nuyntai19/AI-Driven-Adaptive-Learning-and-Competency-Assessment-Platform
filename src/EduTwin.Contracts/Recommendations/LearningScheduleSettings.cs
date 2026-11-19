@@ -44,5 +44,6 @@ public class ExamMilestoneDto
     public DateTime ExamAt { get; set; }
     public int TimeLimitMinutes { get; set; }
     public string Status { get; set; } = "Scheduled";
+    public Dictionary<string, byte> SupportDifficultyBySkill { get; set; } = new();
     public List<string> SupportSkillIds { get; set; } = new();
 }

@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
 using EduTwin.BLL.IdentityAndTenancy;
+using EduTwin.BLL.Assignments;
+using EduTwin.Contracts.Assignments;
 using EduTwin.BLL.Platform;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.Common;
@@ -40,17 +42,26 @@ public sealed class ActivityService(EduTwinDbContext db, ITenantContext tenant)
     {
         var user = tenant.UserId!.Value; var academic = Student || Teacher;
         var audit = db.AuthorizationAuditLogs.AsNoTracking();
-        if (Student) audit = audit.Where(a => a.TargetType == "StudentAssignmentResult" && a.TargetUserId == user);
+        if (Student)
+        {
+            var unreleased = db.StudentAssignmentProgresses.Where(p => p.StudentId == user && p.Assignment != null &&
+                (p.Assignment.Kind == AssignmentKind.Midterm || p.Assignment.Kind == AssignmentKind.Final) &&
+                (p.Assignment.ResultsPublishedAt == null || p.TeacherFinalReviewStatus != TeacherFinalReviewStatus.Approved));
+            audit = audit.Where(a => a.TargetType == "StudentAssignmentResult" && a.TargetUserId == user);
+            audit = db.Database.IsRelational()
+                ? audit.Where(a => !unreleased.Any(p => a.TargetId.StartsWith(EF.Functions.Collate(p.AssignmentId.ToString(), "utf8mb4_unicode_ci") + ":")))
+                : audit.Where(a => !unreleased.Any(p => a.TargetId.StartsWith(p.AssignmentId.ToString() + ":")));
+        }
         else if (Teacher)
         {
             // Older tenant tables use unicode_ci while GUID-to-string CAST may inherit
             // MySQL 8's 0900_ai_ci. Pin only the computed prefix, preserving stored rows,
             // the tenant/ownership predicate and the audit column's existing indexes.
             audit = db.Database.IsRelational()
-                ? audit.Where(a => a.TargetType == "StudentAssignmentResult"
+                ? audit.Where(a => (a.TargetType == "StudentAssignmentResult" || a.TargetType == "Assignment")
                     ? db.Assignments.Any(s => a.TargetId.StartsWith(EF.Functions.Collate(s.AssignmentId.ToString(), "utf8mb4_unicode_ci")) && db.Classes.Any(c => c.ClassId == s.ClassId && c.TeacherId == user))
                     : a.ActorUserId == user && (a.TargetType == "Curriculum" || a.TargetType == "KnowledgeNode" || a.TargetType == "KnowledgeEdge" || a.TargetType == "Class"))
-                : audit.Where(a => a.TargetType == "StudentAssignmentResult"
+                : audit.Where(a => (a.TargetType == "StudentAssignmentResult" || a.TargetType == "Assignment")
                     ? db.Assignments.Any(s => a.TargetId.StartsWith(s.AssignmentId.ToString()) && db.Classes.Any(c => c.ClassId == s.ClassId && c.TeacherId == user))
                     : a.ActorUserId == user && (a.TargetType == "Curriculum" || a.TargetType == "KnowledgeNode" || a.TargetType == "KnowledgeEdge" || a.TargetType == "Class"));
         }
@@ -96,14 +107,15 @@ public sealed class ActivityService(EduTwinDbContext db, ITenantContext tenant)
                 : submissions.Where(p => db.Assignments.Any(s => s.AssignmentId == p.AssignmentId && db.Classes.Any(c => c.ClassId == s.ClassId && c.TeacherId == user)));
             result.Add(submissions.Select(p => new Row { Source = "Assessment", Id = "submission:" + p.ProgressId.ToString(), At = p.CompletedAt!.Value,
                 Actor = p.StudentId, Action = "AssignmentSubmitted", TargetType = "StudentAssignmentResult", TargetId = p.AssignmentId.ToString() + ":" + p.StudentId.ToString() }));
-            var analyses = db.ReasoningAnalyses.AsNoTracking().Where(r => attempts.Any(a => a.AttemptId == r.AttemptId));
+            var gradedAttempts = Student ? ExamResultVisibility.WithVisibleResults(db, attempts) : attempts;
+            var analyses = db.ReasoningAnalyses.AsNoTracking().Where(r => gradedAttempts.Any(a => a.AttemptId == r.AttemptId));
             result.Add(analyses.Select(r => new Row { Source = "Assessment", Id = "analysis:" + r.AnalysisId.ToString(), At = r.CreatedAt,
                 Action = "AIAnalysisCompleted", TargetType = "Attempt", TargetId = r.AttemptId.ToString() }));
-            var histories = db.TeacherReviewHistories.AsNoTracking().Where(h => attempts.Any(a => a.AttemptId == h.AttemptId));
+            var histories = db.TeacherReviewHistories.AsNoTracking().Where(h => gradedAttempts.Any(a => a.AttemptId == h.AttemptId));
             result.Add(histories.Select(h => new Row { Source = "TeacherReview", Id = h.HistoryId.ToString(), At = h.CreatedAt, Actor = h.TeacherId,
                 Action = h.Decision, TargetType = "Attempt", TargetId = h.AttemptId.ToString(), Version = h.OverrideVersion.ToString(),
                 Reason = h.Note, PreviousScore = h.PreviousScore, NewScore = h.NewScore }));
-            var requests = db.StudentReviewRequests.AsNoTracking().Where(r => attempts.Any(a => a.AttemptId == r.AttemptId));
+            var requests = db.StudentReviewRequests.AsNoTracking().Where(r => gradedAttempts.Any(a => a.AttemptId == r.AttemptId));
             result.Add(requests.Select(r => new Row { Source = "ReviewRequest", Id = r.RequestId.ToString() + ":created", At = r.CreatedAt,
                 Actor = r.CreatedBy, Action = "ReviewRequestCreated", TargetType = "Attempt", TargetId = r.AttemptId.ToString(), Reason = r.StudentComment }));
             result.Add(requests.Where(r => r.ResolvedAt != null).Select(r => new Row { Source = "ReviewRequest", Id = r.RequestId.ToString() + ":resolved", At = r.ResolvedAt!.Value,

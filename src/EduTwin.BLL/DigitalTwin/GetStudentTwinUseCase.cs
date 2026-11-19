@@ -94,6 +94,14 @@ public sealed class GetStudentTwinUseCase : IGetStudentTwinUseCase
                     at.Question.SubjectId == subjectId && at.AttemptId == a.AttemptId))
             .Select(a => a.AttemptId).ToListAsync(cancellationToken)).ToHashSet();
 
+        var latestIds = twins.Values.Where(t => t.LastAttemptId.HasValue).Select(t => t.LastAttemptId!.Value).ToList();
+        var uniqueAttempts = _dbContext.Attempts.AsNoTracking().Where(a => a.CenterId == centerId &&
+            a.StudentId == studentId && a.AssignmentId != null && latestIds.Contains(a.AttemptId));
+        var visibleAttempts = Assignments.ExamResultVisibility.WithVisibleResults(_dbContext, uniqueAttempts);
+        var hiddenAttempts = latestIds.Count == 0 ? new HashSet<ulong>() : (await uniqueAttempts
+            .Where(a => !visibleAttempts.Any(visible => visible.AttemptId == a.AttemptId))
+            .Select(a => a.AttemptId).ToListAsync(cancellationToken)).ToHashSet();
+
         var topicDtos = activeTopics.Select(t =>
         {
             twins.TryGetValue(t.NodeId, out var kt);
@@ -103,8 +111,8 @@ public sealed class GetStudentTwinUseCase : IGetStudentTwinUseCase
                 TopicName = t.NodeName,
                 MasteryPercentage = kt?.MasteryPercentage ?? 0m,
                 EvidenceCount = kt?.EvidenceCount ?? 0u,
-                LastReasoningQuality = kt?.LastAttemptId is { } last && fallbackAttempts.Contains(last) ? null : kt?.LastReasoningQuality,
-                LastAttemptId = kt?.LastAttemptId?.ToString(CultureInfo.InvariantCulture)
+                LastReasoningQuality = kt?.LastAttemptId is { } last && (fallbackAttempts.Contains(last) || hiddenAttempts.Contains(last)) ? null : kt?.LastReasoningQuality,
+                LastAttemptId = kt?.LastAttemptId is { } recent && !hiddenAttempts.Contains(recent) ? recent.ToString(CultureInfo.InvariantCulture) : null
             };
         }).ToList();
 

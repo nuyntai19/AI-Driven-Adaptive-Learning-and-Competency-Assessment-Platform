@@ -1006,7 +1006,7 @@ public sealed class RecommendationsController : ControllerBase
     [V4LearningExceptionFilter]
     [ProducesResponseType(typeof(V4SessionEvaluationResultDto), StatusCodes.Status200OK)]
     [Authorize(Policy = "learning.attempts.submit")]
-    public async Task<IActionResult> EvaluateMissionRunV4([FromRoute] ulong sessionRunId, CancellationToken cancellationToken)
+    public async Task<IActionResult> EvaluateMissionRunV4([FromRoute] ulong sessionRunId, CancellationToken cancellationToken, [FromQuery] bool confirmSubmission = false)
     {
         var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
         if (_v4Evaluator is null || _tenantContext is null || !_tenantContext.CenterId.HasValue || !_tenantContext.UserId.HasValue)
@@ -1014,7 +1014,7 @@ public sealed class RecommendationsController : ControllerBase
             return StatusCode(StatusCodes.Status403Forbidden, CreateProblemDetails(StatusCodes.Status403Forbidden, "https://edutwin.local/problems/forbidden", "Không có quyền", "Tenant not resolved", traceId, ErrorCodes.ForbiddenResource));
         }
 
-        var result = await _v4Evaluator.EvaluateMissionRunAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, sessionRunId, cancellationToken);
+        var result = await _v4Evaluator.EvaluateMissionRunAsync(_tenantContext.CenterId.Value, _tenantContext.UserId.Value, sessionRunId, cancellationToken, confirmSubmission);
         return Ok(result);
     }
 

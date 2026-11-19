@@ -9,6 +9,35 @@ import { useModalAccessibility } from "../utils/useModalAccessibility";
 import { useAuthStore } from "../stores/authStore";
 import { loginPathFor } from "../auth/loginPortal";
 
+function SecurityPasswordField({ label, value, onChange, current = false }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  current?: boolean;
+}) {
+  const id = React.useId();
+  const [visible, setVisible] = useState(false);
+  return <div>
+    <label htmlFor={id} className="mb-1 block text-xs font-semibold text-gray-700 dark:text-gray-300">{label} *</label>
+    <div className="relative">
+      <input
+        id={id}
+        type={visible ? "text" : "password"}
+        autoComplete={current ? "current-password" : "new-password"}
+        required
+        minLength={current ? undefined : 12}
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        className="w-full rounded-lg border py-2 pl-3 pr-16 text-sm dark:border-gray-600 dark:bg-gray-700"
+      />
+      <button type="button" aria-controls={id} aria-label={`${visible ? "Ẩn" : "Hiện"} ${label.toLowerCase()}`}
+        className="absolute inset-y-0 right-0 rounded-r-lg px-3 text-xs font-semibold" onClick={() => setVisible(previous => !previous)}>
+        {visible ? "Ẩn" : "Hiện"}
+      </button>
+    </div>
+  </div>;
+}
+
 interface PlatformSecurityModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -207,48 +236,10 @@ export const PlatformSecurityModal: React.FC<PlatformSecurityModalProps> = ({
           <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
             Đổi Mật Khẩu Cá Nhân
           </h4>
-          <div>
-            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-              Mật khẩu hiện tại *
-            </label>
-            <input
-              type="password"
-              required
-              placeholder="••••••••••••"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Mật khẩu mới (≥12 ký tự) *
-              </label>
-              <input
-                type="password"
-                required
-                minLength={12}
-                placeholder="••••••••••••"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Xác nhận mật khẩu mới *
-              </label>
-              <input
-                type="password"
-                required
-                minLength={12}
-                placeholder="••••••••••••"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600"
-              />
-            </div>
+          <SecurityPasswordField label="Mật khẩu hiện tại" current value={currentPassword} onChange={setCurrentPassword} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SecurityPasswordField label="Mật khẩu mới (≥12 ký tự)" value={newPassword} onChange={setNewPassword} />
+            <SecurityPasswordField label="Xác nhận mật khẩu mới" value={confirmPassword} onChange={setConfirmPassword} />
           </div>
           <div className="flex justify-end pt-1">
             <button

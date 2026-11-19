@@ -130,7 +130,7 @@ public sealed partial class LearningPathV4Planner
             Title = $"Thi thử bấm giờ · {selected.Count} kỹ năng", Purpose = "IndependentCheck", IsMilestoneExam = true, IsProbe = true,
             QuestionCount = (uint)selected.Count * 5, EstimatedMinutes = (uint)selected.Count * 10, TimeLimitMinutes = (uint)selected.Count * 10,
             ActivityTypes = ["IndependentCheck"], SelectionReason = "Thi thử phạm vi vừa với quỹ học trong ngày, dùng câu mới và không gợi ý. Đây là bài tổng hợp nội bộ, chưa phải đề thi đã hiệu chuẩn. Kết quả sẽ sinh rèn lại theo từng kỹ năng." };
-        plan.Milestones.Add(new() { Order = (uint)plan.Milestones.Count + 1, Title = "Thi thử tổng hợp", SkillIds = selected,
+        plan.Milestones.Add(new() { Order = (uint)plan.Milestones.Count + 1, Title = "Thi thử tự luyện", SkillIds = selected,
             OutcomeDescription = "Làm bài tổng hợp có giới hạn thời gian, sau đó ưu tiên vá lỗ hổng.", Missions = [mock] });
     }
 
@@ -156,22 +156,45 @@ public sealed partial class LearningPathV4Planner
                 Status = row?.Status == ProgressStatus.Completed ? "PendingGrading" :
                     assignment.Status == AssignmentStatus.Closed && assignment.UpdatedAt < assignment.ExamAt ? "Cancelled" :
                     assignment.Status == AssignmentStatus.Closed || (assignment.DueAt ?? assignment.ExamAt.Value.AddMinutes(assignment.TimeLimitMinutes ?? 0)) < Now ? "Missed" : "Scheduled" };
-            if (row?.Status == ProgressStatus.Completed)
+            var termExam = Assignments.ExamResultVisibility.IsTermExam(assignment.Kind);
+            if (row?.Status == ProgressStatus.Completed && (!termExam ||
+                assignment.ResultsPublishedAt.HasValue && row.TeacherFinalReviewStatus == TeacherFinalReviewStatus.Approved))
             {
                 var attempts = await db.Attempts.AsNoTracking().Include(a => a.Question).Where(a => a.CenterId == center && a.StudentId == student &&
                     a.AssignmentId == assignment.AssignmentId).ToListAsync(ct);
                 var ids = attempts.Select(a => a.AttemptId).ToList();
                 var analyses = await db.ReasoningAnalyses.AsNoTracking().Where(a => a.CenterId == center && ids.Contains(a.AttemptId)).ToListAsync(ct);
-                var settled = attempts.Count > 0 && attempts.All(a => a.Status == AttemptStatus.Completed && a.IsCorrect.HasValue) &&
+                var byAttempt = analyses.ToDictionary(a => a.AttemptId);
+                var settled = attempts.Count > 0 && attempts.All(a => a.Status == AttemptStatus.Completed &&
+                    (a.IsCorrect.HasValue || a.Skipped || byAttempt.GetValueOrDefault(a.AttemptId)?.OverrideIsCorrect.HasValue == true)) &&
                     !analyses.Any(a => a.NeedsTeacherReview && a.ReviewDecision == null);
                 if (settled)
                 {
                     exam.Status = "Completed";
                     var voided = await db.AssignmentQuestions.AsNoTracking().Where(q => q.CenterId == center && q.AssignmentId == assignment.AssignmentId && q.IsVoided)
                         .Select(q => q.QuestionId).ToListAsync(ct);
-                    exam.SupportSkillIds = attempts.Where(a => allowed.Contains(a.Question.PrimaryTopicNodeId) && !voided.Contains(a.QuestionId))
-                        .GroupBy(a => a.Question.PrimaryTopicNodeId).Where(g => g.Count(a => analyses.FirstOrDefault(r => r.AttemptId == a.AttemptId)?.OverrideIsCorrect ?? a.IsCorrect ?? false) / (decimal)g.Count() < .8m)
-                        .Select(g => g.Key.ToString()).ToList();
+                    var bySkill = attempts.Where(a => allowed.Contains(a.Question.PrimaryTopicNodeId) && !voided.Contains(a.QuestionId))
+                        .GroupBy(a => a.QuestionId).Select(g => g.OrderByDescending(a => a.CreatedAt).ThenByDescending(a => a.AttemptId).First())
+                        .GroupBy(a => a.Question.PrimaryTopicNodeId)
+                        .Select(g =>
+                        {
+                            var weak = g.Where(a =>
+                            {
+                                var review = byAttempt.GetValueOrDefault(a.AttemptId);
+                                if (a.Skipped || (review?.OverrideIsCorrect ?? a.IsCorrect) == false) return true;
+                                var quality = review?.OverrideReasoningQuality ?? (review?.IsFallback == true ? null : review?.ReasoningQuality);
+                                var score = review?.OverrideAwardedScore ?? a.AwardedScore;
+                                if (termExam && score.HasValue && a.Question.MaxScore > 0m &&
+                                    score.Value < a.Question.MaxScore * .8m) return true;
+                                return termExam && a.Question.ReasoningRequired && quality is < 70m;
+                            }).ToList();
+                            return (Skill: g.Key.ToString(), Weak: weak, Rate: weak.Count / (decimal)g.Count());
+                        }).Where(g => g.Rate > .2m).OrderByDescending(g => g.Rate).ThenBy(g => g.Skill).ToList();
+                    exam.SupportSkillIds = bySkill.Select(g => g.Skill).ToList();
+                    if (termExam)
+                        exam.SupportDifficultyBySkill = bySkill.ToDictionary(g => g.Skill, g =>
+                            (byte)Math.Clamp((int)Math.Round(g.Weak.Average(a => a.Question.Difficulty), MidpointRounding.AwayFromZero)
+                                - (g.Rate >= .5m ? 1 : 0), 1, 5));
                 }
             }
             result.Add(exam);
@@ -184,14 +207,23 @@ public sealed partial class LearningPathV4Planner
     {
         foreach (var exam in exams.Where(e => e.Status == "Completed" && e.SupportSkillIds.Count > 0))
         {
-            var trigger = $"ClassExam:{exam.AssignmentId:N}:" + string.Join("-", exam.SupportSkillIds.Order());
-            if (trigger.Length > 150) trigger = trigger[..65] + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(trigger)))[..20];
-            if (await db.PathDecisions.AnyAsync(d => d.CenterId == center && d.LearningPathId == path.LearningPathId && d.TriggerType == trigger, ct)) continue;
+            var termExam = exam.Kind is nameof(AssignmentKind.Midterm) or nameof(AssignmentKind.Final);
+            var trigger = $"ClassExam:{exam.AssignmentId:N}:";
+            var examLabel = exam.Kind == nameof(AssignmentKind.Midterm) ? "giữa kỳ" : "cuối kỳ";
+            var recorded = (await db.PathDecisions.AsNoTracking().Where(d => d.CenterId == center &&
+                d.LearningPathId == path.LearningPathId && d.TriggerType.StartsWith(trigger))
+                .Select(d => d.TriggerType).ToListAsync(ct)).ToHashSet();
             var map = await LearningPathV4Data.MapAsync(db, center, student, path.SubjectId, classId, Now, ct);
             foreach (var skillId in exam.SupportSkillIds)
             {
+                var decisionKey = trigger + skillId;
+                if (recorded.Contains(decisionKey) || plan.Milestones.SelectMany(m => m.Missions)
+                    .Any(m => m.SourceExamAssignmentId == exam.AssignmentId && m.SkillId == skillId)) continue;
                 var skill = map.Skills.FirstOrDefault(s => s.SkillId == skillId);
                 if (skill == null) continue;
+                var pool = await LearningPathV4Data.QuestionsAsync(db, center, student, path.SubjectId, new[] { ulong.Parse(skillId) }, classId, ct);
+                var size = Math.Min((uint)pool.Count, Math.Min(6, plan.AvailableMinutesPerDay / 2));
+                if (size == 0) continue;
                 var milestone = plan.Milestones.FirstOrDefault(m => m.SkillIds.Contains(skillId));
                 if (milestone == null)
                 {
@@ -200,11 +232,12 @@ public sealed partial class LearningPathV4Planner
                     plan.Milestones.Add(milestone);
                 }
                 var existingRepair = milestone.Missions.Where(m => m.IsRepair).Select(m => m.MissionId).ToHashSet();
-                if (path.Sessions.Any(s => existingRepair.Contains(s.SessionId.ToString()) && s.Status is not (LearningPathSessionStatus.Completed or LearningPathSessionStatus.Skipped))) continue;
-                var pool = await LearningPathV4Data.QuestionsAsync(db, center, student, path.SubjectId, new[] { ulong.Parse(skillId) }, classId, ct);
-                var size = Math.Min((uint)pool.Count, Math.Min(6, plan.AvailableMinutesPerDay / 2));
+                if (!termExam && path.Sessions.Any(s => existingRepair.Contains(s.SessionId.ToString()) && s.Status is not (LearningPathSessionStatus.Completed or LearningPathSessionStatus.Skipped))) continue;
                 var repair = new ProposedMissionDto { MissionId = Guid.NewGuid().ToString(), SkillId = skillId,
-                    Title = $"Rèn lại sau bài thi: {skill.SkillName}", Purpose = "Practice", IsRepair = true, CanStart = size > 0,
+                    Title = termExam ? $"Ôn tập {examLabel}: {skill.SkillName}" : $"Rèn lại sau bài thi: {skill.SkillName}",
+                    SourceExamAssignmentId = termExam ? exam.AssignmentId : null,
+                    TargetDifficulty = termExam ? exam.SupportDifficultyBySkill.GetValueOrDefault(skillId, (byte)3) : null,
+                    Purpose = "Practice", IsRepair = true,
                     ActivityTypes = ["Practice"], QuestionCount = size, EstimatedMinutes = Math.Max(1, size) * 2,
                     SelectionReason = $"Kết quả đã chấm của {exam.Title} cho thấy phần này cần củng cố. Các phần độc lập vẫn tiếp tục học được." };
                 milestone.Missions.Insert(0, repair);
@@ -213,11 +246,11 @@ public sealed partial class LearningPathV4Planner
                     Title = repair.Title, Objective = "Practice", Rationale = repair.SelectionReason, PhaseNumber = milestone.Order,
                     SessionOrder = (uint)plan.Milestones.SelectMany(m => m.Missions).Count(), PolicyVersion = LearningPathV4Data.Policy,
                     CreatedAt = Now, UpdatedAt = Now, RowVersion = 1 });
+                db.PathDecisions.Add(new PathDecision { CenterId = center, LearningPathId = path.LearningPathId, TriggerType = decisionKey,
+                    DecisionSummary = $"Đã thêm bài ôn {skill.SkillName} từ kết quả {exam.Title}.",
+                    ReasonCodes = JsonSerializer.SerializeToDocument(new[] { "CLASS_EXAM_TARGETED_REPAIR" }),
+                    PolicyVersion = LearningPathV4Data.Policy, CreatedAt = Now, UpdatedAt = Now, RowVersion = 1 });
             }
-            db.PathDecisions.Add(new PathDecision { CenterId = center, LearningPathId = path.LearningPathId, TriggerType = trigger,
-                DecisionSummary = $"Đã đọc kết quả {exam.Title}; ưu tiên rèn lại {exam.SupportSkillIds.Count} phần cần hỗ trợ, không khóa toàn bộ lộ trình.",
-                ReasonCodes = JsonSerializer.SerializeToDocument(new[] { "CLASS_EXAM_TARGETED_REPAIR" }),
-                PolicyVersion = LearningPathV4Data.Policy, CreatedAt = Now, UpdatedAt = Now, RowVersion = 1 });
         }
     }
 }

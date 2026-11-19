@@ -12,8 +12,12 @@ namespace EduTwin.BLL.Recommendations.Services;
 /// <summary>Derives outcomes from issued submissions and the canonical evidence pipeline, never client scores.</summary>
 public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider clock) : ILearningPathV4Evaluator
 {
+    internal static bool RequiresSubmissionConfirmation(LearningPathSessionRun run) =>
+        run.PolicySnapshot?.RootElement.TryGetProperty("isPlacement", out var flag) == true &&
+        flag.ValueKind == JsonValueKind.True;
+
     public async Task<V4SessionEvaluationResultDto> EvaluateMissionRunAsync(Guid centerId, Guid studentId, ulong sessionRunId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, bool confirmSubmission = true)
     {
         var now = clock.GetUtcNow().UtcDateTime;
         await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -45,6 +49,12 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
         var allDone = activities.Count > 0 && activities.All(a => a.Status is "Completed" or "Submitted");
         var result = new V4SessionEvaluationResultDto { SessionRunId = sessionRunId, SessionId = run.SessionId,
             TotalActivities = (uint)activities.Count, CompletedActivities = (uint)activities.Count(a => a.Status is "Completed" or "Submitted"), EvaluatedAt = now };
+        if (allDone && run.Status == SessionRunStatus.InProgress && RequiresSubmissionConfirmation(run) && !confirmSubmission &&
+            (LearningAssessmentPolicy.ExpiresAt(run.PolicySnapshot, run.StartedAt) is not { } deadline || now < deadline))
+        {
+            result.Outcome = "AwaitingSubmission";
+            return result;
+        }
         string reason;
         if (!allDone && LearningAssessmentPolicy.ExpiresAt(run.PolicySnapshot, run.StartedAt) is { } expiry && now >= expiry)
         {
@@ -217,6 +227,6 @@ public sealed class LearningPathV4Evaluator(EduTwinDbContext db, TimeProvider cl
             ?? throw new KeyNotFoundException("Không tìm thấy bài làm.");
         if (!attempt.SessionRunId.HasValue) throw new InvalidOperationException("Bài làm không thuộc nhiệm vụ.");
         // TeacherApprove/TeacherOverride own grading. This adapter must never mutate append-only Attempt scores.
-        return await EvaluateMissionRunAsync(centerId, attempt.StudentId, attempt.SessionRunId.Value, cancellationToken);
+        return await EvaluateMissionRunAsync(centerId, attempt.StudentId, attempt.SessionRunId.Value, cancellationToken, confirmSubmission: false);
     }
 }

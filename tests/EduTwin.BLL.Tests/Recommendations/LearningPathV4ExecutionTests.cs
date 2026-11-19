@@ -7,6 +7,25 @@ namespace EduTwin.BLL.Tests.Recommendations;
 public sealed class LearningPathV4ExecutionTests
 {
     [Fact]
+    public async Task PlacementRun_AutomaticEvaluationWaitsForExplicitSubmission()
+    {
+        using var f = new LearningPathV4Fixture();
+        var mission = await f.Activate("Study", "101");
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId));
+        var stored = await f.Db.LearningPathSessionRuns.SingleAsync();
+        stored.PolicySnapshot = System.Text.Json.JsonSerializer.SerializeToDocument(new { isPlacement = true });
+        await f.Db.SaveChangesAsync();
+
+        await f.Execution.SubmitActivityAsync(f.Center, f.Student, run.Activities[0].ActivityRunId,
+            new SubmitActivityRequest { ClientSubmissionId = Guid.NewGuid(), FinalAnswer = "Read the lesson." });
+        Assert.Equal("AwaitingSubmission", (await f.Evaluator.EvaluateMissionRunAsync(
+            f.Center, f.Student, run.SessionRunId, confirmSubmission: false)).Outcome);
+        Assert.Equal("InProgress", (await f.Execution.GetMissionRunAsync(f.Center, f.Student, run.SessionId, run.SessionRunId)).Status);
+        Assert.Equal("ActivityOnlyCompleted", (await f.Evaluator.EvaluateMissionRunAsync(
+            f.Center, f.Student, run.SessionRunId, confirmSubmission: true)).Outcome);
+    }
+
+    [Fact]
     public async Task UnfinishedMissionConflict_IdentifiesOwnRun_AndCanResumeWithoutNewRun()
     {
         using var f = new LearningPathV4Fixture();

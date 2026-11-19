@@ -259,6 +259,18 @@ public sealed class TeacherReviewController : ControllerBase
         };
     }
 
+    [HttpPost("assignments/{assignmentId:guid}/publish-results")]
+    [Authorize(Policy = "twin.reasoning.override")]
+    public async Task<IActionResult> PublishExamResults(Guid assignmentId,
+        [FromServices] EduTwin.BLL.Assignments.PublishExamResultsUseCase publish, CancellationToken ct)
+    {
+        var traceId = Activity.Current?.Id ?? HttpContext.TraceIdentifier;
+        var result = await publish.ExecuteAsync(assignmentId, traceId, ct);
+        return result.Status == 200
+            ? Ok(new { resultsPublishedAt = result.PublishedAt })
+            : ProblemResponse(result.Status, "exam-results", "Chưa thể công bố kết quả", result.Error!, "EXAM_RESULTS_NOT_PUBLISHED", traceId);
+    }
+
     [HttpPost("assignments/{assignmentId:guid}/approve-result")]
     [Authorize(Policy = "twin.reasoning.override")]
     [ProducesResponseType(typeof(AssignmentFinalReviewResponse), StatusCodes.Status200OK)]

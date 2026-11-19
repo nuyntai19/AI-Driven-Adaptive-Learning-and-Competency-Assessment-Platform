@@ -2,6 +2,7 @@ using System.Globalization;
 using EduTwin.BLL.IdentityAndTenancy;
 using EduTwin.Contracts.AssessmentAndReasoning;
 using EduTwin.Contracts.IdentityAndTenancy;
+using EduTwin.BLL.Assignments;
 using EduTwin.DAL.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -108,6 +109,9 @@ public sealed class ListAttemptsUseCase : IListAttemptsUseCase
         var attempts = _dbContext.Attempts
             .AsNoTracking()
             .Where(attempt => attempt.CenterId == centerId);
+
+        if (role == UserRole.Student)
+            attempts = ExamResultVisibility.WithVisibleResults(_dbContext, attempts);
 
         if (targetStudentId.HasValue)
         {

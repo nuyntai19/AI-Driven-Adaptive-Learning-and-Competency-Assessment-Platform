@@ -82,6 +82,10 @@ public sealed class GetAttemptFeedbackUseCase : IGetAttemptFeedbackUseCase
             }
         }
 
+        if (currentUserRole == nameof(UserRole.Student) && attempt.AssignmentId is { } examId &&
+            await EduTwin.BLL.Assignments.ExamResultVisibility.IsEmbargoedAsync(_dbContext, centerId, examId, attempt.StudentId, cancellationToken))
+            return AttemptFeedbackResult.NotFound();
+
         // Load ReasoningAnalysis with teacher user info
         var analysis = await _dbContext.ReasoningAnalyses.AsNoTracking()
             .Include(ra => ra.OverriddenByUser)

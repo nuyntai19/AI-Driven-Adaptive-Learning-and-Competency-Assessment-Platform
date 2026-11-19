@@ -93,10 +93,12 @@ public sealed class NotificationLifecycleTests
         Assert.Single((await service.RepliesAsync(sent.MessageId, new(), default)).Data!.Items);
         await using var foreign = f.Context(f.ForeignTeacher); Assert.Equal(ErrorCodes.ResourceNotFound, (await f.Service(foreign, f.ForeignTeacher).RepliesAsync(sent.MessageId, new(), default)).ErrorCode);
         var second = (await service.SendAsync(NotificationManualTests.SendRequest(draft, (await service.PreviewAsync(draft, default)).Data!.Token), default)).Data!;
-        Assert.True(await new NotificationDispatcher(rd, f.Clock).DispatchAsync((await rd.NotificationEvents.SingleAsync(e => e.MessageId == second.MessageId)).EventId));
+        var secondEvent = await rd.NotificationEvents.SingleAsync(e => e.MessageId == second.MessageId);
+        Assert.True(await new NotificationDispatcher(rd, f.Clock).DispatchAsync(secondEvent.EventId));
         (await db.Classes.SingleAsync()).Status = ClassStatus.Archived; await db.SaveChangesAsync();
-        var secondId = (await inbox.ListAsync(new(), default)).Data!.Items.First().DeliveryId;
-        Assert.Equal(ErrorCodes.ForbiddenResource, (await inbox.ReplyAsync(secondId, new() { ClientReplyId = Guid.NewGuid(), Body = "Lớp đã đóng" }, default)).ErrorCode);
+        var secondId = await rd.NotificationDeliveries.Where(d => d.EventId == secondEvent.EventId && d.UserId == student.UserId)
+            .Select(d => d.DeliveryId).SingleAsync();
+        Assert.Equal(ErrorCodes.ForbiddenResource, (await inbox.ReplyAsync(secondId.ToString(System.Globalization.CultureInfo.InvariantCulture), new() { ClientReplyId = Guid.NewGuid(), Body = "Lớp đã đóng" }, default)).ErrorCode);
     }
 
     [Fact]

@@ -42,6 +42,8 @@ const SUMMARY_TILES: { id: ProgressStatus; label: string; tone: string }[] = [
 
 const kindLabel = (kind?: string) =>
   kind === "Midterm" ? "Thi giữa kỳ" : kind === "Final" ? "Thi cuối kỳ" : kind === "MockExam" ? "Thi thử" : "Bài tập";
+const isExam = (item: StudentAssignmentListItemDto) => item.kind === "Midterm" || item.kind === "Final" || item.kind === "MockExam";
+const EMPTY_ASSIGNMENTS: StudentAssignmentListItemDto[] = [];
 
 const PILL = "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold leading-4";
 
@@ -60,6 +62,7 @@ export const StudentAssignmentsPage: React.FC = () => {
   const history = searchParams.get("history") === "true";
 
   const [statusFilter, setStatusFilter] = useState<ProgressStatus | "">("");
+  const [assignmentView, setAssignmentView] = useState<"regular" | "exams">("regular");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [ignoreSubjectFilter, setIgnoreSubjectFilter] = useState<boolean>(false);
 
@@ -75,24 +78,26 @@ export const StudentAssignmentsPage: React.FC = () => {
   const currentSubjectName = currentSubject?.subjectName || "";
 
   // The whole list is loaded once so the status tiles can count every state; the status filter is applied locally.
-  const { data: response, isLoading, isError, error, refetch } = useStudentAssignments({
+  const { data: rawAssignments = EMPTY_ASSIGNMENTS, isLoading, isError, error, refetch } = useStudentAssignments({
     subjectId: (!ignoreSubjectFilter && selectedSubjectId) ? selectedSubjectId : undefined,
     classId: !ignoreSubjectFilter ? searchParams.get("classId") || undefined : undefined,
     history,
     pageSize: 100,
   });
 
-  const rawAssignments = useMemo(() => response?.data || [], [response]);
+  const examCount = rawAssignments.filter(isExam).length;
+  const viewAssignments = useMemo(() => rawAssignments.filter(item => isExam(item) === (assignmentView === "exams")),
+    [rawAssignments, assignmentView]);
 
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    rawAssignments.forEach((a) => { counts[a.progress.status] = (counts[a.progress.status] || 0) + 1; });
+    viewAssignments.forEach((a) => { counts[a.progress.status] = (counts[a.progress.status] || 0) + 1; });
     return counts;
-  }, [rawAssignments]);
+  }, [viewAssignments]);
 
   // Filter by status and search term
   const filteredAssignments = useMemo(() => {
-    let result = statusFilter ? rawAssignments.filter((a) => a.progress.status === statusFilter) : [...rawAssignments];
+    let result = statusFilter ? viewAssignments.filter((a) => a.progress.status === statusFilter) : viewAssignments;
 
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
@@ -105,7 +110,7 @@ export const StudentAssignmentsPage: React.FC = () => {
     }
 
     return result;
-  }, [rawAssignments, statusFilter, searchTerm]);
+  }, [viewAssignments, statusFilter, searchTerm]);
 
   // Group into a timeline: overdue first, then by due date, submitted work last.
   const timelineGroups = useMemo<TimelineGroup[]>(() => {
@@ -204,6 +209,17 @@ export const StudentAssignmentsPage: React.FC = () => {
           </button>
         ) : null}
       </header>
+
+      <div role="group" aria-label="Loại bài" className="flex w-fit max-w-full flex-wrap gap-1 rounded-2xl border border-[var(--student-border)] bg-[var(--student-surface)] p-1">
+        {(["regular", "exams"] as const).map(view => (
+          <button key={view} type="button" aria-pressed={assignmentView === view}
+            onClick={() => { setAssignmentView(view); setStatusFilter(""); }}
+            className={`rounded-full px-3.5 py-2 text-sm font-semibold ${assignmentView === view ? "st-nav-active" : "text-[var(--student-ink-secondary)] hover:bg-[var(--student-surface-subtle)]"}`}>
+            {view === "regular" ? "Bài tập thường" : "Bài kiểm tra"}
+            {!isLoading && !isError && <span className="ml-2 tabular-nums">{view === "regular" ? rawAssignments.length - examCount : examCount}</span>}
+          </button>
+        ))}
+      </div>
 
       {/* Status summary tiles (click to filter, click again to clear) */}
       {!isError && (
@@ -309,7 +325,7 @@ export const StudentAssignmentsPage: React.FC = () => {
             <Icon d={ICON_CHECK} className="h-5 w-5" />
           </span>
           <h3 className="text-sm font-bold text-[var(--student-ink)]">
-            {searchTerm || statusFilter ? "Không có bài phù hợp" : history ? "Chưa có bài tập trong lịch sử lớp học" : "Chưa có bài tập trong phạm vi đang xem"}
+            {searchTerm || statusFilter ? "Không có bài phù hợp" : assignmentView === "exams" ? "Chưa có bài kiểm tra trong phạm vi đang xem" : history ? "Chưa có bài tập trong lịch sử lớp học" : "Chưa có bài tập trong phạm vi đang xem"}
           </h3>
           <p className="mx-auto mt-1 max-w-sm text-xs text-[var(--student-muted)]">
             {searchTerm || statusFilter
@@ -386,7 +402,7 @@ export const StudentAssignmentsPage: React.FC = () => {
                               item.summary.teacherFinalReviewStatus === "Approved"
                                 ? <span className={`${PILL} bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300`}>GV đã duyệt</span>
                                 : <span className={`${PILL} bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300`}>GV chưa duyệt</span>
-                            ) : <span className={`${PILL} bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300`}>Đã xong</span>
+                            ) : <span className={`${PILL} bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300`}>{item.kind === "Midterm" || item.kind === "Final" ? "Chờ công bố điểm" : "Đã xong"}</span>
                           ) : isPastDue ? (
                             <span className={`${PILL} bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300`}>Quá hạn</span>
                           ) : isUrgent ? (

@@ -112,11 +112,21 @@ internal sealed class NotificationBusinessStager(EduTwinDbContext db, ITenantCon
                     var ae = db.Entry(a);
                     if (ae.State == EntityState.Added)
                         await Notice($"assignment-created:{a.AssignmentId}", "AssignmentCreated", "Giáo viên tạo bài tập", "Một bài tập mới đã được tạo; đây là metadata quản trị, không cấp quyền mở học liệu.", await Managers(ct), new("Administrative"), ct);
+                    var release = Changed(ae, nameof(a.ResultsPublishedAt)) && a.ResultsPublishedAt.HasValue;
+                    if (release)
+                    {
+                        var recipients = await db.StudentAssignmentProgresses.AsNoTracking().Where(p =>
+                            p.AssignmentId == a.AssignmentId && p.Status == ProgressStatus.Completed &&
+                            p.TeacherFinalReviewStatus == TeacherFinalReviewStatus.Approved).Select(p => p.StudentId).ToArrayAsync(ct);
+                        await Notice($"exam-results:{a.AssignmentId}", "ExamResultsPublished", "Đã công bố kết quả: " + Short(a.Title),
+                            "Giảng viên đã công bố kết quả kỳ thi. Mở bài thi để xem điểm và nhận xét.",
+                            recipients, new("HistoricalAssignment", a.ClassId, a.AssignmentId), ct);
+                    }
                     var publish = Changed(ae, nameof(a.Status)) && a.Status == AssignmentStatus.Published;
                     var close = Changed(ae, nameof(a.Status)) && a.Status == AssignmentStatus.Closed;
                     var update = ae.State == EntityState.Modified && a.Status == AssignmentStatus.Published &&
                         (Changed(ae, nameof(a.DueAt)) || Changed(ae, nameof(a.Instructions)));
-                    if (publish || close || update)
+                    if (publish || close && !release || update)
                     {
                         var kind = publish ? "AssignmentPublished" : close ? "AssignmentClosed" : "AssignmentUpdated";
                         await Notice($"{kind}:{a.AssignmentId}:{a.RowVersion}", kind, (publish ? "Bài tập mới: " : close ? "Đã đóng bài: " : "Cập nhật bài: ") + Short(a.Title),
@@ -136,7 +146,7 @@ internal sealed class NotificationBusinessStager(EduTwinDbContext db, ITenantCon
                         await Notice($"submitted:{p.AssignmentId}:{p.StudentId}:{p.ProgressId}", "AssignmentSubmitted", "Đã nhận bài nộp: " + Short(pa.Title),
                             "Học sinh đã nộp toàn bài, gồm cả câu bỏ qua nếu có. AI có thể vẫn đang xử lý; chưa phải kết quả đã chốt.", [pc.TeacherId],
                             new("TeacherWork", pc.ClassId, pa.AssignmentId, p.StudentId), ct);
-                    if (finalNow)
+                    if (finalNow && (!EduTwin.BLL.Assignments.ExamResultVisibility.IsTermExam(pa.Kind) || pa.ResultsPublishedAt.HasValue))
                     {
                         var approved = p.TeacherFinalReviewStatus == TeacherFinalReviewStatus.Approved;
                         await Notice($"final:{p.AssignmentId}:{p.StudentId}:{p.FinalReviewVersion}", approved ? "AssignmentResultApproved" : "AssignmentResultReopened",

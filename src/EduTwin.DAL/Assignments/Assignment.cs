@@ -18,6 +18,7 @@ public class Assignment : IMutableTenantAggregate
     public int? TimeLimitMinutes { get; set; }
     public AssignmentKind Kind { get; set; } = AssignmentKind.Regular;
     public DateTime? ExamAt { get; set; }
+    public DateTime? ResultsPublishedAt { get; set; }
     public AssignmentStatus Status { get; set; }
     public DateTime? PublishedAt { get; set; }
     public TargetSource TargetMode { get; set; } = TargetSource.WholeClass;

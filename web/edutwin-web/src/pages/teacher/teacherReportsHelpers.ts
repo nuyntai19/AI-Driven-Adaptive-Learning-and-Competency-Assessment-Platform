@@ -5,6 +5,8 @@ export interface StudentAssignmentRecord {
   resultStatus?: "Final" | "Provisional" | "Processing";
   assignmentId: string;
   title: string;
+  kind?: string;
+  gradingPeriodDate?: string | null;
   subjectId?: string | null;
   subjectName?: string;
   dueAt: string | null;
@@ -808,6 +810,13 @@ export async function downloadXlsx(workbook: any, filename: string) {
   return doDownload(workbook, filename);
 }
 
+export interface ClassReportExcelOptions {
+  from: string;
+  to: string;
+  selectedRegularIds: ReadonlySet<string>;
+  selectedStudentIds?: ReadonlySet<string>;
+}
+
 /**
  * Builds the complete class report workbook (.xlsx) with discrete columns and custom widths.
  */
@@ -815,10 +824,10 @@ export async function buildClassReportWorkbook(
   classInfo: ClassDto,
   students: StudentDto[],
   studentSummaries: Map<string, StudentAcademicSummary>,
-  studentGoalsMap: Map<string, StudentSubjectGoalDto[]>
+  options?: ClassReportExcelOptions,
 ) {
   const { buildClassReportWorkbook: doBuild } = await import("./teacherExcelReports");
-  return doBuild(classInfo, students, studentSummaries, studentGoalsMap);
+  return doBuild(classInfo, students, studentSummaries, options);
 }
 
 /**
@@ -828,10 +837,10 @@ export async function exportClassReportXlsx(
   classInfo: ClassDto,
   students: StudentDto[],
   studentSummaries: Map<string, StudentAcademicSummary>,
-  studentGoalsMap: Map<string, StudentSubjectGoalDto[]>
+  options?: ClassReportExcelOptions,
 ) {
   const { exportClassReportXlsx: doExport } = await import("./teacherExcelReports");
-  return doExport(classInfo, students, studentSummaries, studentGoalsMap);
+  return doExport(classInfo, students, studentSummaries, options);
 }
 
 /**
@@ -862,4 +871,30 @@ export async function exportStudentReportXlsx(
 ) {
   const { exportStudentReportXlsx: doExport } = await import("./teacherExcelReports");
   return doExport(student, classInfo, goals, subjectsMap, summary, teacherNote);
+}
+
+const schoolDate = new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" });
+const simulatedGradeGroups = ["Regular", "Midterm", "Final"] as const;
+export const maxRegularGrades = 4;
+
+export function filterReportPeriod(records: StudentAcademicSummary["records"], from: string, to: string) {
+  return records.filter(record => {
+    const date = record.gradingPeriodDate ? schoolDate.format(new Date(record.gradingPeriodDate)) : null;
+    return (!from || date != null && date >= from) && (!to || date != null && date <= to);
+  });
+}
+
+export function simulateSubjectGrade(records: StudentAcademicSummary["records"], selectedRegularIds: ReadonlySet<string>) {
+  const byGroup = simulatedGradeGroups.map(kind => {
+    const group = records.filter(record => record.kind === kind && (kind !== "Regular" || selectedRegularIds.has(record.assignmentId)));
+    const graded = group.filter(record => record.resultStatus === "Final" && record.score != null);
+    const sum = graded.reduce((total, record) => total + record.score!, 0);
+    return { graded: graded.length, total: group.length, sum, average: graded.length ? sum / graded.length : null };
+  });
+  const [regular, midterm, final] = byGroup;
+  const complete = regular.total > 0 && regular.total <= maxRegularGrades && midterm.total === 1 && final.total === 1 &&
+    byGroup.every(group => group.graded === group.total);
+  const score = complete ? Math.round(10 * (regular.sum + 2 * midterm.sum + 3 * final.sum) / (regular.total + 5)) / 10 : null;
+  return { byGroup, score, label: score == null ? "Chưa đủ dữ liệu"
+    : score >= 8 ? "Giỏi" : score >= 6.5 ? "Khá" : score >= 5 ? "Trung bình" : "Dưới trung bình" };
 }

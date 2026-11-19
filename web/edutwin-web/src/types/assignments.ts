@@ -51,6 +51,7 @@ export interface AssignmentTargetDto {
 }
 
 export interface AssignmentDto {
+  resultsPublishedAt?: string | null;
   kind?: string;
   examAt?: string | null;
   assignmentId: string;
@@ -180,6 +181,7 @@ export interface SubmitAssignmentResponseDto {
 }
 
 export interface StudentAssignmentDetailDto {
+  resultsPublishedAt?: string | null;
   kind?: string;
   examAt?: string | null;
   classId?: string | null;
@@ -212,6 +214,7 @@ export interface SaveAssignmentDraftRequest {
 }
 
 export interface StudentAssignmentListItemDto {
+  resultsPublishedAt?: string | null;
   kind?: string;
   examAt?: string | null;
   assignmentId: string;

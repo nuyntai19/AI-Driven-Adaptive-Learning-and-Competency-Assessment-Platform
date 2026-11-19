@@ -44,10 +44,11 @@ const teacherNavigationGroups: TeacherNavigationGroup[] = [
       {
         label: "Quản lý học sinh",
         to: "/giao-vien/hoc-sinh",
-        permissions: [permissions.studentsRead, permissions.dashboardsTeacherRead, permissions.classesRead],
-        permissionMode: "any",
+        permissions: [permissions.classesRead, permissions.studentsRead],
         match: (pathname) => pathname === "/giao-vien/hoc-sinh" || /^\/giao-vien\/hoc-sinh\/[^/]+/.test(pathname),
       },
+      { label: "Thống kê và báo cáo", to: "/giao-vien/bao-cao",
+        permissions: [permissions.classesRead, permissions.studentsRead], match: startsWith("/giao-vien/bao-cao") },
     ],
   },
   {

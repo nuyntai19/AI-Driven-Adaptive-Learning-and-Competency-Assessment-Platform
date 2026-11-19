@@ -214,11 +214,11 @@ export const CasioInlinePanel: React.FC<CasioInlinePanelProps> = ({ onInsertResu
 
       {/* Tab 2: CalcES Web Iframe (Giữ tùy chọn mô phỏng web nếu học sinh thích) */}
       {activeTab === "online" && (
-        <div className="flex flex-col flex-1 bg-[#121418]">
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-[#121418]">
           <iframe
             src="https://mathda.com/calculator/vi"
             title="Máy tính Casio fx-580VN X (CalcES)"
-            className="w-full flex-1 border-0 min-h-[500px]"
+            className="w-full min-h-[500px] flex-1 shrink-0 border-0"
             allow="camera; microphone; clipboard-write; clipboard-read"
           />
 
@@ -226,7 +226,7 @@ export const CasioInlinePanel: React.FC<CasioInlinePanelProps> = ({ onInsertResu
           {onInsertResult && (
             <div className="p-3 bg-[#16191f] border-t border-slate-700/80 flex items-center justify-between gap-2">
 
-              <div className="flex items-center gap-1.5 flex-1 min-w-[200px]">
+              <div className="flex min-w-0 flex-1 items-center gap-1.5">
                 <input
                   type="text"
                   value={manualInsertVal}

@@ -11,6 +11,7 @@ public class AssignmentConfiguration : IEntityTypeConfiguration<Assignment>
     {
         builder.Property(a => a.Kind).HasColumnName("assignment_kind").HasConversion<string>().HasColumnType("varchar(24)").HasDefaultValue(AssignmentKind.Regular);
         builder.Property(a => a.ExamAt).HasColumnName("exam_at").HasColumnType("datetime(6)");
+        builder.Property(a => a.ResultsPublishedAt).HasColumnName("results_published_at").HasColumnType("datetime(6)");
         builder.ToTable("assignments");
 
         // Primary Key

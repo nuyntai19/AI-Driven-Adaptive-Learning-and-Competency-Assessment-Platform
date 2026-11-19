@@ -422,6 +422,7 @@ const PracticePlayerPage = () => {
     [assignment?.questions]
   );
   const isAssignmentSubmitted = isAssignmentWorkSubmitted(assignment, isLocallySubmitted);
+  const awaitingExamResults = (assignment?.kind === "Midterm" || assignment?.kind === "Final") && !assignment.resultsPublishedAt;
   // A teacher review is a terminal AI state, not a reason to keep a waiting banner.
   useEffect(() => {
     if (aiBanner?.kind !== "waiting") return;
@@ -492,7 +493,7 @@ const PracticePlayerPage = () => {
   // Feedback for one finished question must not stop updates for the rest of the
   // submitted assignment. Poll one bounded detail request, not all question jobs.
   useEffect(() => {
-    if (!assignmentId || !isAssignmentSubmitted || areSubmittedAnalysesTerminal(assignmentQuestions)) return;
+    if (!assignmentId || awaitingExamResults || !isAssignmentSubmitted || areSubmittedAnalysesTerminal(assignmentQuestions)) return;
     let active = true;
     let failures = 0;
     let timer: ReturnType<typeof setTimeout>;
@@ -515,7 +516,7 @@ const PracticePlayerPage = () => {
     };
     timer = setTimeout(refresh, 5_000);
     return () => { active = false; clearTimeout(timer); };
-  }, [assignmentId, isAssignmentSubmitted, assignmentQuestions, refetchAssignment, queryClient, currentUser?.centerId, currentUser?.userId]);
+  }, [assignmentId, awaitingExamResults, isAssignmentSubmitted, assignmentQuestions, refetchAssignment, queryClient, currentUser?.centerId, currentUser?.userId]);
 
   // Assignment Timers:
   // - assignmentRemainingSeconds: absolute server deadline; stops in review mode.
@@ -685,7 +686,7 @@ const PracticePlayerPage = () => {
   const reviewFeedbackQuery = useQuery<AttemptFeedbackDataDto>({
     queryKey: ["attempt-feedback", currentUser?.centerId, currentUser?.userId, reviewAttemptId == null ? "none" : String(reviewAttemptId)],
     queryFn: () => getAttemptFeedback(reviewAttemptId!),
-    enabled: Boolean(assignmentId && reviewAttemptId),
+    enabled: Boolean(assignmentId && reviewAttemptId && !awaitingExamResults),
     initialData: immediateQuestionFeedback ?? undefined,
     retry: 1,
     refetchInterval: ({ state }) => ["PendingAnalysis", "Processing"].includes(state.data?.status ?? "") ? 3000 : false,
@@ -2174,6 +2175,8 @@ const PracticePlayerPage = () => {
             message: "⏱ Hết thời gian làm bài! Hệ thống đã tự động nộp bài làm của bạn. Các câu chưa làm đã được tự động bỏ qua.",
             action: null,
           });
+        } else if (awaitingExamResults) {
+          setAiBanner({ type: "info", message: "Đã nộp bài. Kết quả sẽ hiển thị sau khi giảng viên công bố.", action: null });
         } else if (lastJobId) {
           setPollingJobId(lastJobId);
           searchParams.set("analysisJobId", lastJobId);
@@ -3386,7 +3389,9 @@ const PracticePlayerPage = () => {
           <div className="flex flex-wrap items-center gap-2.5 min-w-0">
             {/* Timer / Countdown */}
             {isAssignmentSubmitted ? (
-              <AssignmentReviewReceipt {...submissionTiming} />
+              awaitingExamResults
+                ? <p role="status" className="rounded-xl border p-3 text-sm">Đã nộp bài. Chờ giảng viên công bố kết quả.</p>
+                : <AssignmentReviewReceipt {...submissionTiming} />
             ) : classReadOnly ? (
               <span className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 text-xs font-semibold text-amber-950 dark:text-amber-100">Chỉ xem bài đã lưu</span>
             ) : (

@@ -245,6 +245,8 @@ public static class LearningPathFollowUp
         {
             if (mission == null) continue;
             mission.SelectionReason = reason;
+            if (original?.SourceExamAssignmentId is { } examId && mission.IsRepair)
+                mission.SourceExamAssignmentId = examId;
             // New practice sets sit before the check so the route reads in learning order; reviews and checks go last.
             var checkIndex = checkMission == null ? -1 : milestone.Missions.IndexOf(checkMission);
             var sourceIndex = milestone.Missions.FindIndex(item => item.MissionId == original?.MissionId);

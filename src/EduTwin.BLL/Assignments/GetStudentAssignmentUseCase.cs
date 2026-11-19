@@ -111,13 +111,15 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
         var totalQuestionCount = assignmentQuestions.Count;
         var scorePerQuestion = totalQuestionCount > 0 ? 10.0m / totalQuestionCount : 0m;
 
+        var embargoed = ExamResultVisibility.IsTermExam(progress.Assignment.Kind) &&
+            (progress.Assignment.ResultsPublishedAt == null || progress.TeacherFinalReviewStatus != TeacherFinalReviewStatus.Approved);
         var questionsDto = assignmentQuestions.Select(aq =>
         {
             var latestAttempt = latestAttemptsByQuestion.TryGetValue(aq.QuestionId, out var att) ? att : null;
             var analysis = latestAttempt != null && analysesByAttemptId.TryGetValue(latestAttempt.AttemptId, out var foundAnalysis)
                 ? foundAnalysis
                 : null;
-            var isVoided = aq.IsVoided;
+            var isVoided = !embargoed && aq.IsVoided;
             var voidReason = aq.IsVoided ? aq.VoidReason : null;
             var voidedScore = aq.IsVoided ? scorePerQuestion : (decimal?)null;
 
@@ -141,11 +143,11 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                         Label = o.OptionLabel,
                         Text = o.OptionText
                     }).ToList(),
-                AttemptStatus = latestAttempt?.Status.ToString(),
+                AttemptStatus = embargoed && latestAttempt != null ? "PendingAnalysis" : latestAttempt?.Status.ToString(),
                 LatestAttempt = latestAttempt != null ? new StudentQuestionAttemptDto
                 {
                     AttemptId = latestAttempt.AttemptId.ToString(),
-                    Status = isVoided ? nameof(AttemptStatus.Completed) : latestAttempt.Status.ToString(),
+                    Status = embargoed ? "PendingAnalysis" : isVoided ? nameof(AttemptStatus.Completed) : latestAttempt.Status.ToString(),
                     FinalAnswer = latestAttempt.FinalAnswer,
                     AnswerDisplayLatex = latestAttempt.AnswerDisplayLatex,
                     ReasoningText = latestAttempt.ReasoningText,
@@ -154,8 +156,8 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                     AnswerChanges = latestAttempt.AnswerChanges,
                     Skipped = latestAttempt.Skipped,
                     SubmittedAt = latestAttempt.CreatedAt,
-                    IsCorrect = isVoided ? true : (analysis?.OverrideIsCorrect ?? latestAttempt.IsCorrect),
-                    AwardedScore = isVoided ? (aq.Question?.MaxScore ?? 10m) : (analysis?.OverrideAwardedScore ?? latestAttempt.AwardedScore),
+                    IsCorrect = embargoed ? null : isVoided ? true : (analysis?.OverrideIsCorrect ?? latestAttempt.IsCorrect),
+                    AwardedScore = embargoed ? null : isVoided ? (aq.Question?.MaxScore ?? 10m) : (analysis?.OverrideAwardedScore ?? latestAttempt.AwardedScore),
                     MaxScore = aq.Question?.MaxScore
                 } : null,
                 SubmittedAnswer = latestAttempt?.FinalAnswer,
@@ -163,7 +165,7 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
                 SubmittedReasoning = latestAttempt?.ReasoningText,
                 SubmittedAttemptId = latestAttempt?.AttemptId,
                 HasAttachment = latestAttempt != null && hasAttachmentSet.Contains(latestAttempt.AttemptId),
-                EffectiveIsCorrect = isVoided ? true : (analysis?.OverrideIsCorrect ?? latestAttempt?.IsCorrect),
+                EffectiveIsCorrect = embargoed ? null : isVoided ? true : (analysis?.OverrideIsCorrect ?? latestAttempt?.IsCorrect),
                 IsVoided = isVoided,
                 VoidReason = voidReason,
                 VoidedScore = voidedScore
@@ -257,6 +259,7 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             IsReadOnly = await StudentAssignmentScope.SuspendedAsync(_dbContext, centerId.Value, progress.Assignment.ClassId, cancellationToken),
             TimeLimitMinutes = progress.Assignment.TimeLimitMinutes,
             Kind = progress.Assignment.Kind.ToString(), ExamAt = progress.Assignment.ExamAt,
+            ResultsPublishedAt = embargoed ? null : progress.Assignment.ResultsPublishedAt,
             StartedAt = progress.StartedAt,
             IsSubmitted = isSubmitted,
             SubmittedAt = submittedAt,
@@ -272,7 +275,7 @@ public class GetStudentAssignmentUseCase : IGetStudentAssignmentUseCase
             },
             Questions = questionsDto,
             CanRetake = false,
-            Summary = await _resultCalculator.CalculateForSingleAssignmentAsync(centerId.Value, currentUserId.Value, assignmentId, cancellationToken),
+            Summary = embargoed ? null : await _resultCalculator.CalculateForSingleAssignmentAsync(centerId.Value, currentUserId.Value, assignmentId, cancellationToken),
             DraftAnswers = progress.Status != ProgressStatus.Completed && !string.IsNullOrWhiteSpace(progress.DraftAnswersJson)
                 ? DraftAnswersHelper.ParseDraft(progress.DraftAnswersJson).Answers
                 : null,

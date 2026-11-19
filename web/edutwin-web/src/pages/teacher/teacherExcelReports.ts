@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import type { ClassDto, StudentDto, StudentSubjectGoalDto } from "../../types/organization";
-import { assessmentLabel, isAcademicHighRisk } from "./teacherReportsHelpers.ts";
-import type { StudentAcademicSummary, StudentAssignmentRecord } from "./teacherReportsHelpers";
+import { assessmentLabel, filterReportPeriod, isAcademicHighRisk, simulateSubjectGrade } from "./teacherReportsHelpers.ts";
+import type { ClassReportExcelOptions, StudentAcademicSummary, StudentAssignmentRecord } from "./teacherReportsHelpers";
 
 export function downloadXlsx(wb: XLSX.WorkBook, filename: string) {
   const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
@@ -27,11 +27,35 @@ function visualProgressBar(percentage: number): string {
 
 export function buildClassReportWorkbook(
   classInfo: ClassDto,
-  students: StudentDto[],
+  classStudents: StudentDto[],
   studentSummaries: Map<string, StudentAcademicSummary>,
-  studentGoalsMap: Map<string, StudentSubjectGoalDto[]>
+  options?: ClassReportExcelOptions,
 ): XLSX.WorkBook {
   const wb = XLSX.utils.book_new();
+  const selectedIds = options?.selectedStudentIds;
+  const students = selectedIds ? classStudents.filter(student => selectedIds.has(student.studentId)) : classStudents;
+  const rows = [
+    ["STT", "Mã học sinh", "Họ và tên", "Lớp", "Điểm thường xuyên", "Điểm giữa kỳ", "Điểm cuối kỳ", "Điểm TB học kỳ (mô phỏng)"],
+    ...students.map((student, index) => {
+      const result = options && simulateSubjectGrade(
+        filterReportPeriod(studentSummaries.get(student.studentId)?.records ?? [], options.from, options.to),
+        options.selectedRegularIds,
+      );
+      const components = [0, 1, 2].map(groupIndex => {
+        const average = result?.byGroup[groupIndex].average;
+        return average == null ? "" : Number(average.toFixed(1));
+      });
+      return [index + 1, student.studentId, student.fullName, classInfo.className, ...components, result?.score ?? ""];
+    }),
+  ];
+  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  sheet["!cols"] = [6, 16, 28, 22, 22, 16, 16, 30].map(wch => ({ wch }));
+  sheet["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length - 1, c: rows[0].length - 1 } }) };
+  sheet["!views"] = [{ state: "frozen", xSplit: 3, ySplit: 1, topLeftCell: "D2", activeCell: "D2" }];
+  sheet["!rows"] = [{ hpt: 26 }, ...students.map(() => ({ hpt: 20 }))];
+  XLSX.utils.book_append_sheet(wb, sheet, "Bang_Diem_Lop");
+  if (selectedIds) return wb;
+
   const exportTime = new Date().toLocaleString("vi-VN");
 
   // Statistical aggregations
@@ -101,33 +125,6 @@ export function buildClassReportWorkbook(
   const pctYeu = Number(((countYeu / totalStudents) * 100).toFixed(1));
   const pctNoScore = Number(((countNoScore / totalStudents) * 100).toFixed(1));
 
-  // --- SHEET 1: Bảng Điểm & Tiến Độ Học Sinh Lớp ---
-  const rows: (string | number)[][] = [
-    [
-      "STT",
-      "Mã Học Sinh",
-      "Họ Và Tên",
-      "Tên Đăng Nhập",
-      "Khối Lớp",
-      "Lớp Học",
-      "Môn Phụ Trách",
-      "Tổng Bài Giao",
-      "Bài Đã Nộp",
-      "Bài Đang Làm",
-      "Chưa Làm / Quá Hạn",
-      "Tỷ Lệ Hoàn Thành (%)",
-      "Điểm Trung Bình",
-      "Điểm Cao Nhất",
-      "Điểm Thấp Nhất",
-      "Xếp Loại Học Lực",
-      "Điểm Mục Tiêu",
-      "Dự Báo AI",
-      "Đánh Giá Rủi Ro",
-      "Đánh Giá Sư Phạm",
-      "Trạng Thái Hoạt Động",
-    ],
-  ];
-
   const studentsNeedingSupport: {
     student: StudentDto;
     summary: StudentAcademicSummary;
@@ -135,42 +132,10 @@ export function buildClassReportWorkbook(
     action: string;
   }[] = [];
 
-  students.forEach((student, idx) => {
+  students.forEach(student => {
     const summary = studentSummaries.get(student.studentId);
-    const goals = studentGoalsMap.get(student.studentId) || [];
-    const mainGoal = goals.length > 0 ? goals[0] : null;
-
-    const completed = summary ? summary.completedCount : 0;
-    const inProgress = summary ? summary.inProgressCount : 0;
-    const pending = summary ? summary.notStartedCount + summary.overdueCount : 0;
-    const totalAssigned = summary ? summary.totalAssigned : 0;
     const compRate = summary ? Number(summary.completionRate.toFixed(1)) : 0;
-    const avgScore = summary && summary.averageScore !== null ? Number(summary.averageScore.toFixed(1)) : "";
-    const maxScore = summary && summary.maxScore !== null ? Number(summary.maxScore.toFixed(1)) : "";
-    const minScore = summary && summary.minScore !== null ? Number(summary.minScore.toFixed(1)) : "";
-
-    const classification =
-      summary && summary.averageScore !== null
-        ? summary.averageScore >= 9.0
-          ? "Xuất sắc"
-          : summary.averageScore >= 8.0
-          ? "Giỏi"
-          : summary.averageScore >= 6.5
-          ? "Khá"
-          : summary.averageScore >= 5.0
-          ? "Trung bình"
-          : "Cần củng cố"
-        : "Chưa có điểm";
-
-    const targetVal = mainGoal ? mainGoal.targetScore : "";
-    const predVal = mainGoal ? mainGoal.currentPredictedScore : "";
     const isHighRisk = isAcademicHighRisk(summary);
-    const riskLabel = assessmentLabel(summary);
-    const pedagogicalAssessment = isHighRisk
-      ? "Cần kèm cặp bổ trợ kiến thức hổng"
-      : compRate >= 80
-      ? "Chủ động hoàn thành bài tập tốt"
-      : "Cần duy trì tiến độ làm bài";
 
     if (summary && (isHighRisk || (summary.averageScore !== null && summary.averageScore < 6.5) || compRate < 60 || summary.overdueCount > 0)) {
       const reason = isHighRisk
@@ -190,67 +155,7 @@ export function buildClassReportWorkbook(
       studentsNeedingSupport.push({ student, summary, reason, action });
     }
 
-    rows.push([
-      idx + 1,
-      student.studentId,
-      student.fullName,
-      `@${student.username}`,
-      `Khối ${student.gradeLevel}`,
-      classInfo.className,
-      classInfo.subject?.subjectName || "Đa môn",
-      totalAssigned,
-      completed,
-      inProgress,
-      pending,
-      compRate,
-      avgScore,
-      maxScore,
-      minScore,
-      classification,
-      targetVal,
-      predVal,
-      riskLabel,
-      pedagogicalAssessment,
-      student.status === "Active" ? "Đang hoạt động" : "Tạm ngưng",
-    ]);
   });
-
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-
-  ws["!cols"] = [
-    { wch: 6 },   // STT
-    { wch: 14 },  // Mã Học Sinh
-    { wch: 25 },  // Họ Và Tên
-    { wch: 18 },  // Tên Đăng Nhập
-    { wch: 10 },  // Khối Lớp
-    { wch: 14 },  // Lớp Học
-    { wch: 18 },  // Môn Phụ Trách
-    { wch: 14 },  // Tổng Bài Giao
-    { wch: 12 },  // Bài Đã Nộp
-    { wch: 14 },  // Bài Đang Làm
-    { wch: 18 },  // Chưa Làm / Quá Hạn
-    { wch: 20 },  // Tỷ Lệ Hoàn Thành (%)
-    { wch: 16 },  // Điểm Trung Bình
-    { wch: 14 },  // Điểm Cao Nhất
-    { wch: 14 },  // Điểm Thấp Nhất
-    { wch: 18 },  // Xếp Loại Học Lực
-    { wch: 14 },  // Điểm Mục Tiêu
-    { wch: 14 },  // Dự Báo AI
-    { wch: 20 },  // Đánh Giá Rủi Ro
-    { wch: 34 },  // Đánh Giá Sư Phạm
-    { wch: 20 },  // Trạng Thái Hoạt Động
-  ];
-
-  // AutoFilter for interactive sorting and filtering in Excel
-  ws["!autofilter"] = {
-    ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length - 1, c: 20 } }),
-  };
-
-  // Freeze top header row and left 3 identifier columns (STT, Mã, Họ Tên)
-  ws["!views"] = [{ state: "frozen", xSplit: 3, ySplit: 1, topLeftCell: "D2", activeCell: "D2" }];
-  ws["!rows"] = [{ hpt: 26 }, ...students.map(() => ({ hpt: 20 }))];
-
-  XLSX.utils.book_append_sheet(wb, ws, "Bang_Diem_Lop");
 
   // --- SHEET 2: Báo Cáo Tổng Quan & Dashboard Lớp Học ---
   const summaryRows: (string | number)[][] = [
@@ -509,10 +414,11 @@ export function exportClassReportXlsx(
   classInfo: ClassDto,
   students: StudentDto[],
   studentSummaries: Map<string, StudentAcademicSummary>,
-  studentGoalsMap: Map<string, StudentSubjectGoalDto[]>
+  options?: ClassReportExcelOptions,
 ) {
-  const wb = buildClassReportWorkbook(classInfo, students, studentSummaries, studentGoalsMap);
-  const filename = `Bang_diem_lop_${classInfo.className}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  const wb = buildClassReportWorkbook(classInfo, students, studentSummaries, options);
+  const prefix = options?.selectedStudentIds ? "Bang_diem_hoc_sinh_da_chon" : "Bang_diem_lop";
+  const filename = `${prefix}_${classInfo.className}_${new Date().toISOString().slice(0, 10)}.xlsx`;
   downloadXlsx(wb, filename);
 }
 

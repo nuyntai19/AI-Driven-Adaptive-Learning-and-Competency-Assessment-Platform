@@ -250,6 +250,8 @@ export const StudentAssignmentDetailPage: React.FC = () => {
             </p>
           </div>
 
+          {isTermExam && isAssignmentFinished && !assignment.resultsPublishedAt &&
+            <p role="status" className="rounded-lg border p-3 text-sm">Đã nộp bài. Kết quả sẽ hiển thị sau khi giảng viên công bố.</p>}
           {/* Progress & Due date */}
           <div className="pt-3 border-t border-stone-100 dark:border-stone-800/80 space-y-1.5">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">

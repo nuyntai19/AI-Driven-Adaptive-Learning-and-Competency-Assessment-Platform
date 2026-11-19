@@ -260,10 +260,11 @@ export const submitActivity = async (
 };
 
 export const evaluateMissionRunV4 = async (
-  sessionRunId: number
+  sessionRunId: number,
+  confirmSubmission = false,
 ): Promise<import("../types/learningPath").V4SessionEvaluationResultDto> => {
   const response = await httpClient.post<import("../types/learningPath").V4SessionEvaluationResultDto>(
-    `/students/me/mission-runs/${sessionRunId}/evaluate-v4`
+    `/students/me/mission-runs/${sessionRunId}/evaluate-v4`, null, { params: { confirmSubmission } }
   );
   return response.data;
 };

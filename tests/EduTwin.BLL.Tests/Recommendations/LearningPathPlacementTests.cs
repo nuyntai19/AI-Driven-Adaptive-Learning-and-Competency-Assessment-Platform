@@ -17,7 +17,7 @@ public sealed class LearningPathPlacementTests
             new GeneratePathProposalRequest { SubjectId = f.English, GoalId = goal.GoalId });
     }
 
-    private static async Task<MissionRunDto> Complete(LearningPathV4Fixture f, ProposedMissionDto mission, int correct, bool review = false)
+    internal static async Task<MissionRunDto> Complete(LearningPathV4Fixture f, ProposedMissionDto mission, int correct, bool review = false)
     {
         var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId));
         for (var i = 0; i < run.Activities.Count; i++)
@@ -53,6 +53,12 @@ public sealed class LearningPathPlacementTests
         await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId);
         var dependent = proposal.Milestones.Last().Missions.Single();
         var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
+        Assert.False(agenda.Missions.Single(m => m.MissionId == dependent.MissionId).CanStart);
+        Assert.Equal("NotStarted", agenda.PlacementReport!.Skills.Single(s => s.SkillId == "103").Status);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(dependent.MissionId)));
+        foreach (var foundation in proposal.Milestones.Take(2))
+            await Complete(f, Assert.Single(foundation.Missions), 0);
+        agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
         Assert.True(agenda.Missions.Single(m => m.MissionId == dependent.MissionId).CanStart);
         var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(dependent.MissionId));
         Assert.Equal(5, run.Activities.Count);
@@ -60,6 +66,24 @@ public sealed class LearningPathPlacementTests
             run.Activities[0].ActivityRunId, new RequestAssistanceRequest());
         Assert.True(assistance.IsBlocked);
         Assert.Null(run.Activities[0].LearningFeedback);
+    }
+
+    [Fact]
+    public async Task FoundationWithoutFreshQuestions_DoesNotDeadlockItsDependentPlacement()
+    {
+        using var f = new LearningPathV4Fixture();
+        f.AddPrerequisite(101, 103);
+        f.Db.Questions.RemoveRange(f.Db.Questions.Where(q => q.PrimaryTopicNodeId == 101));
+        await f.Db.SaveChangesAsync();
+        var proposal = await Placement(f, "103");
+        await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId);
+
+        var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
+        Assert.Equal("Unavailable", agenda.PlacementReport!.Skills.Single(s => s.SkillId == "101").Status);
+        var dependent = agenda.Missions.Single(m => m.SkillId == "103");
+        Assert.True(dependent.CanStart);
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(dependent.MissionId));
+        Assert.NotEmpty(run.Activities);
     }
 
     [Fact]

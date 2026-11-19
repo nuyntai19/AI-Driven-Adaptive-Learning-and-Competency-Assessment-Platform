@@ -366,7 +366,9 @@ export const StudentDashboardPage: React.FC = () => {
                 ))}
               </ul>
             )}
-            <Link to={nextExam ? pathLink : studentScopeUrl("/hoc-tap/bai-tap", searchParams)} className="st-link group mt-auto inline-flex items-center gap-1.5 text-sm font-bold text-white">
+            <Link to={nextExam
+              ? studentScopeUrl("/hoc-tap/lo-trinh-hoc-tap", searchParams, { examId: nextExam.assignmentId, classId: nextExam.classId })
+              : studentScopeUrl("/hoc-tap/bai-tap", searchParams)} className="st-link group mt-auto inline-flex items-center gap-1.5 text-sm font-bold text-white">
               {nextExam ? "Xem lịch ôn thi" : "Xem tất cả bài tập"} {ARROW}
             </Link>
           </section>

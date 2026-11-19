@@ -17,6 +17,6 @@ public static class LearningPathRunExpiry
             .Select(r => new { r.SessionRunId, r.StartedAt, r.PolicySnapshot }).ToListAsync(ct);
         var evaluator = new LearningPathV4Evaluator(db, clock);
         foreach (var run in candidates.Where(r => LearningAssessmentPolicy.ExpiresAt(r.PolicySnapshot, r.StartedAt) is { } end && end <= clock.GetUtcNow().UtcDateTime))
-            await evaluator.EvaluateMissionRunAsync(center, student, run.SessionRunId, ct);
+            await evaluator.EvaluateMissionRunAsync(center, student, run.SessionRunId, ct, confirmSubmission: false);
     }
 }

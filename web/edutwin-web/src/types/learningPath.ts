@@ -453,6 +453,7 @@ export interface AgendaItemDto {
   remediationRound?: number;
   remediationSourceMissionId?: string | null;
   remediationOriginLabel?: string | null;
+  sourceExamAssignmentId?: string | null;
   remediationStatus?: "NeedsPractice" | "NeedsQuestions" | "NeedsSupport" | "ReturnedToMain" | "NotConfirmed" | null;
   milestoneOrder?: number;
   milestoneTitle?: string;
@@ -699,6 +700,7 @@ export interface SubmitActivityRequest {
 }
 
 export interface MissionRunDto {
+  requiresSubmissionConfirmation?: boolean;
   expiresAt?: string | null;
   outcome: string;
   sessionRunId: number;

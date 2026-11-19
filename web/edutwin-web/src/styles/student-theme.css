@@ -1,3 +1,13 @@
+html.student-theme.dark select {
+  color-scheme: dark;
+}
+
+html.student-theme.dark select option,
+html.student-theme.dark select optgroup {
+  color: var(--student-ink);
+  background-color: var(--student-surface);
+}
+
 /* ==========================================================================
    EDUTWIN STUDENT — DESIGN TOKENS (STUDENT ONLY)
    Warm paper canvas, one vermilion accent, Montserrat headings.

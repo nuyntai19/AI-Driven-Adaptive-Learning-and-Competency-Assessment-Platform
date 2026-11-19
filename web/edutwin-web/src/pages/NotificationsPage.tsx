@@ -66,6 +66,10 @@ function ReceivedInbox() {
   const [filters, setFilters] = useState<NotificationFilters>({});
   const list = useQuery({ queryKey: [...key, "list", page, unreadOnly, filters], queryFn: ({ signal }) => notificationsApi.list(page, 20, unreadOnly, signal, filters), enabled: access.read, retry: false });
   const detail = useQuery({ queryKey: [...key, "detail", id], queryFn: ({ signal }) => notificationsApi.detail(id!, signal), enabled: access.read && !!id, retry: false });
+  const lastPage = list.data?.meta.totalPages;
+  useEffect(() => {
+    if (lastPage != null && page > Math.max(1, lastPage)) setPage(Math.max(1, lastPage));
+  }, [lastPage, page]);
   const readStarted = useRef<string | null>(null);
   const markRead = read.mutate;
   useEffect(() => {

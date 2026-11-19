@@ -10,15 +10,13 @@ public sealed class LearningPathSelfReportTests
 {
     private static void Edge(LearningPathV4Fixture f, ulong source, ulong target) => f.AddPrerequisite(source, target);
 
-    [Theory]
-    [InlineData("Placement")]
-    [InlineData("Foundation")]
-    public async Task SelfReport_SkipsOnlyChosenFoundations_WithoutInventingMastery_AndSurvivesReload(string goalType)
+    [Fact]
+    public async Task SelfReport_SkipsOnlyChosenFoundations_WithoutInventingMastery_AndSurvivesReload()
     {
         using var f = new LearningPathV4Fixture();
         Edge(f, 101, 102); Edge(f, 102, 103); await f.Db.SaveChangesAsync();
         var goal = await f.Planner.CreateOrUpdateGoalAsync(f.Center, f.Student, new CreateLearningGoalRequest {
-            SubjectId = f.English, GoalType = goalType, TargetSkillIds = ["103"], SelfReportedPrerequisiteSkillIds = ["101", "102"] });
+            SubjectId = f.English, GoalType = "Foundation", TargetSkillIds = ["103"], SelfReportedPrerequisiteSkillIds = ["101", "102"] });
         var proposal = await f.Planner.GeneratePathProposalAsync(f.Center, f.Student, new GeneratePathProposalRequest { SubjectId = f.English, GoalId = goal.GoalId });
         Assert.Equal("103", Assert.Single(proposal.Milestones).SkillIds.Single());
         Assert.Equal(new[] { "101", "102" }, proposal.SelfReportedPrerequisiteSkillIds);
@@ -36,6 +34,15 @@ public sealed class LearningPathSelfReportTests
         Assert.True(check.CanStart);
         var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(check.MissionId));
         Assert.Equal(5, run.Activities.Count);
+    }
+
+    [Fact]
+    public async Task Placement_RejectsSelfReportedPrerequisiteBypass()
+    {
+        using var f = new LearningPathV4Fixture();
+        Edge(f, 101, 102); Edge(f, 102, 103); await f.Db.SaveChangesAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Planner.CreateOrUpdateGoalAsync(f.Center, f.Student, new CreateLearningGoalRequest {
+            SubjectId = f.English, StartWithPlacement = true, TargetSkillIds = ["103"], SelfReportedPrerequisiteSkillIds = ["101", "102"] }));
     }
 
     [Fact]

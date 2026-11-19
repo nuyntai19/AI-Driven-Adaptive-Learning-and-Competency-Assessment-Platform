@@ -83,9 +83,10 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
 
   const [dialogLatex, setDialogLatex] = useState<string>("");
   const [dialogError, setDialogError] = useState<string | null>(null);
-  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
+  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
 
   const editorRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
   // Native math-node listeners can outlive a render; consult the current lock.
   const disabledRef = useRef(disabled);
   disabledRef.current = disabled;
@@ -167,7 +168,14 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
     const updatePosition = () => {
       const rect = activeMathNode.element.getBoundingClientRect();
       const popoverWidth = 390;
-      const popoverHeight = Math.min(480, window.innerHeight - 32);
+      const keyboard = window.mathVirtualKeyboard;
+      const keyboardTop = keyboard?.visible && keyboard.boundingRect.height > 0
+        ? keyboard.boundingRect.top : window.innerHeight;
+      const viewport = window.visualViewport;
+      const minTop = (viewport?.offsetTop ?? 0) + 16;
+      const viewportBottom = Math.min(window.innerHeight, viewport ? viewport.offsetTop + viewport.height : window.innerHeight, keyboardTop);
+      const maxHeight = Math.max(0, viewportBottom - minTop - 16);
+      const popoverHeight = Math.min(popoverRef.current?.scrollHeight ?? 480, maxHeight);
 
       let left = rect.left;
       if (left + popoverWidth > window.innerWidth - 16) {
@@ -176,18 +184,33 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
       if (left < 16) left = 16;
 
       let top = rect.bottom + 6;
-      if (top + popoverHeight > window.innerHeight - 16 && rect.top > popoverHeight + 16) {
+      if (top + popoverHeight > viewportBottom - 16 && rect.top > popoverHeight + minTop) {
         top = rect.top - popoverHeight - 6;
       }
-      top = Math.max(16, Math.min(top, window.innerHeight - popoverHeight - 16));
+      top = Math.max(minTop, Math.min(top, viewportBottom - popoverHeight - 16));
 
-      setPopoverPos({ top, left });
+      setPopoverPos(previous => previous?.top === top && previous.left === left && previous.maxHeight === maxHeight
+        ? previous : { top, left, maxHeight });
     };
 
     updatePosition();
     window.addEventListener("scroll", updatePosition, true);
     window.addEventListener("resize", updatePosition);
+    window.visualViewport?.addEventListener("resize", updatePosition);
+    window.visualViewport?.addEventListener("scroll", updatePosition);
+    // MathLive loads only when a math field is first opened.
+    const bindKeyboard = () => {
+      window.mathVirtualKeyboard?.addEventListener("geometrychange", updatePosition);
+      updatePosition();
+    };
+    bindKeyboard();
+    let disposed = false;
+    void window.customElements.whenDefined("math-field").then(() => { if (!disposed) bindKeyboard(); });
     return () => {
+      disposed = true;
+      window.mathVirtualKeyboard?.removeEventListener("geometrychange", updatePosition);
+      window.visualViewport?.removeEventListener("resize", updatePosition);
+      window.visualViewport?.removeEventListener("scroll", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
       window.removeEventListener("resize", updatePosition);
     };
@@ -933,12 +956,12 @@ export const RichMathEditor = forwardRef<RichMathEditorRef, RichMathEditorProps>
                 aria-label="Chỉnh sửa công thức toán học"
                 style={{
                   top: `${popoverPos.top}px`,
+                  maxHeight: popoverPos.maxHeight,
                   left: `${popoverPos.left}px`,
-                  maxHeight: "calc(100vh - 32px)",
-                  overflowY: "auto",
                   overflowX: "hidden",
                 }}
-                className={`fixed z-50 w-[390px] max-w-[92vw] rounded-2xl border p-4 space-y-3 backdrop-blur-md transition-all animate-scale-in shadow-2xl rich-math-popover ${
+                ref={popoverRef}
+                className={`fixed z-50 overflow-y-auto w-[390px] max-w-[92vw] rounded-2xl border p-4 space-y-3 backdrop-blur-md animate-scale-in shadow-2xl rich-math-popover ${
                   popoverTheme.isDark
                     ? `dark bg-slate-900/98 text-slate-100 ${popoverTheme.popoverBorder} ${popoverTheme.popoverShadow}`
                     : `bg-white/98 text-slate-800 ${popoverTheme.popoverBorder} ${popoverTheme.popoverShadow}`

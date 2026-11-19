@@ -140,6 +140,7 @@ public class AgendaItemDto
     public List<string> RemediationFocuses { get; set; } = new();
     public string? RemediationSourceMissionId { get; set; }
     public string? RemediationOriginLabel { get; set; }
+    public Guid? SourceExamAssignmentId { get; set; }
     public string? RemediationStatus { get; set; }
     public uint RemediationRound { get; set; }
     public uint MilestoneOrder { get; set; }

@@ -1,36 +1,53 @@
 import { useEffect, useRef, useState } from "react";
 import { formatFocusTime, remainingFocusSeconds } from "../../utils/focusTimer";
+import { useAuthStore } from "../../stores/authStore";
 import { useModalAccessibility } from "../../utils/useModalAccessibility";
 
-/** A personal timer, deliberately separate from submitted study evidence. */
+const initialTimer = { minutes: 25, remaining: 25 * 60, deadline: null as number | null, finished: false };
+
+function readFocusTimer(key: string): typeof initialTimer {
+  try {
+    const saved = JSON.parse(window.sessionStorage.getItem(key) ?? "null");
+    if (saved && [10, 25, 45].includes(saved.minutes) && Number.isFinite(saved.remaining) &&
+        saved.remaining >= 0 && saved.remaining <= saved.minutes * 60 &&
+        (saved.deadline === null || Number.isFinite(saved.deadline)) && typeof saved.finished === "boolean") {
+      if (saved.deadline === null) return saved;
+      const remaining = remainingFocusSeconds(saved.deadline, Date.now());
+      return { ...saved, remaining, deadline: remaining > 0 ? saved.deadline : null, finished: remaining === 0 };
+    }
+  } catch { /* The timer still works when storage is unavailable. */ }
+  return initialTimer;
+}
+
 export function StudentFocusStudio() {
+  const user = useAuthStore(state => state.user);
+  const storageKey = `edutwin:focus-timer:${user?.centerId}:${user?.userId}`;
   const [open, setOpen] = useState(false);
-  const [minutes, setMinutes] = useState(25);
-  const [remaining, setRemaining] = useState(25 * 60);
-  const [deadline, setDeadline] = useState<number | null>(null);
-  const [finished, setFinished] = useState(false);
+  const [timer, setTimer] = useState(() => readFocusTimer(storageKey));
+  const { minutes, deadline, finished } = timer;
+  const [clock, setClock] = useState(Date.now);
+  const remaining = deadline == null ? timer.remaining : remainingFocusSeconds(deadline, clock);
+  useEffect(() => {
+    try { window.sessionStorage.setItem(storageKey, JSON.stringify(timer)); }
+    catch { /* The timer still works when storage is unavailable. */ }
+  }, [storageKey, timer]);
   const panel = useRef<HTMLDivElement>(null);
   useModalAccessibility({ isOpen: open, onClose: () => setOpen(false), containerRef: panel });
 
   useEffect(() => {
     if (deadline === null) return;
     const tick = () => {
-      const next = remainingFocusSeconds(deadline, Date.now());
-      setRemaining(next);
-      if (next === 0) { setDeadline(null); setFinished(true); }
+      const now = Date.now();
+      setClock(now);
+      if (remainingFocusSeconds(deadline, now) === 0)
+        setTimer(current => current.deadline === deadline ? { ...current, deadline: null, remaining: 0, finished: true } : current);
     };
     tick();
-    const timer = window.setInterval(tick, 500);
-    return () => window.clearInterval(timer);
+    const interval = window.setInterval(tick, 500);
+    return () => window.clearInterval(interval);
   }, [deadline]);
 
-  const pause = () => {
-    if (deadline !== null) setRemaining(remainingFocusSeconds(deadline, Date.now()));
-    setDeadline(null);
-  };
-  const reset = (duration = minutes) => {
-    setDeadline(null); setFinished(false); setMinutes(duration); setRemaining(duration * 60);
-  };
+  const reset = (duration = minutes) => setTimer({ minutes: duration, remaining: duration * 60, deadline: null, finished: false });
   const progress = Math.min(100, (1 - remaining / (minutes * 60)) * 100);
 
   return <>
@@ -55,12 +72,19 @@ export function StudentFocusStudio() {
         <p role="status" className="min-h-6 text-center text-sm text-[var(--student-ink-secondary)]">{finished ? "Hoàn thành khoảng tập trung. Hãy đứng dậy, uống nước và nghỉ một chút nhé." : "Bạn có thể thu gọn và tiếp tục học ở bất kỳ trang nào."}</p>
         <div className="mt-5 flex justify-center gap-3">
           <button type="button" className="st-btn-primary rounded-full px-6 py-3 font-bold" onClick={() => {
-            if (deadline !== null) pause();
-            else { const seconds = remaining || minutes * 60; setRemaining(seconds); setFinished(false); setDeadline(Date.now() + seconds * 1000); }
+            const now = Date.now();
+            if (deadline !== null) {
+              const seconds = remainingFocusSeconds(deadline, now);
+              setTimer({ minutes, deadline: null, remaining: seconds, finished: seconds === 0 });
+            } else {
+              const seconds = remaining || minutes * 60;
+              setClock(now);
+              setTimer({ minutes, remaining: seconds, deadline: now + seconds * 1000, finished: false });
+            }
           }}>{deadline !== null ? "Tạm dừng" : finished ? "Bắt đầu lượt mới" : remaining < minutes * 60 ? "Tiếp tục" : "Bắt đầu tập trung"}</button>
           <button type="button" className="rounded-full border border-[var(--student-border)] px-4 py-3 font-semibold" onClick={() => reset()}>Đặt lại</button>
         </div>
-        <p className="mt-5 text-center text-xs text-[var(--student-muted)]">Bộ đếm cá nhân trong phiên mở trang; không cộng điểm, chuỗi ngày hay bằng chứng năng lực.</p>
+        <p className="mt-5 text-center text-xs text-[var(--student-muted)]">Bộ đếm cá nhân trong tab này; không cộng điểm, chuỗi ngày hay bằng chứng năng lực.</p>
       </div>
     </div>}
   </>;

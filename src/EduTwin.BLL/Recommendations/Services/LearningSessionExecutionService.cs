@@ -1051,7 +1051,7 @@ public class LearningSessionExecutionService : ILearningSessionExecutionService
         if (Planning.LearningPathV4Data.IsV4Policy(session.PolicyVersion))
         {
             var result = await (_v4Evaluator ?? new LearningPathV4Evaluator(_dbContext, _timeProvider))
-                .EvaluateMissionRunAsync(centerId, run.StudentId, sessionRunId, ct);
+                .EvaluateMissionRunAsync(centerId, run.StudentId, sessionRunId, ct, confirmSubmission: false);
             return new EvaluateSessionRunResult(run.SessionRunId, run.SessionId, session.LegacySessionId, session.Title,
                 session.Status, run.RunNumber, run.Status, run.EvaluationStatus, run.Outcome, run.TotalQuestions,
                 run.QuestionsAttempted, 0, 0, null, null, result.HasPendingReview, result.Outcome == "PendingGrading",

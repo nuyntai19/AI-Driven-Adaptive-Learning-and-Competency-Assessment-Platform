@@ -30,6 +30,9 @@ import {
   assessmentLabel,
   isAcademicHighRisk,
   reportScoreText,
+  filterReportPeriod,
+  maxRegularGrades,
+  simulateSubjectGrade,
   type StudentAcademicSummary,
 } from "./teacherReportsHelpers";
 
@@ -39,7 +42,7 @@ interface ClassAcademicReport {
   students: { student: StudentDto; summary: StudentAcademicSummary }[];
 }
 
-export function TeacherStudentManagementView() {
+export function TeacherStudentManagementView({ reports = false }: { reports?: boolean }) {
   const { studentId: routeStudentId } = useParams<{ studentId?: string }>();
   const navigate = useNavigate();
   const hasPermission = useAuthStore((state) => state.hasPermission);
@@ -48,6 +51,10 @@ export function TeacherStudentManagementView() {
 
   // Filter States
   const [selectedClassId, setSelectedClassId] = useState<string>("");
+  const [selectedReportStudentIds, setSelectedReportStudentIds] = useState<Set<string>>(() => new Set());
+  const [regularSelection, setRegularSelection] = useState<Set<string> | null>(null);
+  const [periodFrom, setPeriodFrom] = useState("");
+  const [periodTo, setPeriodTo] = useState("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusTab, setStatusTab] = useState<"all" | "high_risk" | "good" | "needs_attention">("all");
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>("");
@@ -154,6 +161,15 @@ export function TeacherStudentManagementView() {
   const studentsList = useMemo(() => reportData?.students.map(r => r.student) ?? [], [reportData]);
   const studentSummaries = useMemo(() => new Map(reportData?.students.map(r =>
     [r.student.studentId, r.summary] as const) ?? []), [reportData]);
+  const periodRows = useMemo(() => reports ? reportData?.students.map(row => ({
+    ...row, records: filterReportPeriod(row.summary.records, periodFrom, periodTo),
+  })) ?? [] : [], [reports, reportData, periodFrom, periodTo]);
+  const regularOptions = [...new Map(periodRows.flatMap(row => row.records).filter(record => record.kind === "Regular")
+    .map(record => [record.assignmentId, record])).values()];
+  const regularIds = new Set(regularOptions.filter(record => regularSelection?.has(record.assignmentId) ??
+    regularOptions.length <= maxRegularGrades).map(record => record.assignmentId));
+  const selectedReportCount = studentsList.filter(student => selectedReportStudentIds.has(student.studentId)).length;
+  const allReportStudentsSelected = studentsList.length > 0 && selectedReportCount === studentsList.length;
   const reportReady = !!reportData && !isStudentsError && !isStudentsLoading;
   const [studentPage, setStudentPage] = useState(1);
   useEffect(() => setStudentPage(1), [selectedClassId, searchQuery, selectedGrade, statusTab]);
@@ -279,10 +295,11 @@ export function TeacherStudentManagementView() {
         maxScore: null,
         records: [],
       };
+      const detail = await organizationApi.getStudent(student.studentId);
       await exportStudentReportXlsx(
         student,
         selectedClass,
-        studentSubjectGoals,
+        detail.subjectGoals ?? [],
         subjectsMap,
         summary,
         teacherNotes[student.studentId]
@@ -295,8 +312,8 @@ export function TeacherStudentManagementView() {
     }
   };
 
-  const handleExportIndividualCsv = (student: StudentDto) => {
-    if (!reportReady) return;
+  const handleExportIndividualCsv = async (student: StudentDto) => {
+    if (!reportReady || isExportingExcel) return;
     const summary = studentSummaries.get(student.studentId) || {
       totalAssigned: 0,
       completedCount: 0,
@@ -309,21 +326,31 @@ export function TeacherStudentManagementView() {
       maxScore: null,
       records: [],
     };
-    const rows = buildStudentReportCsv(student, selectedClass, studentSubjectGoals, subjectsMap, summary);
-    const filename = `Bao_cao_hoc_vien_${student.username}_${new Date().toISOString().slice(0, 10)}.csv`;
-    downloadCsv(filename, rows);
+    setExportError(null);
+    try {
+      const detail = await organizationApi.getStudent(student.studentId);
+      const rows = buildStudentReportCsv(student, selectedClass, detail.subjectGoals ?? [], subjectsMap, summary);
+      const filename = `Bao_cao_hoc_vien_${student.username}_${new Date().toISOString().slice(0, 10)}.csv`;
+      downloadCsv(filename, rows);
+    } catch {
+      setExportError("Không thể xuất CSV học sinh. Vui lòng thử lại.");
+    }
   };
 
-  const handleExportClassExcel = async () => {
-    if (!selectedClass || isExportingExcel || !reportReady) return;
+  const handleExportClassExcel = async (selectedOnly = false) => {
+    if (!selectedClass || isExportingExcel || !reportReady || (selectedOnly && selectedReportCount === 0)) return;
     setIsExportingExcel(true);
     setExportError(null);
     try {
-      const goalsMap = new Map<string, StudentSubjectGoalDto[]>();
-      await exportClassReportXlsx(selectedClass, studentsList, studentSummaries, goalsMap);
+      await exportClassReportXlsx(selectedClass, studentsList, studentSummaries, {
+        from: periodFrom,
+        to: periodTo,
+        selectedRegularIds: regularIds,
+        selectedStudentIds: selectedOnly ? selectedReportStudentIds : undefined,
+      });
     } catch (err) {
       console.error("Failed to export class excel report:", err);
-      setExportError("Không thể xuất file Excel bảng điểm cả lớp. Vui lòng thử lại.");
+      setExportError("Không thể xuất bảng điểm Excel. Vui lòng thử lại.");
     } finally {
       setIsExportingExcel(false);
     }
@@ -342,11 +369,11 @@ export function TeacherStudentManagementView() {
       {/* 1. Header with Class Switcher & Report Actions */}
       <TeacherPageHeader
         eyebrow="GIẢNG DẠY & ĐÁNH GIÁ NĂNG LỰC"
-        title="Quản Lý Học Viên & Báo Cáo Học Tập"
-        description="Theo dõi hồ sơ cá nhân, tiến độ nộp bài, phân tích bảng điểm, mục tiêu điểm thi và xuất báo cáo đánh giá học lực định kỳ."
+        title={reports ? "Thống kê và báo cáo" : "Quản lý học sinh"}
+        description={reports ? "Xem số liệu theo lớp và mô phỏng điểm môn theo kỳ." : "Theo dõi hồ sơ, bài làm, mục tiêu và ghi chú của học sinh."}
         breadcrumbs={[
           { label: "Giáo viên", href: "/giao-vien/lop-hoc" },
-          { label: "Quản lý học sinh" },
+          { label: reports ? "Thống kê và báo cáo" : "Quản lý học sinh" },
         ]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -357,6 +384,8 @@ export function TeacherStudentManagementView() {
                 value={selectedClassId}
                 onChange={(e) => {
                   setSelectedClassId(e.target.value);
+                  setSelectedReportStudentIds(new Set());
+                  setRegularSelection(null);
                   setSelectedStudent(null);
                 }}
                 className="th-select text-xs w-full min-w-0 max-w-full sm:w-auto sm:min-w-[190px]"
@@ -370,9 +399,10 @@ export function TeacherStudentManagementView() {
               </select>
             )}
 
+            {reports && <>
             <button
               type="button"
-              onClick={handleExportClassExcel}
+              onClick={() => void handleExportClassExcel()}
               disabled={!reportReady || studentsList.length === 0 || isExportingExcel}
               className={`th-primary-button text-xs py-2 px-3 flex items-center gap-1.5 ${
                 isExportingExcel ? "opacity-60 cursor-wait" : ""
@@ -412,6 +442,7 @@ export function TeacherStudentManagementView() {
               </svg>
               <span>In Báo Cáo Lớp</span>
             </button>
+            </>}
           </div>
         }
       />
@@ -433,7 +464,7 @@ export function TeacherStudentManagementView() {
       )}
 
       {/* 2. Overview Metric Cards */}
-      {reportReady && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {reports && reportReady && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <TeacherMetricCard
           label="Sĩ số lớp"
           value={classMetrics.total}
@@ -475,6 +506,86 @@ export function TeacherStudentManagementView() {
         />
       </div>}
 
+      {reports && <>
+        {isStudentsLoading && selectedClassId && <TeacherSkeleton className="h-48 w-full" />}
+        {isStudentsError && <TeacherSafeErrorPanel error={studentsError} onRetry={() => void refetchStudents()} />}
+        {!selectedClassId && !isClassesLoading && <p>Chưa có lớp trong phạm vi báo cáo.</p>}
+        {reportReady && <section className="th-surface space-y-4 p-4" aria-labelledby="simulated-grade-title">
+          <h2 id="simulated-grade-title" className="text-lg font-semibold">Mô phỏng điểm môn</h2>
+          <p className="text-sm text-[var(--th-text-muted)]">Mỗi bài thường xuyên được chọn có hệ số 1, giữa kỳ hệ số 2 và cuối kỳ hệ số 3. Hãy chọn kỳ có đúng một bài giữa kỳ và một bài cuối kỳ. Giỏi từ 8, Khá từ 6,5 và Trung bình từ 5 là các mức mô phỏng theo điểm môn.</p>
+          <div className="flex flex-wrap gap-3">
+            <label className="grid gap-1 text-sm">Từ ngày<input type="date" className="th-input" value={periodFrom} onChange={e => { setPeriodFrom(e.target.value); setRegularSelection(null); }} /></label>
+            <label className="grid gap-1 text-sm">Đến ngày<input type="date" className="th-input" value={periodTo} onChange={e => { setPeriodTo(e.target.value); setRegularSelection(null); }} /></label>
+          </div>
+          {!!regularOptions.length && <details open={regularOptions.length > maxRegularGrades}>
+            <summary className="cursor-pointer text-sm font-medium">Bài thường xuyên tính điểm ({regularIds.size}/{regularOptions.length} đã chọn)</summary>
+            <p className="my-2 text-xs text-[var(--th-text-muted)]">Chọn tối đa 4 bài kiểm tra nhỏ. Nếu có nhiều bài, hãy chọn các bài dự kiến lấy điểm cho cả lớp.</p>
+            <div className="grid max-h-48 gap-2 overflow-y-auto sm:grid-cols-2">
+              {regularOptions.map(record => <label key={record.assignmentId} className="flex gap-2 text-sm">
+                <input type="checkbox" checked={regularIds.has(record.assignmentId)} disabled={!regularIds.has(record.assignmentId) && regularIds.size >= maxRegularGrades}
+                  onChange={event => {
+                    const selected = new Set(regularIds);
+                    if (event.target.checked) selected.add(record.assignmentId); else selected.delete(record.assignmentId);
+                    setRegularSelection(selected);
+                  }} />
+                {record.title}
+              </label>)}
+            </div>
+          </details>}
+          {periodFrom && periodTo && periodFrom > periodTo && <p role="status">Ngày kết thúc phải từ ngày bắt đầu trở đi.</p>}
+          {regularOptions.length > maxRegularGrades && !regularIds.size && <p role="status">Chọn các bài thường xuyên để tính điểm mô phỏng.</p>}
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" className="th-primary-button px-3 py-2 text-sm"
+              disabled={selectedReportCount === 0 || isExportingExcel || Boolean(periodTo && periodFrom > periodTo)}
+              onClick={() => void handleExportClassExcel(true)}>
+              Xuất Excel học sinh đã chọn ({selectedReportCount})
+            </button>
+          </div>
+          <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+              <thead><tr>
+                <th scope="col" className="p-3">
+                  <input type="checkbox" aria-label="Chọn tất cả học sinh trong bảng điểm"
+                    checked={allReportStudentsSelected} disabled={studentsList.length === 0}
+                    ref={input => { if (input) input.indeterminate = selectedReportCount > 0 && !allReportStudentsSelected; }}
+                    onChange={event => setSelectedReportStudentIds(event.target.checked
+                      ? new Set(studentsList.map(student => student.studentId)) : new Set())} />
+                </th>
+                {["Học sinh", "Thường xuyên", "Giữa kỳ", "Cuối kỳ", "Điểm mô phỏng", "Xếp mức", "Báo cáo cá nhân"].map(label => <th key={label} scope="col" className="p-3 whitespace-nowrap">{label}</th>)}
+              </tr></thead>
+              <tbody>{periodRows.map(({ student, records }) => {
+                const result = simulateSubjectGrade(records, regularIds);
+                return <tr key={student.studentId} className="border-t">
+                  <td className="p-3">
+                    <input type="checkbox" aria-label={`Chọn ${student.fullName} (@${student.username})`}
+                      checked={selectedReportStudentIds.has(student.studentId)}
+                      onChange={event => {
+                        const checked = event.target.checked;
+                        setSelectedReportStudentIds(current => {
+                          const next = new Set(current);
+                          if (checked) next.add(student.studentId);
+                          else next.delete(student.studentId);
+                          return next;
+                        });
+                      }} />
+                  </td>
+                  <th scope="row" className="p-3 text-left font-medium">{student.fullName}</th>
+                  {result.byGroup.map((group, index) => <td key={index} className="whitespace-nowrap p-3">{group.average?.toFixed(1) ?? "—"} <span className="text-xs text-[var(--th-text-muted)]">({group.graded}/{group.total} đã chốt)</span></td>)}
+                  <td className="p-3">{result.score?.toFixed(1) ?? "—"}</td><td className="p-3">{result.label}</td>
+                  <td className="p-3"><div className="flex flex-wrap gap-2">
+                    <button type="button" className="th-secondary-button px-2 py-1 text-xs" disabled={isExportingExcel}
+                      onClick={() => void handleExportIndividualExcel(student)} aria-label={`Xuất Excel cá nhân cho ${student.fullName}`}>Excel</button>
+                    <button type="button" className="th-secondary-button px-2 py-1 text-xs" disabled={isExportingExcel}
+                      onClick={() => void handleExportIndividualCsv(student)} aria-label={`Xuất CSV cá nhân cho ${student.fullName}`}>CSV</button>
+                    <button type="button" className="th-secondary-button px-2 py-1 text-xs"
+                      onClick={() => { setSelectedStudent(student); setIsStudentPrintModalOpen(true); }}
+                      aria-label={`In phiếu đánh giá cho ${student.fullName}`}>In</button>
+                  </div></td>
+                </tr>;
+              })}</tbody>
+            </table>{!studentsList.length && <p className="p-3">Chưa có học sinh trong phạm vi báo cáo.</p>}</div>
+        </section>}
+      </>}
+      {!reports && <>
       {/* 3. Filter Bar & Quick Status Tabs */}
       <div className="th-surface p-4 space-y-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -714,35 +825,6 @@ export function TeacherStudentManagementView() {
                           >
                             Twin
                           </Link>
-                          <button
-                            type="button"
-                            onClick={() => handleExportIndividualExcel(student)}
-                            disabled={isExportingExcel}
-                            className={`th-icon-button h-7 w-7 text-xs rounded-lg text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 ${
-                              isExportingExcel ? "opacity-40 cursor-wait" : ""
-                            }`}
-                            title="Tải bảng điểm cá nhân định dạng Microsoft Excel (.xlsx)"
-                          >
-                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                              <polyline points="14 2 14 8 20 8" />
-                              <line x1="16" y1="13" x2="8" y2="13" />
-                              <line x1="16" y1="17" x2="8" y2="17" />
-                              <polyline points="10 9 9 9 8 9" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleExportIndividualCsv(student)}
-                            className="th-icon-button h-7 w-7 text-xs rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-500/10"
-                            title="Tải bảng điểm cá nhân định dạng CSV (.csv)"
-                          >
-                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                              <polyline points="7 10 12 15 17 10" />
-                              <line x1="12" y1="15" x2="12" y2="3" />
-                            </svg>
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -770,41 +852,7 @@ export function TeacherStudentManagementView() {
         size="lg"
         footer={
           selectedStudent && (
-            <div className="flex flex-wrap items-center justify-between w-full gap-2.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => selectedStudent && handleExportIndividualExcel(selectedStudent)}
-                  disabled={!reportReady || isExportingExcel}
-                  className={`th-primary-button text-xs py-1.5 px-3 flex items-center gap-1.5 ${
-                    isExportingExcel ? "opacity-60 cursor-wait" : ""
-                  }`}
-                  title="Tải bảng điểm và mục tiêu học sinh định dạng Microsoft Excel (.xlsx) với các cột và hàng riêng biệt"
-                >
-                  <span>📊</span>
-                  <span>{isExportingExcel ? "Đang tải Excel..." : "Xuất Excel (.xlsx)"}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => selectedStudent && handleExportIndividualCsv(selectedStudent)}
-                  disabled={!reportReady}
-                  className="th-secondary-button text-xs py-1.5 px-2.5 flex items-center gap-1.5"
-                  title="Tải bảng điểm học sinh định dạng CSV (.csv)"
-                >
-                  <span>📥</span>
-                  <span>Xuất CSV</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsStudentPrintModalOpen(true)}
-                  disabled={!reportReady}
-                  className="th-secondary-button text-xs py-1.5 px-3 flex items-center gap-1.5"
-                  title="Mở giao diện in phiếu đánh giá chuẩn A4"
-                >
-                  <span>🖨️</span>
-                  <span>In Phiếu Đánh Giá</span>
-                </button>
-              </div>
+            <div className="flex w-full justify-end">
               <button
                 type="button"
                 onClick={() => setSelectedStudent(null)}
@@ -1193,9 +1241,10 @@ export function TeacherStudentManagementView() {
           </div>
         )}
       </TeacherModal>
+      </>}
 
       {/* 6. Individual Student Printable Evaluation Sheet Modal */}
-      {selectedStudent && (
+      {reports && selectedStudent && (
         <TeacherModal
           isOpen={isStudentPrintModalOpen}
           onClose={() => setIsStudentPrintModalOpen(false)}
@@ -1372,7 +1421,7 @@ export function TeacherStudentManagementView() {
       )}
 
       {/* 7. Class Summary Printable Report Modal */}
-      {selectedClass && (
+      {reports && selectedClass && (
         <TeacherModal
           isOpen={isClassPrintModalOpen}
           onClose={() => setIsClassPrintModalOpen(false)}

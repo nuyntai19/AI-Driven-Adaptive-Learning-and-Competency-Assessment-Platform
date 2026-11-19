@@ -1,5 +1,6 @@
 export const activitySourceLabels: Record<string, string> = { Audit: "Nhật ký thay đổi", Assessment: "Nộp bài và phân tích", TeacherReview: "Giáo viên đánh giá", ReviewRequest: "Yêu cầu xem xét", Curriculum: "Giáo trình của lớp", Business: "Cập nhật hệ thống" };
 export const activityActionLabels: Record<string, string> = {
+  ExamResultsPublished: "Công bố kết quả kỳ thi",
   AssignmentResultApproved: "Chốt kết quả bài tập", AssignmentResultReopened: "Mở lại kết quả để xem xét", AssignmentQuestionVoided: "Loại câu lỗi khỏi bài tập",
   ClassArchived: "Lưu trữ lớp học", ClassReopened: "Mở lại lớp học", ClassUpdated: "Cập nhật lớp học", ClassTeacherChanged: "Đổi giáo viên phụ trách", ClassWorkHandover: "Tiếp nhận công việc của lớp",
   ClassMemberJoined: "Thêm học sinh vào lớp", ClassMemberRemoved: "Học sinh rời lớp", Approved: "Duyệt điểm một câu", Adjusted: "Điều chỉnh điểm một câu",

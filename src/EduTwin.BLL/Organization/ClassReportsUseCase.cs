@@ -39,7 +39,7 @@ public sealed class ClassReportsUseCase(EduTwinDbContext db, ITenantContext tena
         var center = tenant.CenterId!.Value;
         var assignments = await db.Assignments.AsNoTracking().Where(a => a.CenterId == center && a.ClassId == classId &&
             !a.IsDeleted && a.Status != AssignmentStatus.Draft)
-            .Select(a => new { a.AssignmentId, a.Title, a.DueAt }).ToListAsync(ct);
+            .Select(a => new { a.AssignmentId, a.Title, a.DueAt, a.Kind, GradingPeriodDate = a.ExamAt ?? a.DueAt ?? a.PublishedAt }).ToListAsync(ct);
         var targets = await db.AssignmentTargets.AsNoTracking().Where(t => t.CenterId == center && t.Assignment != null &&
             t.Assignment.ClassId == classId && !t.Assignment.IsDeleted && t.Assignment.Status != AssignmentStatus.Draft)
             .Select(t => new { t.StudentId, t.AssignmentId }).ToListAsync(ct);
@@ -71,7 +71,7 @@ public sealed class ClassReportsUseCase(EduTwinDbContext db, ITenantContext tena
                 var status = p?.Status ?? ProgressStatus.NotStarted;
                 if (status != ProgressStatus.Completed && a.DueAt < now) status = ProgressStatus.Overdue;
                 summary.Records.Add(new StudentAssignmentReportDto {
-                    AssignmentId = a.AssignmentId, Title = a.Title, DueAt = a.DueAt, Status = status.ToString(),
+                    AssignmentId = a.AssignmentId, Title = a.Title, DueAt = a.DueAt, Kind = a.Kind.ToString(), GradingPeriodDate = a.GradingPeriodDate, Status = status.ToString(),
                     SubjectId = Guid.Parse(access.Data!.Subject.SubjectId), SubjectName = access.Data.Subject.SubjectName,
                     CompletedQuestionCount = score.AnsweredQuestionCount, TotalQuestionCount = score.TotalQuestionCount,
                     Score = score.InternalAwardedScore, ResultStatus = score.ResultStatus,

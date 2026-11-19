@@ -63,6 +63,31 @@ public sealed class LearningPathProposalCustomizationTests
     }
 
     [Fact]
+    public async Task WeakPostExamPracticeKeepsItsExamSourceOnTheNextSet()
+    {
+        using var f = new LearningPathV4Fixture();
+        var practice = await f.Activate("Practice", "101");
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(practice.MissionId));
+        var saved = await f.Db.LearningPathSessionRuns.Include(r => r.Session).SingleAsync(r => r.SessionRunId == run.SessionRunId);
+        var path = await f.Db.LearningPaths.SingleAsync(p => p.LearningPathId == saved.Session.LearningPathId);
+        var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        var plan = path.PlanJson!.Deserialize<PathProposalDto>(json)!;
+        var source = plan.Milestones.SelectMany(m => m.Missions).Single(m => m.MissionId == practice.MissionId);
+        var examId = Guid.NewGuid();
+        source.SourceExamAssignmentId = examId;
+        source.IsRepair = true;
+        source.TargetDifficulty = 3;
+        path.PlanJson = JsonSerializer.SerializeToDocument(plan, json);
+
+        await LearningPathFollowUp.AddAsync(f.Db, saved, "ActivityOnlyCompleted", DateTime.UtcNow, default, .33m);
+        var updated = path.PlanJson.Deserialize<PathProposalDto>(json)!;
+        var next = Assert.Single(updated.Milestones.SelectMany(m => m.Missions),
+            m => m.SourceExamAssignmentId == examId && m.MissionId != practice.MissionId);
+        Assert.True(next.IsRepair);
+        Assert.Equal((byte)2, next.TargetDifficulty);
+    }
+
+    [Fact]
     public async Task DifferentSectionsKeepDifferentSetSizesInAgendaAndFollowingSets()
     {
         using var f = new LearningPathV4Fixture();

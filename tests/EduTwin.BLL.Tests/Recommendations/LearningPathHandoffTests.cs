@@ -20,6 +20,8 @@ public sealed class LearningPathHandoffTests
         var goal = await f.Planner.CreateOrUpdateGoalAsync(f.Center, f.Student, new() { SubjectId = f.English, StartWithPlacement = true, TargetSkillIds = ["103"] });
         var plan = await f.Planner.GeneratePathProposalAsync(f.Center, f.Student, new() { SubjectId = f.English, GoalId = goal.GoalId });
         await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, plan.ProposalId);
+        foreach (var foundation in plan.Milestones.Where(m => !m.SkillIds.Contains("103")))
+            await LearningPathPlacementTests.Complete(f, Assert.Single(foundation.Missions), 2);
         var mission = plan.Milestones.Single(m => m.SkillIds.Contains("103")).Missions[0];
         var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(mission.MissionId));
         var first = run.Activities[0];

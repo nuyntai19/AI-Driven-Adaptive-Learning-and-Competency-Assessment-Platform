@@ -1,3 +1,4 @@
+import { publishExamResults } from "../../api/teacherReviewsApi";
 import { getQuestionTypeLabel } from "../../utils/questionDisplay";
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -31,6 +32,13 @@ import { RubricGradeView } from "./RubricGradeView";
 import { getAnalysisFeedbackLabel, normalizeQuestionScore, questionAssignmentContribution, toInternalQuestionScore } from "../../utils/attemptFeedbackPresentation";
 import { normalizeAITextLineBreaks } from "../../utils/aiTextFormatting";
 import { DateInput } from "../DateInput";
+
+const assignmentKinds = {
+  Regular: "Bài thường",
+  Midterm: "Giữa kỳ",
+  Final: "Cuối kỳ",
+  MockExam: "Thi thử",
+};
 
 export interface AssignmentGradingWorkspaceProps {
   actor: "Teacher" | "CenterManager";
@@ -70,6 +78,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   const selectedStudentId = searchParams.get("studentId") || "";
 
   // Filter States
+  const [kindFilter, setKindFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState<DateFilterPreset>("all");
   const [customDate, setCustomDate] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -92,6 +101,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   const [reopenReason, setReopenReason] = useState("");
 
   // Final Review Modal State (Teacher Only)
+  const [confirmExamId, setConfirmExamId] = useState<string | null>(null);
   const [isFinalApproveModalOpen, setIsFinalApproveModalOpen] = useState(false);
   const [finalApproveNote, setFinalApproveNote] = useState("Đã hoàn tất kiểm tra và chấm điểm bài làm.");
 
@@ -142,11 +152,12 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   }, [globalQueueData]);
 
   // Filter assignments by Date Preset and Search Query
-  const filteredAssignments = useMemo(() => {
+  const matchingAssignments = useMemo(() => {
     const now = new Date();
     return allAssignments.filter((a) => {
       // Date filter based on created date or due date
-      const dateToCheck = a.dueAt ? new Date(a.dueAt) : null;
+      const assessmentDate = a.examAt ?? a.dueAt;
+      const dateToCheck = assessmentDate ? new Date(assessmentDate) : null;
 
       if (dateFilter === "today") {
         if (!dateToCheck) return false;
@@ -182,6 +193,9 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
       return true;
     });
   }, [allAssignments, dateFilter, customDate, searchQuery]);
+
+  const filteredAssignments = kindFilter === "all" ? matchingAssignments
+    : matchingAssignments.filter(assignment => (assignment.kind ?? "Regular") === kindFilter);
 
   // Current selected assignment
   const selectedAssignment = useMemo(() => {
@@ -499,6 +513,15 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
   });
 
   // Navigation Helpers
+  const publishResultsMutation = useMutation({
+    mutationFn: publishExamResults,
+    onSuccess: () => {
+      setConfirmExamId(null);
+      void queryClient.invalidateQueries({ queryKey: ["gradingAssignmentsList"] });
+      void queryClient.invalidateQueries({ queryKey: ["gradingAssignmentProgress"] });
+    },
+  });
+
   const gradingBusy = approveMutation.isPending || overrideMutation.isPending || finalApproveMutation.isPending || voidQuestionMutation.isPending || reopenMutation.isPending;
   const finalBlockReason = finalApprovalBlockReason(selectedStudent, hasUnsavedGrade, gradingBusy);
   useEffect(() => {
@@ -823,6 +846,17 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
             </div>
           </div>
 
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Loại bài cần chấm">
+            {[["all", "Tất cả"], ...Object.entries(assignmentKinds)].map(([kind, label]) => (
+              <button key={kind} type="button" aria-pressed={kindFilter === kind} onClick={() => setKindFilter(kind)}
+                className={`rounded-full border px-4 py-2 text-sm font-semibold ${kindFilter === kind
+                  ? "border-indigo-600 bg-indigo-600 text-white"
+                  : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
           {/* ASSIGNMENTS GRID */}
           {isLoadingAssignments ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -839,10 +873,11 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
               </div>
               <h3 className="text-lg font-bold text-slate-800 dark:text-slate-200">Không tìm thấy bài tập nào</h3>
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Hãy thử thay đổi bộ lọc lớp học hoặc khoảng thời gian để hiển thị các bài tập cần chấm.
+                Hãy thử thay đổi loại bài, lớp học hoặc khoảng thời gian.
               </p>
               <button
                 onClick={() => {
+                  setKindFilter("all");
                   setDateFilter("all");
                   setCustomDate("");
                   setSearchQuery("");
@@ -884,6 +919,9 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                       </div>
 
                       {/* Title */}
+                      <p className="mb-1 text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                        {assignmentKinds[(assignment.kind ?? "Regular") as keyof typeof assignmentKinds] ?? assignmentKinds.Regular}
+                      </p>
                       <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2">
                         {assignment.title}
                       </h3>
@@ -939,6 +977,24 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                 <span>Quy mô: <strong>{selectedAssignment.questionCount} câu hỏi</strong></span>
               </div>
             </div>
+
+            {canGrade && (selectedAssignment.kind === "Midterm" || selectedAssignment.kind === "Final") && (
+              <div className="max-w-sm space-y-2 text-sm">
+                {selectedAssignment.resultsPublishedAt || publishResultsMutation.variables === selectedAssignmentId && publishResultsMutation.isSuccess
+                  ? <p role="status" className="font-semibold">Đã công bố kết quả cả đợt.</p>
+                  : confirmExamId === selectedAssignmentId ? <>
+                    <p>Học sinh đã nộp sẽ thấy kết quả ngay sau khi công bố.</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" className="rounded-lg border px-3 py-2" disabled={publishResultsMutation.isPending} onClick={() => setConfirmExamId(null)}>Quay lại</button>
+                      <button type="button" className="rounded-lg bg-indigo-600 px-3 py-2 font-semibold text-white" disabled={publishResultsMutation.isPending} onClick={() => publishResultsMutation.mutate(selectedAssignmentId)}>
+                        {publishResultsMutation.isPending ? "Đang công bố…" : "Xác nhận công bố"}
+                      </button>
+                    </div>
+                  </> : <button type="button" className="rounded-lg bg-indigo-600 px-3 py-2 font-semibold text-white" disabled={publishResultsMutation.isPending}
+                    onClick={() => { publishResultsMutation.reset(); setConfirmExamId(selectedAssignmentId); }}>Công bố kết quả cả đợt</button>}
+                {publishResultsMutation.isError && publishResultsMutation.variables === selectedAssignmentId && <p role="alert" className="text-rose-700 dark:text-rose-300">{extractProblemDetails(publishResultsMutation.error).message}</p>}
+              </div>
+            )}
 
             {/* Quick Status Filter for Students */}
             <div className="flex items-center gap-2">

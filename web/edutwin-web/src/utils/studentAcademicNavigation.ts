@@ -1,20 +1,21 @@
 /** Preserve view context only; curriculum assignment is never a student URL option. */
-export const studentScopeUrl = (path: string, params: URLSearchParams, extras: { assignmentId?: string } = {}): string => {
+export const studentScopeUrl = (path: string, params: URLSearchParams, extras: { assignmentId?: string; examId?: string; classId?: string } = {}): string => {
   const scope = new URLSearchParams();
   if (extras.assignmentId) scope.set("assignmentId", extras.assignmentId);
   const subject = params.get("subjectId");
   if (subject) {
     scope.set("subjectId", subject);
-    const classId = params.get("classId");
+    const classId = extras.classId ?? params.get("classId");
     if (classId) scope.set("classId", classId);
   }
+  if (extras.examId) scope.set("examId", extras.examId);
   if (params.get("history") === "true") scope.set("history", "true");
   return scope.size ? `${path}?${scope}` : path;
 };
 
 /** A detail ID belongs to its original class, not to a newly selected academic scope. */
 export const studentScopeChangeUrl = (pathname: string, params: URLSearchParams): string => {
-  if (pathname === "/hoc-tap/lo-trinh-hoc-tap" && params.has("pathId")) {
+  if (pathname === "/hoc-tap/lo-trinh-hoc-tap" && (params.has("pathId") || params.has("examId"))) {
     return studentScopeUrl(pathname, params);
   }
   if (pathname === "/hoc-tap/luyen-tap" || (/^\/hoc-tap\/luyen-tap(?:\/[^/]+)?\/?$/.test(pathname) && params.has("sessionId"))) {

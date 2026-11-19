@@ -114,7 +114,7 @@ public class ListStudentAssignmentsUseCase : IListStudentAssignmentsUseCase
                 p.Assignment!.Title,
                 p.Assignment.Instructions,
                 p.Assignment.DueAt,
-                p.Assignment.Kind, p.Assignment.ExamAt,
+                p.Assignment.Kind, p.Assignment.ExamAt, p.Assignment.ResultsPublishedAt, p.TeacherFinalReviewStatus,
                 p.Status,
                 p.CompletedQuestionCount,
                 p.TotalQuestionCount,
@@ -139,13 +139,15 @@ public class ListStudentAssignmentsUseCase : IListStudentAssignmentsUseCase
         var items = rawItems.Select(p =>
         {
             summaries.TryGetValue(p.AssignmentId, out var summary);
+            var embargoed = ExamResultVisibility.IsTermExam(p.Kind) &&
+                (p.ResultsPublishedAt == null || p.TeacherFinalReviewStatus != TeacherFinalReviewStatus.Approved);
             return new StudentAssignmentDto
             {
                 AssignmentId = p.AssignmentId.ToString(),
                 Title = p.Title,
                 Instructions = p.Instructions,
                 DueAt = p.DueAt,
-                Kind = p.Kind.ToString(), ExamAt = p.ExamAt,
+                Kind = p.Kind.ToString(), ExamAt = p.ExamAt, ResultsPublishedAt = embargoed ? null : p.ResultsPublishedAt,
                 SubjectId = p.SubjectId?.ToString(),
                 SubjectName = p.SubjectName,
                 Progress = new StudentAssignmentProgressDto
@@ -154,7 +156,7 @@ public class ListStudentAssignmentsUseCase : IListStudentAssignmentsUseCase
                     CompletedQuestionCount = (int)p.CompletedQuestionCount,
                     TotalQuestionCount = (int)p.TotalQuestionCount
                 },
-                Summary = summary
+                Summary = embargoed ? null : summary
             };
         }).ToList();
 

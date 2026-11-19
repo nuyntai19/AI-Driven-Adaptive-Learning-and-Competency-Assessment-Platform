@@ -80,6 +80,11 @@ export const approveReasoningAnalysis = async (
   return response.data;
 };
 
+export async function publishExamResults(assignmentId: string) {
+  const { data } = await httpClient.post<{ resultsPublishedAt: string }>(`/teachers/me/assignments/${assignmentId}/publish-results`);
+  return data;
+}
+
 export interface ApproveAssignmentResultRequest {
   studentId: string;
   note?: string | null;

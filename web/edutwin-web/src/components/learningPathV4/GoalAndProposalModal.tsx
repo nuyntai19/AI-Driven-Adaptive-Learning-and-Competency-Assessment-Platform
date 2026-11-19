@@ -67,7 +67,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
   const restoreSelfReport = missing.length > 0 && missing.every(s => initialSelfReportedPrerequisiteSkillIds.includes(s.skillId));
   const [acknowledgedScope, setAcknowledgedScope] = useState(restoreSelfReport ? scopeKey : "");
   const [prerequisiteChoice, setPrerequisiteChoice] = useState<"Include" | "Skip" | "">(restoreSelfReport ? "Skip" : "");
-  const needsAcknowledgement = missing.length > 0 && (acknowledgedScope !== scopeKey || !prerequisiteChoice);
+  const needsAcknowledgement = !placement && missing.length > 0 && (acknowledgedScope !== scopeKey || !prerequisiteChoice);
   const [proposal, setProposal] = useState<PathProposalDto | null>(null);
   const [sourceProposal, setSourceProposal] = useState<PathProposalDto | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -76,7 +76,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
   const started = useRef(false);
   // From a finished placement check the scope is already decided: keep the self-reported prerequisites and
   // treat every untested part as self-assessed (confirmed by a short review at the end of the route).
-  const selfReported = fromPlacement && !editing ? missing.map(s => s.skillId).filter(id => initialSelfReportedPrerequisiteSkillIds.includes(id))
+  const selfReported = placement ? [] : fromPlacement && !editing ? missing.map(s => s.skillId).filter(id => initialSelfReportedPrerequisiteSkillIds.includes(id))
     : !needsAcknowledgement && prerequisiteChoice === "Skip" ? missing.map(s => s.skillId) : [];
   const selfAssessed = placement ? [] : selfAssessedSkillIds.filter(id => !targets.includes(id) && !selfReported.includes(id));
   const goalRequest = (end: string): CreateLearningGoalRequest => ({ subjectId, classId, title, goalType, targetSkillIds: targets,
@@ -210,13 +210,14 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
         <SkillScopeSelector skills={skills} selected={targets} onChange={setTargets} placement={placement}
           allowedIds={fromPlacement && suggestedSkillIds.length ? suggestedSkillIds : undefined}
           lockedNote="Lộ trình này lập từ kết quả kiểm tra đầu vào nên chỉ gồm các phần em đã kiểm tra (có thể bỏ bớt). Phần chưa kiểm tra không thêm trực tiếp được: sau khi chọn tuyến, bấm “Kiểm tra thêm phần khác” để kiểm tra nhanh, kết quả sẽ được đưa vào lộ trình hiện tại." />
-        {missing.length > 0 && <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="note">
+        {placement && missing.length > 0 && <p className="rounded-xl bg-indigo-50 p-3 text-sm text-indigo-950" role="note">Nền tảng bắt buộc được thêm theo đồ thị tri thức: <strong>{missing.map(s => s.skillName).join(", ")}</strong>.</p>}
+        {!placement && missing.length > 0 && <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="note">
           <p>Các phần đã chọn có nền tảng liên quan chưa có kết quả xác nhận trên web: <strong>{missing.map(s => s.skillName).join(", ")}</strong>. Em có thể đã học những phần này ở trường. Hãy chọn cách phù hợp:</p>
           <label className="flex items-start gap-2"><input type="radio" name="prerequisite-choice" checked={acknowledgedScope === scopeKey && prerequisiteChoice === "Skip"} onChange={() => { setAcknowledgedScope(scopeKey); setPrerequisiteChoice("Skip"); }} />Em đã nắm nền tảng này, bỏ qua và chỉ học các phần đã chọn.</label>
-          <label className="flex items-start gap-2"><input type="radio" name="prerequisite-choice" checked={acknowledgedScope === scopeKey && prerequisiteChoice === "Include"} onChange={() => { setAcknowledgedScope(scopeKey); setPrerequisiteChoice("Include"); }} />{placement ? "Thêm các nền tảng này vào kiểm tra đầu vào." : "Thêm các nền tảng này vào lộ trình để ôn lại."}</label>
+          <label className="flex items-start gap-2"><input type="radio" name="prerequisite-choice" checked={acknowledgedScope === scopeKey && prerequisiteChoice === "Include"} onChange={() => { setAcknowledgedScope(scopeKey); setPrerequisiteChoice("Include"); }} />Thêm các nền tảng này vào lộ trình để ôn lại.</label>
           <p className="text-xs">Bỏ qua được ghi nhận theo tự xác nhận của em, không tự tính là đã nắm vững qua kiểm tra. Em có thể đổi lựa chọn khi cập nhật lộ trình.</p>
         </div>}
-        {placement && <p className="rounded-xl bg-indigo-50 p-3 text-sm text-indigo-950">Bài kiểm tra gồm {targets.length} phần, khoảng {targets.length * 5} câu, mất khoảng {targets.length * 10} phút; câu xếp từ dễ đến khó trong từng phần. Có thể bỏ bớt phần đã chắc chắn ở danh sách trên. Mỗi phần dùng 3–5 câu mới có thể tự chấm. Phần thiếu câu được ghi chưa đủ dữ liệu; không chặn phần khác hoặc chặn tạo lộ trình. Mẫu ít có độ tin cậy thấp.</p>}
+        {placement && <p className="rounded-xl bg-indigo-50 p-3 text-sm text-indigo-950">Dự kiến {targets.length + missing.length} phần. Hệ thống xếp phần nền tảng trước phần phụ thuộc. Mỗi phần có tối đa 5 câu mới. Phần thiếu câu được ghi là chưa đủ dữ liệu.</p>}
         {!placement && <details open><summary className="cursor-pointer text-base font-semibold text-slate-900 dark:text-slate-100">Mục tiêu và lịch học · {formatStudyMinutes(minutes)}/ngày, {days} ngày/tuần</summary><p className="mt-2 text-sm text-slate-500">Ngày thi và điểm mục tiêu giúp lộ trình xếp đúng theo ngày thật và chừa thời gian ôn, thi thử. Ngày thi / học tới ngày được tự điền theo đề xuất; em có thể đổi, ngày quá gần sẽ được cảnh báo ngay.</p><div className="mt-4 space-y-4">
         <label className="block text-sm font-medium">Tên mục tiêu<input required maxLength={200} className={input} value={title} onChange={e => setTitle(e.target.value)} /></label>
         <label className="block text-sm font-medium">Bạn muốn đạt điều gì?<select className={input} value={goalType} onChange={e => setGoalType(e.target.value)}>

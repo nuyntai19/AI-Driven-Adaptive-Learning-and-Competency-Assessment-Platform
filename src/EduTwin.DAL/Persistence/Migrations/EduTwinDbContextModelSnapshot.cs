@@ -1518,6 +1518,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasColumnType("datetime(6)")
                         .HasColumnName("exam_at");
 
+                    b.Property<DateTime?>("ResultsPublishedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("results_published_at");
+
                     b.Property<string>("GradeMismatchReason")
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)")

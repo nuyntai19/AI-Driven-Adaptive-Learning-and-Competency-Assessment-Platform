@@ -12,7 +12,7 @@ export function SkillScopeSelector({ skills, selected, onChange, placement = fal
   const allowed = (id: string) => !allowedIds || allowedIds.includes(id);
   const pick = (ids: string[]) => onChange(ids.filter(allowed));
   return <fieldset className="space-y-3"><legend className="text-sm font-semibold">{placement ? "Em muốn kiểm tra những phần nào?" : "Em muốn học những phần nào?"}</legend>
-    <p className="text-xs text-slate-500">{placement ? "Chọn một, vài hoặc tất cả các phần. Phần không chọn giữ trạng thái chưa được đánh giá; hệ thống không tự coi là đã vững." : "Chọn những phần em muốn học hoặc còn yếu. Với nền tảng đã học ở trường, em có thể xác nhận để bỏ qua trước khi lập tuyến."}</p>
+    <p className="text-xs text-slate-500">{placement ? "Chọn phần cần kiểm tra. Hệ thống sẽ tự thêm nền tảng liên quan nếu chưa có kết quả xác nhận." : "Chọn những phần em muốn học hoặc còn yếu. Với nền tảng đã học ở trường, em có thể xác nhận để bỏ qua trước khi lập tuyến."}</p>
     {allowedIds && lockedNote && <p className="rounded-lg bg-sky-50 p-3 text-xs text-sky-950 dark:bg-sky-950/40 dark:text-sky-100">{lockedNote}</p>}
     <div className="flex gap-4 text-xs font-medium text-indigo-600"><button type="button" onClick={() => pick(skills.map(s => s.skillId))}>Chọn tất cả</button>
       <button type="button" onClick={() => onChange([])}>Bỏ chọn tất cả</button></div>

@@ -16,7 +16,7 @@ const dashboard = { student: { fullName: "Học sinh kiểm thử" }, subject: {
 const mission = { title: "Tìm hiểu: Hàm số", objective: "Học cách xét hàm số", canStart: true,
   estimatedDurationMinutes: 5, status: "InProgress", activeRunId: 8 };
 
-function render({ assignment = false, pending = false, history = false, all = false, error = false, inProgress = true } = {}) {
+function render({ assignment = false, pending = false, history = false, all = false, error = false, inProgress = true, exam = false } = {}) {
   const params = new URLSearchParams(all ? "" : `subjectId=math&classId=class-10${history ? "&history=true" : ""}`);
   const queries: any[] = []; const calls: any[] = [];
   const exports: any = {};
@@ -31,6 +31,8 @@ function render({ assignment = false, pending = false, history = false, all = fa
       if (queries.length === 2) return { data: { data: assignment ? [{ assignmentId: "homework", title: "Bài giáo viên giao", progress: { status: "NotStarted" } }] : [] } };
       if (query.enabled === false) return { isPending: true };
       return { isPending: pending, isError: error, data: pending || error ? undefined : {
+        exams: exam ? [{ assignmentId: "midterm-id", classId: "exam-class", examAt: new Date(Date.now() + 60000).toISOString(),
+          kind: "Midterm", status: "Scheduled", title: "Kiểm tra giữa kỳ", timeLimitMinutes: 45 }] : [],
         ongoingRuns: inProgress ? [mission] : [], primaryMission: { ...mission, status: "NotStarted" }, agendaMessage: "Kế hoạch học hôm nay" } };
     } },
     "../api/dashboardsApi": { getStudentDashboard() {} },
@@ -85,4 +87,9 @@ test("an agenda load failure offers the learning path instead of inventing a top
   assert.match(h.html, /Chưa tải được kế hoạch hôm nay/);
   assert.match(h.html, /Xem lộ trình học tập/);
   assert.doesNotMatch(h.html, /Hàm số &amp; Khảo sát hàm|đã hoàn thành các câu hỏi/);
+});
+
+test("upcoming exam opens its study schedule with the exam's class scope", () => {
+  const { html } = render({ exam: true });
+  assert.match(html, /href="\/hoc-tap\/lo-trinh-hoc-tap\?subjectId=math&amp;classId=exam-class&amp;examId=midterm-id"[^>]*>Xem lịch ôn thi/);
 });

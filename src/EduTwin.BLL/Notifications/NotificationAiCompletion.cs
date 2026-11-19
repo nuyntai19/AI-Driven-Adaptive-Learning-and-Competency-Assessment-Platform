@@ -60,6 +60,7 @@ internal static class NotificationAiCompletion
             "Đây chưa phải kết quả toàn bài đã chốt. Nhận xét/lộ trình tổng hợp có thể cập nhật sau; thông báo không khẳng định chúng đã sẵn sàng.";
         foreach (var (role, recipient, kind) in new[] { ("student", studentId, "HistoricalAssignment"), ("teacher", @class.TeacherId, "TeacherWork") })
         {
+            if (role == "student" && EduTwin.BLL.Assignments.ExamResultVisibility.IsTermExam(assignment.Kind)) continue;
             var key = $"ai-ready:{assignmentId}:{studentId}:{generation}:{role}";
             // Hash the long aggregate key to the bounded, DB-unique idempotency column.
             key = "ai-ready:" + NotificationBusinessStager.Hash(key);

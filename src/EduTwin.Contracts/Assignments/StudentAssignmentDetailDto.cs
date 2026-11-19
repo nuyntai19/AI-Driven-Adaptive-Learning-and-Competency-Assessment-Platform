@@ -7,6 +7,7 @@ public class StudentAssignmentDetailDto
 {
     public string Kind { get; set; } = "Regular";
     public DateTime? ExamAt { get; set; }
+    public DateTime? ResultsPublishedAt { get; set; }
     public string AssignmentId { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string? Instructions { get; set; }

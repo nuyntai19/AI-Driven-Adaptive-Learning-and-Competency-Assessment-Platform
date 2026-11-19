@@ -18,6 +18,7 @@ public class AssignmentDto
     public int? TimeLimitMinutes { get; set; }
     public string Kind { get; set; } = "Regular";
     public DateTime? ExamAt { get; set; }
+    public DateTime? ResultsPublishedAt { get; set; }
     public string Status { get; set; } = string.Empty;
     public int QuestionCount { get; set; }
     public int TargetStudentCount { get; set; }

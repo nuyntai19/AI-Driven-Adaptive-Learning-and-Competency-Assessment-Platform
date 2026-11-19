@@ -83,6 +83,7 @@ public class ProposedMissionDto
     public uint EstimatedSets { get; set; }
     /// <summary>Repair work created from a failed check or review; shown even when the skill was confirmed earlier.</summary>
     public bool IsRepair { get; set; }
+    public Guid? SourceExamAssignmentId { get; set; }
     public List<string> RemediationFocuses { get; set; } = new();
     public string? RemediationSourceMissionId { get; set; }
     public string? RemediationRootMissionId { get; set; }

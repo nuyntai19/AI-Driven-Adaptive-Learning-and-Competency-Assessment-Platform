@@ -12,7 +12,7 @@ public interface ILearningPathV4Evaluator
         Guid centerId,
         Guid studentId,
         ulong sessionRunId,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default, bool confirmSubmission = true);
 
     Task<V4SessionEvaluationResultDto> EvaluateLateReviewAsync(
         Guid centerId,

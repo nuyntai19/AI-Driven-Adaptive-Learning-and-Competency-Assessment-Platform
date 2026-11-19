@@ -95,6 +95,8 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             request.Title.Length > 200 || request.Description?.Length > 2000 || request.TargetSkillIds.Count > 200 || request.SelfReportedPrerequisiteSkillIds is null || request.SelfReportedPrerequisiteSkillIds.Count > 200 || request.SelfAssessedSkillIds is not { Count: <= 200 } ||
             !new[] { "Foundation", "KeepUp", "Catchup", "ImproveGrade", "ExamPrep", "Advanced", "Diagnostic", "Placement" }.Contains(request.GoalType))
             throw new ArgumentException("Mục tiêu, phạm vi hoặc thời lượng học không hợp lệ.");
+        if (startWithPlacement && request.SelfReportedPrerequisiteSkillIds.Count > 0)
+            throw new ArgumentException("Kiểm tra đầu vào tự thêm các nền tảng chưa được xác nhận theo đồ thị tri thức.");
         var skills = request.TargetSkillIds.Distinct().ToList();
         if (skills.Any(id => nodes.All(n => n.NodeId.ToString() != id)))
             throw new ArgumentException("Kỹ năng đã chọn không thuộc môn và giáo trình đang học.");
@@ -167,6 +169,11 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         var baseline = goal.StartWithPlacement ? new Dictionary<string, string>()
             : await LearningPathPlacementBaseline.ReadAsync(db, center, student, goal.SubjectId, goal.ClassId, ct);
         var scope = LearningGoalScope.Read(goal.TargetSkillIds);
+        if (goal.StartWithPlacement)
+        {
+            scope.SelfReportedPrerequisiteSkillIds.Clear();
+            scope.SelfAssessedSkillIds.Clear();
+        }
         var wanted = scope.TargetSkillIds.ToHashSet();
         if (wanted.Count == 0) wanted.UnionWith(map.Skills.Select(s => s.SkillId));
         // Add prerequisites to the target, without silently expanding outside the permitted curriculum.
@@ -459,6 +466,10 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
             return new AcceptPathProposalResponse { LearningPathId = prior.LearningPathId, Version = prior.Version, Message = "Đề xuất này đã được kích hoạt." };
         }
         if (proposal.ExpiresAt <= Now || proposal.Status != "Pending") throw new InvalidOperationException("Đề xuất đã hết hạn hoặc không còn hiệu lực.");
+        var plan = JsonSerializer.Deserialize<PathProposalDto>(proposal.CandidatePlan.RootElement.GetRawText(), LearningPathV4Data.Json)
+            ?? throw new InvalidOperationException("Đề xuất không hợp lệ; hãy tạo lại.");
+        if (plan.IsPlacement && plan.SelfReportedPrerequisiteSkillIds.Count > 0)
+            throw new InvalidOperationException("Đề xuất cũ đã bỏ qua nền tảng theo tự xác nhận. Hãy tạo lại bài kiểm tra đầu vào.");
         var source = LearningAssessmentPolicy.Settings(proposal.Goal.ScheduleSettings);
         if (source.SourceGoalId.HasValue)
         {
@@ -487,8 +498,6 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         }
         var old = await db.LearningPaths.Where(p => p.CenterId == centerId && p.StudentId == studentId && p.SubjectId == proposal.SubjectId).ToListAsync(cancellationToken);
         foreach (var p in old.Where(p => p.Status == LearningPathStatus.Active)) { p.Status = LearningPathStatus.Superseded; p.RowVersion++; p.UpdatedAt = Now; }
-        var plan = JsonSerializer.Deserialize<PathProposalDto>(proposal.CandidatePlan.RootElement.GetRawText(), LearningPathV4Data.Json)
-            ?? throw new InvalidOperationException("Đề xuất không hợp lệ; hãy tạo lại.");
         if (plan.TargetScore.HasValue && plan.FeasibilityStatus == "InsufficientTime")
             throw new InvalidOperationException(plan.FeasibilityMessage ?? "Mốc thời gian đã chọn không đủ để đạt điểm mục tiêu. Hãy tạo đề xuất mới với mốc khả thi.");
         var path = new LearningPath
@@ -604,6 +613,16 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         var coolingRelease = await LearningPathV4Data.CoolingReleaseTimesAsync(db, centerId, studentId, Now, plan.Schedule.QuestionReuseDelayDays, cancellationToken);
         var exposedIds = await db.IssuedItems.AsNoTracking().Where(i => i.CenterId == centerId && i.ActivityRun.SessionRun.StudentId == studentId &&
             i.SolutionExposedAt != null && i.QuestionId != null).Select(i => i.QuestionId!.Value).Distinct().ToListAsync(cancellationToken);
+        var pendingPlacementSkills = new HashSet<string>();
+        if (plan.IsPlacement)
+        {
+            var seenQuestionIds = usedIds.Concat(exposedIds).ToHashSet();
+            var freshSkills = subjectQuestions.Where(q => !seenQuestionIds.Contains(q.QuestionId)).Select(q => q.PrimaryTopicNodeId).ToHashSet();
+            pendingPlacementSkills = path.Sessions.Where(s => s.ClassId == classId &&
+                    (s.Status is LearningPathSessionStatus.InProgress or LearningPathSessionStatus.NeedsReview ||
+                     s.Status == LearningPathSessionStatus.NotStarted && freshSkills.Contains(s.TopicNodeId)))
+                .Select(s => s.TopicNodeId.ToString()).ToHashSet();
+        }
         var options = new List<AgendaItemDto>();
         var finalChecks = new List<AgendaItemDto>();
         var poolSizes = new Dictionary<string, int>();
@@ -641,6 +660,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 Status = session.Status.ToString(), ActiveRunId = active?.SessionRunId,
                 LatestRunId = latest?.SessionRunId, IsSelfAssessedCheck = m.IsSelfAssessedCheck, WeaknessLevel = m.IsSelfAssessedCheck ? null : LearningPathPacing.Level(weakness), SetNumber = mainSetNumbers.GetValueOrDefault(m.MissionId), EstimatedSets = m.RemediationRound > 0 ? 0 : m.EstimatedSets,
                 RemediationFocuses = m.RemediationFocuses, RemediationRound = m.RemediationRound, RemediationSourceMissionId = m.RemediationSourceMissionId,
+                SourceExamAssignmentId = m.SourceExamAssignmentId,
                 RemediationOriginLabel = LearningPathRemediation.OriginLabel(m, missionDefinitions, mainSetNumbers),
                 CanStart = m.CanStart && (!m.AvailableFrom.HasValue || m.AvailableFrom <= Now) && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped &&
                     (plan.IsPlacement || m.IsProbe || m.Purpose != "IndependentCheck" || LearningGoalScope.PrerequisitesSatisfied(skill, map, vouched)),
@@ -689,7 +709,9 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 var minimum = m.IsMilestoneExam
                     ? Math.Min(5 * Math.Max(1, m.AssessedSkillIds.Count), 3 * Math.Max(1, m.AssessedSkillIds.Count))
                     : strict ? Math.Max(1, Math.Min(3, fresh)) : LearningAssessmentPolicy.CheckSize(fresh, available).Minimum;
-                item.QuestionCount = m.IsMilestoneExam ? m.QuestionCount : (uint)LearningAssessmentPolicy.CheckSize(fresh, available).Count;
+                item.QuestionCount = item.IsMockExam && m.AssessedSkillIds.Count > 0
+                    ? (uint)m.AssessedSkillIds.Sum(id => Math.Min(5, allForMission.Count(q => q.PrimaryTopicNodeId.ToString() == id)))
+                    : m.IsMilestoneExam ? m.QuestionCount : (uint)LearningAssessmentPolicy.CheckSize(fresh, available).Count;
                 item.CanStart = available >= minimum && prerequisitesReady && session.Status != LearningPathSessionStatus.Completed && session.Status != LearningPathSessionStatus.Skipped &&
                     !(plan.IsPlacement && latest?.Status == SessionRunStatus.Completed);
                 if (m.IsMilestoneExam && m.AssessedSkillIds.Any(id => allForMission.Count(q => q.PrimaryTopicNodeId.ToString() == id) < 3)) item.CanStart = false;
@@ -697,7 +719,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 { item.CanStart = false; item.RecommendationReason = "Hoàn thành phần học/luyện trong chặng trước khi làm mốc kiểm tra."; }
                 if (available < minimum) { item.CanStart = false; item.RecommendationReason = $"Có {fresh} câu mới và {available - fresh} câu đã học (tổng {available}/{minimum}) đủ điều kiện. Phần này chưa đủ dữ liệu; vẫn có thể lập tuyến học và làm các phần khác."; }
                 else item.RecommendationReason = m.IsExternalPrerequisiteAssessment ? LearningGoalScope.ExternalAssessmentReason
-                    : fresh >= 5
+                    : fresh >= item.QuestionCount
                         ? $"Có {fresh} câu mới đủ điều kiện; sẽ chọn {item.QuestionCount} câu để tự kiểm tra. Lời giải và nhận xét chỉ mở sau khi nộp cả bộ."
                         : $"Có {fresh} câu mới và {available - fresh} câu đã học có thể dùng lại; sẽ chọn {item.QuestionCount} câu để tự kiểm tra (mẫu ít/có câu lặp, độ tin cậy thấp). Lời giải và nhận xét chỉ mở sau khi nộp cả bộ.";
             }
@@ -775,6 +797,11 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 item.RetryLabel = null;
                 item.RetryBlockedReason = null;
                 if (latest?.Status == SessionRunStatus.Completed) item.Status = "Completed";
+                if (active == null && item.CanStart && LearningGoalScope.PlacementBlockReason(skill, map, pendingPlacementSkills) is { } placementBlock)
+                {
+                    item.CanStart = false;
+                    item.RecommendationReason = placementBlock;
+                }
             }
             if (!plan.IsPlacement && skill.BlockedByStageGate && active == null)
             {
@@ -1065,7 +1092,7 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
         EstimatedDurationMinutes = i.EstimatedDurationMinutes, EstimatedSecondsPerQuestion = i.EstimatedSecondsPerQuestion, ActivityTypes = i.ActivityTypes, RecommendationReason = i.RecommendationReason,
         CanStart = i.CanStart, Status = i.Status, ActiveRunId = i.ActiveRunId, LatestRunId = i.LatestRunId, WeaknessLevel = i.WeaknessLevel,
         RemediationFocuses = i.RemediationFocuses, RemediationRound = i.RemediationRound, RemediationSourceMissionId = i.RemediationSourceMissionId,
-        RemediationOriginLabel = i.RemediationOriginLabel,
+        RemediationOriginLabel = i.RemediationOriginLabel, SourceExamAssignmentId = i.SourceExamAssignmentId,
         RemediationStatus = i.RemediationStatus,
         CanRetry = i.CanRetry, RetryLabel = i.RetryLabel, RetryBlockedReason = i.RetryBlockedReason, Runs = i.Runs,
         PlannedSets = i.PlannedSets, SetNumber = i.SetNumber, EstimatedSets = i.EstimatedSets, Advice = i.Advice,

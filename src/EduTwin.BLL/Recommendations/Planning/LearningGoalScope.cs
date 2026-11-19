@@ -31,6 +31,21 @@ internal sealed class LearningGoalScope
         => skill.PrerequisiteSkillIds.All(id => selfReported.Contains(id) || map.Skills.Any(s => s.SkillId == id && s.State == "Confirmed") ||
             map.ExternalPrerequisiteMastery.GetValueOrDefault(id) >= 60m);
 
+    public static string? PlacementBlockReason(SkillCapabilityStatusDto skill, CapabilityMapDto map, IReadOnlySet<string> pendingSkills)
+    {
+        var byId = map.Skills.ToDictionary(s => s.SkillId);
+        var visited = new HashSet<string> { skill.SkillId };
+        var prerequisites = new Queue<string>(skill.PrerequisiteSkillIds);
+        while (prerequisites.TryDequeue(out var id))
+        {
+            if (!visited.Add(id) || !byId.TryGetValue(id, out var prerequisite)) continue;
+            if (pendingSkills.Contains(id)) return $"Hãy hoàn thành phần kiểm tra nền tảng «{prerequisite.SkillName}» trước.";
+            foreach (var ancestor in prerequisite.PrerequisiteSkillIds)
+                prerequisites.Enqueue(ancestor);
+        }
+        return null;
+    }
+
     public static bool NeedsExternalAssessment(SkillCapabilityStatusDto skill, CapabilityMapDto map, IReadOnlyCollection<string> selfReported)
         => skill.State != "Confirmed" && skill.PrerequisiteSkillIds.Any(id => !selfReported.Contains(id) &&
             map.Skills.All(s => s.SkillId != id) && map.ExternalPrerequisiteMastery.GetValueOrDefault(id) < 60m);

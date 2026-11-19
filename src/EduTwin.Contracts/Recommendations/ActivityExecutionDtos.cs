@@ -183,6 +183,7 @@ public class AiReasoningReviewDto
 
 public class MissionRunDto
 {
+    public bool RequiresSubmissionConfirmation { get; set; }
     public DateTime? ExpiresAt { get; set; }
     public string Outcome { get; set; } = "None";
     public ulong SessionRunId { get; set; }

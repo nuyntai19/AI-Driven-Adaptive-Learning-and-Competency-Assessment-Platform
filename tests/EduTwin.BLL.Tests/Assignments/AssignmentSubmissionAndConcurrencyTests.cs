@@ -67,6 +67,45 @@ public sealed class AssignmentSubmissionAndConcurrencyTests
     }
 
     [Fact]
+    public async Task PublishTermExam_RequiresOwnerAndAllSubmittedResultsApproved_ThenPublishesOnce()
+    {
+        var (db, center, student) = CreateTestContext();
+        await using var context = db;
+        var teacher = Guid.NewGuid();
+        var classId = Guid.NewGuid();
+        var assignmentId = Guid.NewGuid();
+        var now = new DateTime(2026, 11, 18, 9, 0, 0, DateTimeKind.Utc);
+        db.Classes.Add(new EduTwin.DAL.Organization.Class { ClassId = classId, CenterId = center,
+            ClassName = "10A", AcademicYear = "2026-2027", SubjectId = Guid.NewGuid(), TeacherId = teacher, CreatedAt = now, UpdatedAt = now });
+        var assignment = new Assignment { AssignmentId = assignmentId, ClassId = classId, CenterId = center,
+            CreatedByTeacherId = teacher, Kind = AssignmentKind.Midterm, Status = AssignmentStatus.Published,
+            Title = "Giữa kỳ", ExamAt = now.AddHours(-2), DueAt = now.AddHours(-1), CreatedAt = now, UpdatedAt = now };
+        var progress = new StudentAssignmentProgress { AssignmentId = assignmentId, CenterId = center,
+            StudentId = student, Status = ProgressStatus.Completed, CompletedAt = now.AddHours(-1), CreatedAt = now, UpdatedAt = now };
+        db.AddRange(assignment, progress);
+        await db.SaveChangesAsync();
+        var actor = CreateStudentTenant(center, teacher);
+        actor.SetupGet(t => t.Role).Returns(nameof(UserRole.Teacher));
+        var clock = new MutableTimeProvider { UtcNow = now };
+        var publish = new PublishExamResultsUseCase(db, actor.Object, clock);
+        actor.SetupGet(t => t.UserId).Returns(Guid.NewGuid());
+        Assert.Equal(404, (await publish.ExecuteAsync(assignmentId, "test", default)).Status);
+        actor.SetupGet(t => t.UserId).Returns(teacher);
+        Assert.Equal(409, (await publish.ExecuteAsync(assignmentId, "test", default)).Status);
+        Assert.Null(assignment.ResultsPublishedAt);
+
+        progress.TeacherFinalReviewStatus = TeacherFinalReviewStatus.Approved;
+        await db.SaveChangesAsync();
+        var published = await publish.ExecuteAsync(assignmentId, "test", default);
+        Assert.Equal(200, published.Status);
+        Assert.Equal(now, assignment.ResultsPublishedAt);
+        Assert.Equal(AssignmentStatus.Closed, assignment.Status);
+        clock.UtcNow = now.AddHours(1);
+        Assert.Equal(now, (await publish.ExecuteAsync(assignmentId, "test", default)).PublishedAt);
+        Assert.Single(await db.AuthorizationAuditLogs.Where(a => a.ActionType == "ExamResultsPublished").ToListAsync());
+    }
+
+    [Fact]
     public async Task SubmitStudentAssignment_McqOptionId_AndNumericRational_AndReasoningRequired_EvaluatedCorrectly()
     {
         var (db, centerId, studentId) = CreateTestContext();

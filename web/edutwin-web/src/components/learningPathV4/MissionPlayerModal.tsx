@@ -25,6 +25,11 @@ const outcomeNames: Record<string, string> = { Passed: "Đạt yêu cầu kiểm
   PendingGrading: "Đang chờ chấm bài", TimedOut: "Đã hết giờ · giữ nguyên câu đã nộp" };
 const activityNames: Record<string, string> = { Study: "Tìm hiểu và ví dụ", WorkedExample: "Ví dụ từng bước", FindError: "Tìm và sửa lỗi",
   Explore: "Khám phá", Practice: "Luyện có hướng dẫn", IndependentCheck: "Tự kiểm tra", Explain: "Giải thích", CompleteSolution: "Hoàn thiện lời giải" };
+function activityDraft(a: ActivityRunDto): Record<string, unknown> {
+  try { return JSON.parse(a.draftPayload ?? "{}") ?? {}; } catch { return {}; }
+}
+
+const deferred = (a: ActivityRunDto) => activityDraft(a).deferred === true;
 const done = (a: ActivityRunDto) => a.status === "Submitted" || a.status === "Completed";
 
 export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, subjectId, contextLabel, nextLabel }: { isOpen: boolean; onClose: () => void; onResumeMission: (mission: AgendaItemDto) => void; mission: AgendaItemDto | null; subjectId: string; contextLabel?: string; nextLabel?: string }) {
@@ -44,10 +49,53 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
     const timer = setInterval(() => setWallClock(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [run.data?.expiresAt, reviewing]);
-  const current = reviewing || expired ? undefined : run.data?.activities.find(a => !done(a));
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [confirmFinish, setConfirmFinish] = useState(false);
+  const manualFinish = run.data?.requiresSubmissionConfirmation === true;
+  const activities = run.data?.activities ?? [];
+  const pending = activities.filter(a => !done(a));
+  const current = reviewing || expired || confirmFinish ? undefined : pending.find(a => a.activityRunId === selectedId)
+    ?? pending.find(a => !manualFinish || !deferred(a));
+  const reviewBeforeFinish = manualFinish && !expired && run.data?.status === "InProgress";
+  const draftGuard = useRef<(() => Promise<boolean>) | null>(null);
+  const selectActivity = async (id: number | null, showConfirmation = false) => {
+    if (draftGuard.current && !await draftGuard.current()) return;
+    setSelectedId(id);
+    setConfirmFinish(showConfirmation);
+  };
+  const updateActivity = (id: number, update: Partial<ActivityRunDto>) =>
+    cache.setQueryData<MissionRunDto>(key, old => old ? {
+      ...old, activities: old.activities.map(a => a.activityRunId === id ? { ...a, ...update } : a),
+    } : old);
+  const finish = useMutation({
+    mutationFn: async () => {
+      for (const a of pending) {
+        const res = await submitActivity(a.activityRunId, {
+          clientSubmissionId: crypto.randomUUID(), questionId: a.question?.question.questionId,
+          skipped: true, finalAnswer: "SKIPPED", timeSpentSeconds: 0,
+        });
+        updateActivity(a.activityRunId, { status: res.activityStatus, submittedResponse: "Đã bỏ qua câu này" });
+      }
+      return evaluateMissionRunV4(run.data!.sessionRunId, true);
+    },
+    onError: () => { void run.refetch(); },
+    onSuccess: result => {
+      if (result.outcome === "InsufficientEvidence") {
+        void run.refetch();
+        setConfirmFinish(false);
+        return;
+      }
+      cache.setQueryData(["mission-evaluation", actor?.centerId, actor?.userId, run.data?.sessionRunId], result);
+      cache.setQueryData<MissionRunDto>(key, old => old ? {
+        ...old, status: result.outcome === "PendingGrading" ? "Grading" : "Completed",
+      } : old);
+      setConfirmFinish(false);
+      void run.refetch();
+    },
+  });
   const evaluation = useQuery({ queryKey: ["mission-evaluation", actor?.centerId, actor?.userId, run.data?.sessionRunId],
-    queryFn: () => evaluateMissionRunV4(run.data!.sessionRunId), enabled: !reviewing && !!run.data && !current && !feedbackActivity && run.data.activities.length > 0 && (run.data.activities.every(done) || expired),
-    retry: false, refetchInterval: query => query.state.data?.outcome === "PendingGrading" ? 3000 : false, refetchIntervalInBackground: true });
+    queryFn: () => evaluateMissionRunV4(run.data!.sessionRunId), enabled: !reviewing && !reviewBeforeFinish && !!run.data && !current && !feedbackActivity && run.data.activities.length > 0 && (run.data.activities.every(done) || expired),
+    retry: false, staleTime: Infinity, refetchInterval: query => query.state.data?.outcome === "PendingGrading" ? 3000 : false, refetchIntervalInBackground: true });
   // Drop the cached run on close: reopening must read the server state (saved draft, hints, a cancelled or finished run).
   const close = () => { cache.removeQueries({ queryKey: ["mission-run"] }); void cache.invalidateQueries({ queryKey: ["learning-agenda"] }); void cache.invalidateQueries({ queryKey: ["learning-paths"] }); onClose(); };
   const [paused, setPaused] = useState(false);
@@ -71,7 +119,8 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
     return () => { document.body.style.overflow = previous; };
   }, [isOpen]);
   const abandon = useMutation({ mutationFn: () => abandonMissionRun(mission!.missionId, run.data!.sessionRunId), onSuccess: () => close() });
-  const submittedCount = run.data?.activities.filter(done).length ?? 0;
+  const submittedCount = activities.filter(done).length;
+  const feedbackDraft = feedbackActivity ? activityDraft(feedbackActivity) : {};
   const independentRun = !!run.data?.activities.some(a => a.activityType === "IndependentCheck" || a.activityType === "TransferChallenge");
   const cancelBlocked = independentRun && submittedCount > 0;
   if (!isOpen || !mission) return null;
@@ -82,11 +131,11 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
         <div>{contextLabel && <p className="mb-1 text-xs font-medium text-slate-500">{contextLabel}</p>}<p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">{mission.skillName}</p><h2 id="mission-title" className="mt-1 text-xl font-semibold">{mission.title}</h2>
           {mission.remediationOriginLabel && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{mission.remediationOriginLabel}</p>}
           {!!mission.remediationRound && mission.purpose === "Practice" && <p className="mt-1 text-sm text-slate-500">Làm bài tập tập trung vào {mission.remediationFocuses?.join(" + ") ?? mission.skillName}.</p>}
-          {run.data && <p className="mt-2 text-xs text-slate-500">{run.data.activities.filter(done).length}/{run.data.activities.length} hoạt động đã nộp · Tiến độ lưu theo tài khoản</p>}</div>
+          {run.data && <p className="mt-2 text-xs text-slate-500">{run.data.activities.filter(a => done(a) && a.submittedResponse !== "Đã bỏ qua câu này" && activityDraft(a).skipped !== true).length}/{run.data.activities.length} hoạt động đã nộp · Tiến độ lưu theo tài khoản</p>}</div>
         <div className="flex shrink-0 items-center gap-2">
           {runActive && <span className="font-mono text-sm tabular-nums text-slate-500" title={remainingSeconds != null ? "Thời gian làm bài còn lại" : "Thời gian học thực tế (không tính lúc tạm dừng)"}>{clock(remainingSeconds ?? activeSeconds)}</span>}
           {runActive && !paused && remainingSeconds == null && <button className="rounded-lg border px-3 py-1 text-sm" onClick={() => { setPaused(true); setConfirmCancel(false); }}>Tạm dừng</button>}
-          <button className="rounded-lg border px-3 py-1" aria-label="Đóng và giữ tiến độ" title="Đóng · tiến độ và bản nháp được giữ" onClick={close}>×</button>
+          <button className="rounded-lg border px-3 py-1" aria-label="Đóng và giữ tiến độ" title="Đóng · tiến độ và bản nháp được giữ" disabled={finish.isPending} onClick={() => { void (async () => { if (!draftGuard.current || await draftGuard.current()) close(); })(); }}>×</button>
         </div>
       </header>
       <div className="min-h-0 w-full flex-1 overflow-y-auto">
@@ -105,7 +154,32 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
         {run.data && <div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${100 * run.data.activities.filter(done).length / Math.max(1, run.data.activities.length)}%` }} /></div>
           {!reviewing && !!mission.questionCount && (mission.purpose === "Practice" || mission.purpose === "Review") && run.data.activities.length !== mission.questionCount &&
             <p className="mt-2 text-xs text-slate-500">Bộ này đã mở trước đó với {run.data.activities.length} câu nên giữ nguyên để kết quả so sánh được. Thời gian mới áp dụng từ bộ tiếp theo.</p>}
-          <div aria-label="Các câu trong buổi" className="mt-3 flex flex-wrap gap-2">{run.data.activities.map(a => <button key={a.activityRunId} disabled={!done(a) || (!a.learningFeedback && !a.content)} onClick={() => setFeedbackActivity(a)} className={`h-9 w-9 rounded-lg border text-sm ${done(a) ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-slate-200"}`} aria-label={`Xem lại câu ${a.activityOrder}`}>{a.activityOrder}</button>)}</div></div>}
+          <div aria-label="Các câu trong buổi" className="mt-3 flex flex-wrap gap-2">{activities.map(a => {
+            const editable = reviewBeforeFinish && !done(a);
+            const status = done(a) ? "Đã nộp" : deferred(a) ? "Đã để sau" : "Chưa nộp";
+            return <button key={a.activityRunId} type="button"
+              disabled={paused || finish.isPending || (!editable && (!done(a) || (reviewBeforeFinish ? !a.question : !a.learningFeedback && !a.content)))}
+              onClick={() => { if (editable) { setFeedbackActivity(null); void selectActivity(a.activityRunId); } else { void (async () => {
+                if (!draftGuard.current || await draftGuard.current()) setFeedbackActivity(a);
+              })(); } }}
+              aria-current={current?.activityRunId === a.activityRunId ? "step" : undefined}
+              className={`h-9 w-9 rounded-lg border text-sm ${done(a) ? "border-indigo-200 bg-indigo-50 text-indigo-700" : deferred(a) ? "border-amber-500 text-amber-700 dark:text-amber-300" : "border-slate-200"}`}
+              aria-label={`Câu ${a.activityOrder}, ${status}`} title={status}>{a.activityOrder}</button>;
+          })}</div></div>}
+        {reviewBeforeFinish && !paused && !feedbackActivity && <>
+          {!confirmFinish && <button type="button" className="rounded-xl border px-4 py-2 font-semibold" onClick={() => void selectActivity(null, true)}>
+            Kiểm tra và nộp phần này
+          </button>}
+          {confirmFinish && <section className="space-y-3 rounded-xl border border-indigo-200 p-4" aria-label="Xác nhận nộp bài">
+            <h3 className="font-semibold">Xác nhận nộp phần kiểm tra</h3>
+            <p>{pending.length ? `Câu chưa nộp: ${pending.map(a => a.activityOrder).join(", ")}. Em có thể quay lại chọn câu để làm tiếp hoặc nộp phần này với các câu đó để trống.` : "Em đã nộp từng câu. Xác nhận để hoàn thành phần kiểm tra."}</p>
+            {finish.error && <p role="alert">{extractProblemDetails(finish.error).message}</p>}
+            <div className="flex flex-wrap gap-3">
+              {pending.length > 0 && <button type="button" disabled={finish.isPending} className="rounded-lg border px-4 py-2" onClick={() => void selectActivity(pending[0].activityRunId)}>Làm tiếp</button>}
+              <button type="button" disabled={finish.isPending} className="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white" onClick={() => finish.mutate()}>{finish.isPending ? "Đang nộp…" : "Nộp và hoàn thành"}</button>
+            </div>
+          </section>}
+        </>}
         {paused && run.data && <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-800">
           <h3 className="text-lg font-semibold">Đang tạm dừng</h3>
           <p className="text-sm text-slate-600 dark:text-slate-300">Đã học {formatDuration(activeSeconds)} trong lượt này · {submittedCount}/{run.data.activities.length} hoạt động đã nộp. Bản nháp được lưu trên server; đồng hồ không chạy khi tạm dừng. Có thể thoát và quay lại sau, bài sẽ mở đúng chỗ đang làm.</p>
@@ -123,13 +197,25 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
           </div>}
         </div>}
         {feedbackActivity && !paused && <div className="space-y-4">{feedbackActivity.question && <RichMathText className="whitespace-pre-wrap text-base" text={feedbackActivity.question.question.questionText} />}
+          {reviewBeforeFinish && feedbackActivity.question && <section className="space-y-2 rounded-xl border p-4">
+            <h3 className="font-semibold">Câu trả lời đã nộp</h3>
+            <RichMathText className="whitespace-pre-wrap" text={feedbackActivity.question.question.options
+              ?.find(option => option.optionId === feedbackActivity.submittedResponse)?.text ?? feedbackActivity.submittedResponse ?? ""} />
+            {typeof feedbackDraft.reasoningText === "string" && feedbackDraft.reasoningText &&
+              <RichMathText className="whitespace-pre-wrap" text={feedbackDraft.reasoningText} />}
+          </section>}
           {feedbackActivity.learningFeedback && <Feedback feedback={feedbackActivity.learningFeedback} />}
           {feedbackActivity.content && <div className="rounded-xl border p-4"><h3 className="font-semibold">Cách hiểu em đã nộp</h3><p className="mt-2 whitespace-pre-wrap text-sm">{feedbackActivity.submittedResponse ?? "Chưa có nội dung để hiển thị."}</p></div>}
           {(feedbackActivity.learningFeedback || feedbackActivity.content) && <TutorFeedback activity={feedbackActivity} automatic />}
-          <button className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white" onClick={() => setFeedbackActivity(null)}>{current ? "Câu tiếp theo" : "Xem tổng kết buổi học"}</button></div>}
-        {current && !feedbackActivity && <div hidden={paused}><Activity subjectId={subjectId} key={current.activityRunId} activity={current} paused={paused} activeTool={activeTool} onActiveToolChange={setActiveTool} onSubmitted={(res, submittedResponse) => {
+          <button className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white" onClick={() => setFeedbackActivity(null)}>{reviewBeforeFinish ? "Quay lại phần kiểm tra" : current ? "Câu tiếp theo" : "Xem tổng kết buổi học"}</button></div>}
+        {current && !feedbackActivity && <div hidden={paused}><Activity subjectId={subjectId} key={current.activityRunId} activity={current} paused={paused} activeTool={activeTool} onActiveToolChange={setActiveTool}
+          draftGuard={reviewBeforeFinish ? draftGuard : undefined}
+          onDraftSaved={reviewBeforeFinish ? (draftPayload, draftRevision) => updateActivity(current.activityRunId, { draftPayload, draftRevision }) : undefined}
+          onDeferred={reviewBeforeFinish ? () => setSelectedId(null) : undefined}
+          onSubmitted={(res, submittedResponse) => {
           const updated = { ...current, status: res.activityStatus, learningFeedback: res.learningFeedback, submittedResponse };
           cache.setQueryData<MissionRunDto>(key, old => old ? { ...old, activities: old.activities.map(a => a.activityRunId === current.activityRunId ? updated : a) } : old);
+          if (reviewBeforeFinish) setSelectedId(null);
           void run.refetch();
           if ((current.activityType === "Practice" && res.learningFeedback) || current.content) setFeedbackActivity(updated);
         }} /></div>}
@@ -172,7 +258,7 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
             </div>
           )
         )}
-        {!current && run.data?.activities.filter(a => a.content && done(a)).map(a => {
+        {!reviewBeforeFinish && !current && run.data?.activities.filter(a => a.content && done(a)).map(a => {
           const p = (a.content?.payload ?? {}) as Record<string, unknown>;
           return <details key={a.activityRunId} className="rounded-xl border border-slate-200 p-4"><summary className="cursor-pointer font-semibold">Xem lại: {a.content?.title}</summary>
             <p className="mt-3 whitespace-pre-wrap text-sm">{a.content?.description}</p>
@@ -183,7 +269,7 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
             <TutorFeedback activity={a} />
           </details>;
         })}
-        {!current && !feedbackActivity && run.data?.activities.filter(a => a.question && done(a)).map(a => <details key={a.activityRunId} className="rounded-xl border border-slate-200 p-4"><summary className="cursor-pointer font-semibold">Xem lại câu {a.activityOrder}</summary><RichMathText className="mt-3" text={a.question!.question.questionText} />
+        {!reviewBeforeFinish && !current && !feedbackActivity && run.data?.activities.filter(a => a.question && done(a)).map(a => <details key={a.activityRunId} className="rounded-xl border border-slate-200 p-4"><summary className="cursor-pointer font-semibold">Xem lại câu {a.activityOrder}</summary><RichMathText className="mt-3" text={a.question!.question.questionText} />
           {a.learningFeedback ? <><Feedback feedback={a.learningFeedback} /><TutorFeedback activity={a} /></> : <button className="mt-3 underline" onClick={() => void run.refetch()}>Tải lời giải sau khi nộp cả bộ</button>}</details>)}
       </div>
       </div>
@@ -254,8 +340,15 @@ function TutorFeedback({ activity, automatic = false }: { activity: ActivityRunD
       <p className="text-xs text-slate-500">Nhận xét AI để hỗ trợ học; không thay điểm chấm hoặc xác nhận thành thạo. {value.generatedAt && new Date(value.generatedAt).toLocaleString("vi-VN")}</p></>}
   </section>;
 }
-function Activity({ activity: a, subjectId, onSubmitted, paused, activeTool, onActiveToolChange }: { activity: ActivityRunDto; subjectId: string; paused: boolean; activeTool: AssistantToolTab | null; onActiveToolChange: (tool: AssistantToolTab | null) => void; onSubmitted: (res: ActivitySubmissionResponseDto, response: string) => void }) {
-  const restored = (() => { try { return JSON.parse(a.draftPayload ?? "{}") as Record<string, unknown>; } catch { return {}; } })();
+function Activity({ activity: a, subjectId, onSubmitted, paused, activeTool, onActiveToolChange, draftGuard, onDraftSaved, onDeferred }: {
+  activity: ActivityRunDto; subjectId: string; paused: boolean; activeTool: AssistantToolTab | null;
+  onActiveToolChange: (tool: AssistantToolTab | null) => void;
+  onSubmitted: (res: ActivitySubmissionResponseDto, response: string) => void;
+  draftGuard?: React.RefObject<(() => Promise<boolean>) | null>;
+  onDraftSaved?: (draft: string, revision: number) => void;
+  onDeferred?: () => void;
+}) {
+  const restored = activityDraft(a);
   const [answer, setAnswer] = useState(text(restored.finalAnswer));
   const [reasoning, setReasoning] = useState(text(restored.reasoningText));
   const [errorStep, setErrorStep] = useState(text(restored.selectedErrorStep));
@@ -280,15 +373,32 @@ function Activity({ activity: a, subjectId, onSubmitted, paused, activeTool, onA
   const workedExamples = Array.isArray(payload.examples) ? (payload.examples as Record<string, unknown>[])
     .map(e => ({ question: text(e.question), steps: Array.isArray(e.steps) ? (e.steps as unknown[]).map(text).filter(Boolean) : [], answer: text(e.answer) }))
     .filter(e => e.question) : [];
-  const currentDraft = JSON.stringify({ finalAnswer: answer, reasoningText: reasoning, selectedErrorStep: errorStep });
+  const currentDraft = JSON.stringify({ finalAnswer: answer, reasoningText: reasoning, selectedErrorStep: errorStep, ...(onDeferred && deferred(a) ? { deferred: true } : {}) });
   const save = useMutation({ mutationFn: (draft: string) => saveActivityDraft(a.activityRunId, { expectedRevision: revision, draftPayload: draft }),
     onSuccess: (res, draft) => { if (res.hasConflict) { setConflict(true); setNotice("Bản nháp đã thay đổi ở thiết bị khác. Giữ nội dung hiện tại và mở lại nhiệm vụ để xem bản đã lưu; không tự ghi đè."); }
-      else { setRevision(res.draftRevision); setLastSaved(draft); setNotice("Đã lưu bản nháp trên server."); } },
+      else { onDraftSaved?.(draft, res.draftRevision); setRevision(res.draftRevision); setLastSaved(draft); setNotice("Đã lưu bản nháp trên server."); } },
     onError: e => setNotice(`Chưa đồng bộ bản nháp: ${e.message}. Nội dung vẫn ở màn hình; hãy lưu lại trước khi đóng.`) });
   const submit = useMutation({ mutationFn: (skipped: boolean) => submitActivity(a.activityRunId, { clientSubmissionId: submissionId,
     questionId: q ? q.questionId : undefined, finalAnswer: skipped ? "SKIPPED" : answer, skipped, reasoningText: reasoning || undefined,
     selectedErrorStep: errorStep || undefined, timeSpentSeconds: elapsedSeconds() }),
     onSuccess: (res, skipped) => onSubmitted(res, skipped ? "Đã bỏ qua câu này" : answer) });
+  useEffect(() => {
+    if (!draftGuard) return;
+    draftGuard.current = async () => {
+      if (conflict || save.isPending || submit.isPending || assist.isPending || scanning) return false;
+      if (currentDraft === lastSaved || (!answer && !reasoning && !errorStep && !lastSaved)) return true;
+      try { return !(await save.mutateAsync(currentDraft)).hasConflict; } catch { return false; }
+    };
+    return () => { draftGuard.current = null; };
+  });
+  const defer = async () => {
+    if (!onDeferred) { submit.mutate(true); return; }
+    try {
+      const draft = JSON.stringify({ ...JSON.parse(currentDraft), deferred: true });
+      if (draft !== lastSaved && (await save.mutateAsync(draft)).hasConflict) return;
+      onDeferred();
+    } catch { /* The draft mutation displays the error and keeps the current question open. */ }
+  };
   const [hints, setHints] = useState<AssistanceResponseDto[]>([]);
   // Ba phương thức nhập cho câu tự luận: bàn phím / vẽ trên A4 (có thước,
   // compa, tam giác, trục Oxy cho bài hình học) / ảnh chụp. Kết quả quét đổ
@@ -426,7 +536,7 @@ function Activity({ activity: a, subjectId, onSubmitted, paused, activeTool, onA
       {(submit.error || assist.error) && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{extractProblemDetails(submit.error ?? assist.error).message}</p>}
       <div className="flex flex-wrap gap-3"><button disabled={submit.isPending || save.isPending || assist.isPending || conflict} type="submit" className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white disabled:opacity-40">{submit.isPending ? "Đang lưu bài…" : q ? "Nộp câu trả lời" : "Hoàn thành hoạt động"}</button>
         <button type="button" disabled={save.isPending || conflict} className="rounded-xl border px-4 py-3" onClick={() => save.mutate(currentDraft)}>Lưu bản nháp</button>
-        {q && <button type="button" disabled={submit.isPending || save.isPending || assist.isPending || conflict} className="rounded-xl border px-4 py-3" onClick={() => submit.mutate(true)}>Bỏ qua câu này</button>}
+        {q && <button type="button" disabled={submit.isPending || save.isPending || assist.isPending || conflict} className="rounded-xl border px-4 py-3" onClick={() => void defer()}>{onDeferred ? "Để làm sau" : "Bỏ qua câu này"}</button>}
         {!independent && <button type="button" disabled={assist.isPending || !moreHints} className="rounded-xl border border-amber-300 px-4 py-3 text-amber-900 disabled:opacity-50 dark:text-amber-200"
           onClick={() => assist.mutate(hints.length)}>{assist.isPending ? "Đang mở gợi ý…" : hints.length === 0 ? "Gợi ý" : moreHints ? `Gợi ý tiếp (${hints.length + 1}/${lastHint?.totalHints ?? "?"})` : "Đã mở hết gợi ý"}</button>}
       </div>

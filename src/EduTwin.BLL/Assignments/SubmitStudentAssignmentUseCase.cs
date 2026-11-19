@@ -513,7 +513,7 @@ public class SubmitStudentAssignmentUseCase : ISubmitStudentAssignmentUseCase
         {
             AssignmentId = assignmentId.ToString("D"),
             SubmittedAttemptsCount = createdAttemptCount,
-            LastAnalysisJobId = lastJobId,
+            LastAnalysisJobId = ExamResultVisibility.IsTermExam(assignment.Kind) ? null : lastJobId,
             IsCompleted = true,
             Message = "Nộp bài tập thành công."
         });
