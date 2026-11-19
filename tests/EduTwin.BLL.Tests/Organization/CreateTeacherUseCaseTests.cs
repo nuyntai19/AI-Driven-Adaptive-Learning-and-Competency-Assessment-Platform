@@ -26,6 +26,7 @@ public class CreateTeacherUseCaseTests : IDisposable
     private readonly Mock<IPasswordHasher<User>> _mockHasher;
     private readonly CreateTeacherUseCase _sut;
     private readonly Guid _centerId = Guid.NewGuid();
+    private readonly Guid _subjectId = Guid.NewGuid();
     private readonly Guid _managerId = Guid.NewGuid();
     private readonly DateTimeOffset _fixedTime = new DateTimeOffset(2025, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
@@ -79,14 +80,14 @@ public class CreateTeacherUseCaseTests : IDisposable
             CreatedAt = _fixedTime.UtcDateTime,
             UpdatedAt = _fixedTime.UtcDateTime
         });
+        _dbContext.Subjects.Add(new Subject { SubjectId = _subjectId, CenterId = _centerId, SubjectName = "Math", SubjectCode = "MATH", IsActive = true, CreatedAt = _fixedTime.UtcDateTime, UpdatedAt = _fixedTime.UtcDateTime });
         _dbContext.SaveChanges();
     }
 
     [Fact]
     public async Task CreateTeacher_ValidRequest_Success()
     {
-        var request = new CreateTeacherRequest
-        {
+        var request = new CreateTeacherRequest { SubjectId = _subjectId,
             Username = " teacher.new ",
             DisplayName = " New Teacher ",
             Department = " Math ",
@@ -102,6 +103,7 @@ public class CreateTeacherUseCaseTests : IDisposable
         Assert.Equal("teacher.new", dto.Username);
         Assert.Equal("New Teacher", dto.DisplayName);
         Assert.Equal("Math", dto.Department);
+        Assert.Equal(_subjectId, dto.SubjectId);
         Assert.Equal("Active", dto.Status);
         Assert.Equal(0, dto.ClassCount);
         Assert.Equal("1", dto.RowVersion);
@@ -162,8 +164,7 @@ public class CreateTeacherUseCaseTests : IDisposable
         });
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateTeacherRequest
-        {
+        var request = new CreateTeacherRequest { SubjectId = _subjectId,
             Username = "teacher.dup",
             DisplayName = "New",
             TemporaryPassword = "Password123!!"
@@ -196,8 +197,7 @@ public class CreateTeacherUseCaseTests : IDisposable
         });
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateTeacherRequest
-        {
+        var request = new CreateTeacherRequest { SubjectId = _subjectId,
             Username = "teacher.dup",
             DisplayName = "New",
             TemporaryPassword = "Password123!!"
@@ -216,8 +216,7 @@ public class CreateTeacherUseCaseTests : IDisposable
     [InlineData("user", "a_very_long_password_that_exceeds_the_two_hundred_characters_limit_allowed_for_password_field_which_is_really_long_123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890")] // password > 200
     public async Task CreateTeacher_InvalidRequest_ValidationFailed(string? username, string? pwd)
     {
-        var request = new CreateTeacherRequest
-        {
+        var request = new CreateTeacherRequest { SubjectId = _subjectId,
             Username = username!,
             DisplayName = "Name",
             TemporaryPassword = pwd!
@@ -253,7 +252,7 @@ public class CreateTeacherUseCaseTests : IDisposable
         _mockTenantContext.Setup(c => c.UserId).Returns(userId);
         _mockTenantContext.Setup(c => c.Role).Returns(role);
 
-        var request = new CreateTeacherRequest { Username = "u", TemporaryPassword = "password123!", DisplayName = "n" };
+        var request = new CreateTeacherRequest { SubjectId = _subjectId, Username = "u", TemporaryPassword = "password123!", DisplayName = "n" };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -280,7 +279,7 @@ public class CreateTeacherUseCaseTests : IDisposable
         });
         await _dbContext.SaveChangesAsync();
 
-        var request = new CreateTeacherRequest { Username = "u", TemporaryPassword = "password123!", DisplayName = "n" };
+        var request = new CreateTeacherRequest { SubjectId = _subjectId, Username = "u", TemporaryPassword = "password123!", DisplayName = "n" };
         var result = await _sut.ExecuteAsync(request);
 
         Assert.False(result.IsSuccess);
@@ -293,7 +292,7 @@ public class CreateTeacherUseCaseTests : IDisposable
         _mockHasher.Setup(h => h.HashPassword(It.IsAny<User>(), It.IsAny<string>()))
                    .Throws(new InvalidOperationException("Hasher failed"));
 
-        var request = new CreateTeacherRequest { Username = "u", TemporaryPassword = "password123!", DisplayName = "n" };
+        var request = new CreateTeacherRequest { SubjectId = _subjectId, Username = "u", TemporaryPassword = "password123!", DisplayName = "n" };
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.ExecuteAsync(request));
 
@@ -304,7 +303,7 @@ public class CreateTeacherUseCaseTests : IDisposable
     [Fact]
     public async Task CreateTeacher_WhitespaceOnlyPassword_ValidationFailed()
     {
-        var request = new CreateTeacherRequest { Username = "u", TemporaryPassword = "            ", DisplayName = "n" };
+        var request = new CreateTeacherRequest { SubjectId = _subjectId, Username = "u", TemporaryPassword = "            ", DisplayName = "n" };
 
         var result = await _sut.ExecuteAsync(request);
 
@@ -317,7 +316,7 @@ public class CreateTeacherUseCaseTests : IDisposable
     [Fact]
     public async Task CreateTeacher_MissingCenter_ResourceNotFound()
     {
-        var request = new CreateTeacherRequest { Username = "u", TemporaryPassword = "password123!", DisplayName = "n" };
+        var request = new CreateTeacherRequest { SubjectId = _subjectId, Username = "u", TemporaryPassword = "password123!", DisplayName = "n" };
         var badCenterId = Guid.NewGuid();
         _mockTenantContext.Setup(c => c.CenterId).Returns(badCenterId);
         // Do not seed this center
@@ -363,6 +362,7 @@ public class CreateTeacherUseCaseTests : IDisposable
         {
             CenterId = _centerId, CenterName = "Test", CenterCode = "TEST", Timezone = "Asia/Ho_Chi_Minh", Status = CenterStatus.Active, IsDeleted = false, CreatedAt = _fixedTime.UtcDateTime, UpdatedAt = _fixedTime.UtcDateTime
         });
+        dbContext.Subjects.Add(new Subject { SubjectId = _subjectId, CenterId = _centerId, SubjectName = "Math", SubjectCode = "MATH", IsActive = true, CreatedAt = _fixedTime.UtcDateTime, UpdatedAt = _fixedTime.UtcDateTime });
         dbContext.SaveChanges();
 
         AccountRoleTestSeed.Add(dbContext, _centerId, UserRole.Teacher, _fixedTime.UtcDateTime);
@@ -370,7 +370,7 @@ public class CreateTeacherUseCaseTests : IDisposable
         interceptor.OnSavingChangesAsyncAction = () => throw new DbUpdateException("Simulated failure");
 
         var sut = new CreateTeacherUseCase(dbContext, _mockTenantContext.Object, mockTime.Object, _mockHasher.Object);
-        var request = new CreateTeacherRequest { Username = "u", TemporaryPassword = "password123!", DisplayName = "n" };
+        var request = new CreateTeacherRequest { SubjectId = _subjectId, Username = "u", TemporaryPassword = "password123!", DisplayName = "n" };
 
         await Assert.ThrowsAsync<DbUpdateException>(() => sut.ExecuteAsync(request));
 
@@ -393,6 +393,7 @@ public class CreateTeacherUseCaseTests : IDisposable
         {
             CenterId = _centerId, CenterName = "Test", CenterCode = "TEST", Timezone = "Asia/Ho_Chi_Minh", Status = CenterStatus.Active, IsDeleted = false, CreatedAt = _fixedTime.UtcDateTime, UpdatedAt = _fixedTime.UtcDateTime
         });
+        dbContext.Subjects.Add(new Subject { SubjectId = _subjectId, CenterId = _centerId, SubjectName = "Math", SubjectCode = "MATH", IsActive = true, CreatedAt = _fixedTime.UtcDateTime, UpdatedAt = _fixedTime.UtcDateTime });
         dbContext.SaveChanges();
 
         AccountRoleTestSeed.Add(dbContext, _centerId, UserRole.Teacher, _fixedTime.UtcDateTime);
@@ -417,7 +418,7 @@ public class CreateTeacherUseCaseTests : IDisposable
         };
 
         var sut = new CreateTeacherUseCase(dbContext, _mockTenantContext.Object, mockTime.Object, _mockHasher.Object);
-        var request = new CreateTeacherRequest { Username = "u", TemporaryPassword = "password123!", DisplayName = "n" };
+        var request = new CreateTeacherRequest { SubjectId = _subjectId, Username = "u", TemporaryPassword = "password123!", DisplayName = "n" };
 
         var result = await sut.ExecuteAsync(request);
 
@@ -428,6 +429,34 @@ public class CreateTeacherUseCaseTests : IDisposable
         // Only 1 user should exist, not 2
         Assert.Single(dbContext.Users.Where(u => u.Username == "u"));
         Assert.Empty(dbContext.Teachers);
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("unknown")]
+    [InlineData("inactive")]
+    [InlineData("deleted")]
+    [InlineData("other-center")]
+    public async Task CreateTeacher_InvalidSubject_RejectsWithoutCreatingAccount(string scenario)
+    {
+        var subject = await _dbContext.Subjects.SingleAsync();
+        if (scenario == "inactive") subject.IsActive = false;
+        if (scenario == "deleted") subject.IsDeleted = true;
+        if (scenario == "other-center") {
+            _dbContext.Subjects.Remove(subject);
+            await _dbContext.SaveChangesAsync();
+            _dbContext.Subjects.Add(new Subject { SubjectId = _subjectId, CenterId = Guid.NewGuid(), SubjectName = "Other", SubjectCode = "OTHER", IsActive = true, CreatedAt = _fixedTime.UtcDateTime, UpdatedAt = _fixedTime.UtcDateTime });
+        }
+        await _dbContext.SaveChangesAsync();
+        var request = new CreateTeacherRequest {
+            SubjectId = scenario == "missing" ? Guid.Empty : scenario == "unknown" ? Guid.NewGuid() : _subjectId,
+            Username = "new.teacher", DisplayName = "Teacher", TemporaryPassword = "Password123!"
+        };
+        var result = await _sut.ExecuteAsync(request);
+        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Empty(await _dbContext.Teachers.ToListAsync());
+        Assert.Empty(await _dbContext.Users.ToListAsync());
+        _mockHasher.Verify(h => h.HashPassword(It.IsAny<User>(), It.IsAny<string>()), Times.Never);
     }
 
     [Fact]

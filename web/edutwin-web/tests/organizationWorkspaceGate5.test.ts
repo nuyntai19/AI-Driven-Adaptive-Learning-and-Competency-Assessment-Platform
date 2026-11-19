@@ -222,7 +222,8 @@ test("5. Teacher CRUD maintains RowVersion for OCC", () => {
     teacherId: "teacher-001",
     username: "teacher.nguyen",
     displayName: "Nguyễn Văn Thầy",
-    department: "Tổ Toán",
+    department: "Toán",
+    subjectId: "subject-math",
     status: "Active",
     classCount: 2,
     rowVersion: "0x0000000000000101",
@@ -230,7 +231,7 @@ test("5. Teacher CRUD maintains RowVersion for OCC", () => {
 
   const updateReq: UpdateTeacherRequest = {
     displayName: "Nguyễn Văn Thầy (Đã cập nhật)",
-    department: "Tổ Toán - Tin",
+    subjectId: "subject-math",
     status: "Active",
     rowVersion: teacher.rowVersion,
   };
@@ -665,7 +666,8 @@ test("12. DTO models have zero fake fields, zero simulated KPIs", () => {
     teacherId: "tch-uuid",
     username: "teacher.ly",
     displayName: "Cô Hương",
-    department: "Tổ Lý - Hóa",
+    department: "Vật lý",
+    subjectId: "subject-physics",
     status: "Active",
     classCount: 3,
     rowVersion: "0x66",

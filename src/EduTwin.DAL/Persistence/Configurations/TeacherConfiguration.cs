@@ -74,6 +74,16 @@ public class TeacherConfiguration : IEntityTypeConfiguration<Organization.Teache
             .HasName("ux_teachers_center_id_teacher_id");
 
         // Relations
+        builder.Property(t => t.SubjectId)
+            .HasColumnName("subject_id")
+            .HasColumnType("VARCHAR(36)");
+        builder.HasOne(t => t.Subject)
+            .WithMany()
+            .HasForeignKey(t => new { t.CenterId, t.SubjectId })
+            .HasPrincipalKey(s => new { s.CenterId, s.SubjectId })
+            .HasConstraintName("fk_teachers_subjects")
+            .OnDelete(DeleteBehavior.Restrict);
+
         // Tenant-safe FK to users (1-to-1 Profile)
         builder.HasOne(t => t.User)
             .WithOne()

@@ -5,6 +5,7 @@ namespace EduTwin.Contracts.Organization;
 
 public class UpdateTeacherRequest
 {
+    public System.Guid SubjectId { get; set; }
     private string _displayName = string.Empty;
     private string? _department;
 

@@ -6917,6 +6917,10 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .HasDefaultValue(1ul)
                         .HasColumnName("row_version");
 
+                    b.Property<string>("SubjectId")
+                        .HasColumnType("VARCHAR(36)")
+                        .HasColumnName("subject_id");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("DATETIME(6)")
                         .HasColumnName("updated_at");
@@ -6930,6 +6934,8 @@ namespace EduTwin.DAL.Persistence.Migrations
 
                     b.HasAlternateKey("CenterId", "TeacherId")
                         .HasName("ux_teachers_center_id_teacher_id");
+
+                    b.HasIndex("CenterId", "SubjectId");
 
                     b.ToTable("teachers", (string)null);
                 });
@@ -10006,6 +10012,13 @@ namespace EduTwin.DAL.Persistence.Migrations
 
             modelBuilder.Entity("EduTwin.DAL.Organization.Teacher", b =>
                 {
+                    b.HasOne("EduTwin.DAL.Organization.Subject", "Subject")
+                        .WithMany()
+                        .HasForeignKey("CenterId", "SubjectId")
+                        .HasPrincipalKey("CenterId", "SubjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_teachers_subjects");
+
                     b.HasOne("EduTwin.DAL.IdentityAndTenancy.User", "User")
                         .WithOne()
                         .HasForeignKey("EduTwin.DAL.Organization.Teacher", "CenterId", "TeacherId")
@@ -10013,6 +10026,8 @@ namespace EduTwin.DAL.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_teachers_users_profile");
+
+                    b.Navigation("Subject");
 
                     b.Navigation("User");
                 });

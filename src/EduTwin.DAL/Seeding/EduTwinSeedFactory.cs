@@ -62,8 +62,8 @@ public partial class EduTwinSeedFactory
         container.Users.Add(CreateUser(teacherMathId, "teacher.math", "Teacher Math", EduTwin.Contracts.IdentityAndTenancy.UserRole.Teacher));
         container.Users.Add(CreateUser(teacherEnglishId, "teacher.english", "Teacher English", EduTwin.Contracts.IdentityAndTenancy.UserRole.Teacher));
 
-        container.Teachers.Add(new Teacher { CenterId = _centerId, TeacherId = teacherMathId, CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc });
-        container.Teachers.Add(new Teacher { CenterId = _centerId, TeacherId = teacherEnglishId, CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc });
+        container.Teachers.Add(new Teacher { CenterId = _centerId, TeacherId = teacherMathId, SubjectId = _isCenterA ? DeterministicSeedIds.CenterAMathSubjectId : DeterministicSeedIds.CenterBMathSubjectId, Department = "Toán", CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc });
+        container.Teachers.Add(new Teacher { CenterId = _centerId, TeacherId = teacherEnglishId, SubjectId = _isCenterA ? DeterministicSeedIds.CenterAEnglishSubjectId : DeterministicSeedIds.CenterBEnglishSubjectId, Department = "Tiếng Anh", CreatedAt = DeterministicSeedIds.AuditTimeUtc, UpdatedAt = DeterministicSeedIds.AuditTimeUtc });
 
         var faker = new Faker("vi");
         faker.Random = new Bogus.Randomizer(_isCenterA ? 202601 : 202602);

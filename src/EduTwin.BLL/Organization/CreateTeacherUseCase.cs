@@ -58,6 +58,7 @@ public class CreateTeacherUseCase : ICreateTeacherUseCase
 
         if (string.IsNullOrWhiteSpace(username) || username.Length > 100 ||
             string.IsNullOrWhiteSpace(displayName) || displayName.Length > 200 ||
+            request.SubjectId == Guid.Empty ||
             (department != null && department.Length > 150) ||
             string.IsNullOrWhiteSpace(rawPassword) || rawPassword.Length < 12 || rawPassword.Length > 200)
         {
@@ -73,6 +74,12 @@ public class CreateTeacherUseCase : ICreateTeacherUseCase
         {
             return CreateTeacherResult.Failure(ErrorCodes.ResourceNotFound);
         }
+
+        var subject = await _dbContext.Subjects.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.SubjectId == request.SubjectId && s.CenterId == centerId &&
+                !s.IsDeleted && s.IsActive, cancellationToken);
+        if (subject == null)
+            return CreateTeacherResult.Failure(ErrorCodes.ValidationFailed);
 
         var duplicate = await _dbContext.Users
             .AnyAsync(u => u.CenterId == centerId && u.Username == username, cancellationToken);
@@ -109,7 +116,8 @@ public class CreateTeacherUseCase : ICreateTeacherUseCase
         {
             TeacherId = teacherId,
             CenterId = centerId,
-            Department = department,
+            SubjectId = subject.SubjectId,
+            Department = subject.SubjectName,
             Bio = null,
             IsDeleted = false,
             CreatedAt = now,
@@ -148,6 +156,7 @@ public class CreateTeacherUseCase : ICreateTeacherUseCase
             Username = user.Username,
             DisplayName = user.DisplayName,
             Department = teacher.Department,
+            SubjectId = teacher.SubjectId,
             Status = user.Status.ToString(),
             ClassCount = 0,
             RowVersion = teacher.RowVersion.ToString(CultureInfo.InvariantCulture)

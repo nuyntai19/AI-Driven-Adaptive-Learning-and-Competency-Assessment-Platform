@@ -58,6 +58,9 @@ public class DeleteSubjectUseCase : IDeleteSubjectUseCase
             return DeleteSubjectResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
+        if (await _dbContext.Teachers.AnyAsync(t => t.CenterId == centerId && t.SubjectId == subjectId && !t.IsDeleted, cancellationToken))
+            return DeleteSubjectResult.Failure(ErrorCodes.InvalidStateTransition);
+
         if (await _dbContext.Classes.AnyAsync(c => c.CenterId == centerId && c.SubjectId == subjectId && !c.IsDeleted, cancellationToken))
             return DeleteSubjectResult.Failure(ErrorCodes.InvalidStateTransition);
 

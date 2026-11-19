@@ -77,13 +77,13 @@ public class CreateClassUseCase : ICreateClassUseCase
             .Select(c => new
             {
                 Subject = _context.Subjects
-                    .Where(s => s.SubjectId == request.SubjectId && s.CenterId == centerId && !s.IsDeleted)
+                    .Where(s => s.SubjectId == request.SubjectId && s.CenterId == centerId && !s.IsDeleted && s.IsActive)
                     .Select(s => new { s.SubjectId, s.SubjectName })
                     .FirstOrDefault(),
                 Teacher = _context.Teachers
                     .Where(t => t.TeacherId == request.TeacherId && t.CenterId == centerId && !t.IsDeleted &&
                                 t.User != null && t.User.CenterId == centerId && !t.User.IsDeleted && t.User.RoleName == UserRole.Teacher)
-                    .Select(t => new { t.TeacherId, UserDisplayName = t.User.DisplayName })
+                    .Select(t => new { t.TeacherId, t.SubjectId, t.User.Status, UserDisplayName = t.User.DisplayName })
                     .FirstOrDefault()
             })
             .FirstOrDefaultAsync(cancellationToken);
@@ -92,6 +92,9 @@ public class CreateClassUseCase : ICreateClassUseCase
         {
             return CreateClassResult.Failure(ErrorCodes.ResourceNotFound);
         }
+
+        if (subjectAndTeacher.Teacher.SubjectId != request.SubjectId || subjectAndTeacher.Teacher.Status != UserStatus.Active)
+            return CreateClassResult.Failure(ErrorCodes.ValidationFailed);
 
         // Check duplicates pre-emptively
         var duplicate = await _context.Classes

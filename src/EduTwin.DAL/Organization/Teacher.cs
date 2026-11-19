@@ -5,6 +5,9 @@ namespace EduTwin.DAL.Organization;
 public class Teacher : IMutableTenantAggregate
 {
     public Guid TeacherId { get; set; }
+    // Nullable only for legacy profiles whose subject could not be resolved.
+    public Guid? SubjectId { get; set; }
+    public Subject? Subject { get; set; }
     public string? Department { get; set; }
     public string? Bio { get; set; }
 

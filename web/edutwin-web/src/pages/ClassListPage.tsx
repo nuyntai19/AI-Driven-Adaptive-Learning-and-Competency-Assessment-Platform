@@ -148,13 +148,14 @@ const CenterManagerClassListView: React.FC = () => {
   });
 
   // Teachers query for create & edit modals
+  const teacherSubjectId = isCreateModalOpen ? subjectId : editingClass?.subject.subjectId ?? "";
   const shouldFetchTeachers =
     (isCreateModalOpen && canCreateClass) || (!!editingClass && canUpdateClass);
 
-  const { data: teachersData, isLoading: isLoadingTeachers } = useQuery({
-    queryKey: ["teachers", "active"],
-    queryFn: () => organizationApi.listTeachers({ page: 1, pageSize: 100, status: "Active" }),
-    enabled: shouldFetchTeachers,
+  const { data: teachersData, isLoading: isLoadingTeachers, isError: isTeachersError, refetch: refetchTeachers } = useQuery({
+    queryKey: ["teachers", "active", "subject", teacherSubjectId],
+    queryFn: () => organizationApi.listTeachersForSubject(teacherSubjectId),
+    enabled: shouldFetchTeachers && !!teacherSubjectId,
   });
 
   // Detail queries
@@ -406,6 +407,11 @@ const CenterManagerClassListView: React.FC = () => {
       return;
     }
 
+    if (isTeachersError || !teachersData?.some((teacher) => teacher.teacherId === normTeacherId && teacher.subjectId === normSubjectId)) {
+      setCreateError("Vui lòng chọn giáo viên đang hoạt động thuộc môn học đã chọn.");
+      return;
+    }
+
     createClassMutation.mutate({
       className: normClassName,
       academicYear: normAcademicYear,
@@ -433,6 +439,11 @@ const CenterManagerClassListView: React.FC = () => {
     }
     if (!normTeacherId) {
       setEditError("Vui lòng chọn giáo viên phụ trách.");
+      return;
+    }
+
+    if (isTeachersError || !teachersData?.some((teacher) => teacher.teacherId === normTeacherId && teacher.subjectId === editingClass.subject.subjectId)) {
+      setEditError("Vui lòng chọn giáo viên đang hoạt động thuộc môn học của lớp.");
       return;
     }
 
@@ -867,7 +878,7 @@ const CenterManagerClassListView: React.FC = () => {
                   <select
                     id="select-subject"
                     value={subjectId}
-                    onChange={(e) => setSubjectId(e.target.value)}
+                    onChange={(e) => { setSubjectId(e.target.value); setTeacherId(""); }}
                     required
                     disabled={isLoadingSubjects || createClassMutation.isPending}
                     className="cm-field mt-1 w-full px-3 text-sm"
@@ -890,16 +901,18 @@ const CenterManagerClassListView: React.FC = () => {
                     value={teacherId}
                     onChange={(e) => setTeacherId(e.target.value)}
                     required
-                    disabled={isLoadingTeachers || createClassMutation.isPending}
+                    disabled={!subjectId || isLoadingTeachers || isTeachersError || !teachersData?.length || createClassMutation.isPending}
                     className="cm-field mt-1 w-full px-3 text-sm"
                   >
-                    <option value="">-- Chọn giáo viên --</option>
-                    {teachersData?.data.map((t) => (
+                    <option value="">{!subjectId ? "-- Chọn môn học trước --" : isLoadingTeachers ? "Đang tải giáo viên..." : "-- Chọn giáo viên --"}</option>
+                    {teachersData?.map((t) => (
                       <option key={t.teacherId} value={t.teacherId}>
                         {t.displayName} ({t.username})
                       </option>
                     ))}
                   </select>
+                  {isTeachersError && <p role="alert" className="mt-2 text-sm text-rose-500">Không thể tải giáo viên. <button type="button" onClick={() => refetchTeachers()}>Thử lại</button></p>}
+                  {!!teacherSubjectId && !isLoadingTeachers && !isTeachersError && !teachersData?.length && <p className="mt-2 text-sm">Chưa có giáo viên đang hoạt động thuộc môn học này. Vui lòng tạo hoặc cập nhật bộ môn của giáo viên.</p>}
                 </div>
 
                 <div>
@@ -985,15 +998,18 @@ const CenterManagerClassListView: React.FC = () => {
                     value={editTeacherId}
                     onChange={(e) => setEditTeacherId(e.target.value)}
                     required
-                    disabled={isLoadingTeachers || updateClassMutation.isPending}
+                    disabled={isLoadingTeachers || isTeachersError || updateClassMutation.isPending}
                     className="cm-field mt-1 w-full px-3 text-sm"
                   >
-                    {teachersData?.data.map((t) => (
+                    <option value="" hidden>-- Chọn giáo viên đúng môn học --</option>
+                    {teachersData?.map((t) => (
                       <option key={t.teacherId} value={t.teacherId}>
                         {t.displayName} ({t.username})
                       </option>
                     ))}
                   </select>
+                  {isTeachersError && <p role="alert" className="mt-2 text-sm text-rose-500">Không thể tải giáo viên. <button type="button" onClick={() => refetchTeachers()}>Thử lại</button></p>}
+                  {!!teacherSubjectId && !isLoadingTeachers && !isTeachersError && !teachersData?.length && <p className="mt-2 text-sm">Chưa có giáo viên đang hoạt động thuộc môn học này. Vui lòng tạo hoặc cập nhật bộ môn của giáo viên.</p>}
                 </div>
 
                 <div>
@@ -1647,16 +1663,19 @@ const LegacyClassListPage: React.FC = () => {
     enabled: isCreateModalOpen && canCreateClass,
   });
 
+  const teacherSubjectId = isCreateModalOpen ? subjectId : editingClass?.subject.subjectId ?? "";
   const shouldFetchTeachers =
     (isCreateModalOpen && canCreateClass) || (!!editingClass && canUpdateClass);
 
   const {
     data: teachersData,
     isLoading: isLoadingTeachers,
+    isError: isTeachersError,
+    refetch: refetchTeachers,
   } = useQuery({
-    queryKey: ["teachers", "active"],
-    queryFn: () => organizationApi.listTeachers({ page: 1, pageSize: 100, status: "Active" }),
-    enabled: shouldFetchTeachers,
+    queryKey: ["teachers", "active", "subject", teacherSubjectId],
+    queryFn: () => organizationApi.listTeachersForSubject(teacherSubjectId),
+    enabled: shouldFetchTeachers && !!teacherSubjectId,
   });
 
   const {
@@ -1870,6 +1889,11 @@ const LegacyClassListPage: React.FC = () => {
       return;
     }
 
+    if (isTeachersError || !teachersData?.some((teacher) => teacher.teacherId === normTeacherId && teacher.subjectId === normSubjectId)) {
+      setCreateError("Vui lòng chọn giáo viên đang hoạt động thuộc môn học đã chọn.");
+      return;
+    }
+
     createClassMutation.mutate({
       className: normClassName,
       academicYear: normAcademicYear,
@@ -1893,6 +1917,11 @@ const LegacyClassListPage: React.FC = () => {
     }
     if (!normTeacherId) {
       setEditError("Vui lòng chọn giáo viên phụ trách.");
+      return;
+    }
+
+    if (isTeachersError || !teachersData?.some((teacher) => teacher.teacherId === normTeacherId && teacher.subjectId === editingClass.subject.subjectId)) {
+      setEditError("Vui lòng chọn giáo viên đang hoạt động thuộc môn học của lớp.");
       return;
     }
 
@@ -2318,7 +2347,7 @@ const LegacyClassListPage: React.FC = () => {
                     id="select-subject"
                     required
                     value={subjectId}
-                    onChange={(e) => setSubjectId(e.target.value)}
+                    onChange={(e) => { setSubjectId(e.target.value); setTeacherId(""); }}
                     disabled={isLoadingSubjects}
                     className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   >
@@ -2339,16 +2368,18 @@ const LegacyClassListPage: React.FC = () => {
                     required
                     value={teacherId}
                     onChange={(e) => setTeacherId(e.target.value)}
-                    disabled={isLoadingTeachers}
+                    disabled={!teacherSubjectId || isLoadingTeachers || isTeachersError}
                     className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   >
-                    <option value="">-- Chọn giáo viên --</option>
-                    {teachersData?.data.map((t) => (
+                    <option value="">{!subjectId ? "-- Chọn môn học trước --" : isLoadingTeachers ? "Đang tải giáo viên..." : "-- Chọn giáo viên --"}</option>
+                    {teachersData?.map((t) => (
                       <option key={t.teacherId} value={t.teacherId}>
                         {t.displayName} ({t.username})
                       </option>
                     ))}
                   </select>
+                  {isTeachersError && <p role="alert" className="mt-2 text-sm text-rose-500">Không thể tải giáo viên. <button type="button" onClick={() => refetchTeachers()}>Thử lại</button></p>}
+                  {!!teacherSubjectId && !isLoadingTeachers && !isTeachersError && !teachersData?.length && <p className="mt-2 text-sm">Chưa có giáo viên đang hoạt động thuộc môn học này. Vui lòng tạo hoặc cập nhật bộ môn của giáo viên.</p>}
                 </div>
                 <div>
                   <label htmlFor="legacy-select-grade" className="block text-sm font-medium text-gray-700">
@@ -2424,15 +2455,18 @@ const LegacyClassListPage: React.FC = () => {
                     required
                     value={editTeacherId}
                     onChange={(e) => setEditTeacherId(e.target.value)}
-                    disabled={isLoadingTeachers}
+                    disabled={!teacherSubjectId || isLoadingTeachers || isTeachersError}
                     className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   >
-                    {teachersData?.data.map((t) => (
+                    <option value="" hidden>-- Chọn giáo viên đúng môn học --</option>
+                    {teachersData?.map((t) => (
                       <option key={t.teacherId} value={t.teacherId}>
                         {t.displayName} ({t.username})
                       </option>
                     ))}
                   </select>
+                  {isTeachersError && <p role="alert" className="mt-2 text-sm text-rose-500">Không thể tải giáo viên. <button type="button" onClick={() => refetchTeachers()}>Thử lại</button></p>}
+                  {!!teacherSubjectId && !isLoadingTeachers && !isTeachersError && !teachersData?.length && <p className="mt-2 text-sm">Chưa có giáo viên đang hoạt động thuộc môn học này. Vui lòng tạo hoặc cập nhật bộ môn của giáo viên.</p>}
                 </div>
                 <div>
                   <label htmlFor="select-edit-status" className="block text-sm font-medium text-gray-700">

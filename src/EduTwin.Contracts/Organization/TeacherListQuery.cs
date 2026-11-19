@@ -16,4 +16,5 @@ public class TeacherListQuery
 
     [EnumDataType(typeof(UserStatus))]
     public UserStatus? Status { get; set; }
+    public System.Guid? SubjectId { get; set; }
 }

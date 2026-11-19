@@ -5,6 +5,7 @@ export interface TeacherDto {
   username: string;
   displayName: string;
   department: string | null;
+  subjectId: string | null;
   status: UserStatus;
   classCount: number;
   rowVersion: string;
@@ -14,12 +15,12 @@ export interface CreateTeacherRequest {
   username: string;
   temporaryPassword: string;
   displayName: string;
-  department?: string;
+  subjectId: string;
 }
 
 export interface UpdateTeacherRequest {
   displayName?: string;
-  department?: string | null;
+  subjectId: string;
   status?: UserStatus;
   rowVersion: string;
 }
@@ -107,6 +108,7 @@ export interface TeacherListResponse {
 }
 
 export interface TeacherListParams {
+  subjectId?: string;
   page: number;
   pageSize: number;
   search?: string;

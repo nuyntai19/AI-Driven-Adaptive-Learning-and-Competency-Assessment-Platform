@@ -328,7 +328,8 @@ Invariant:
 | Column | Type | Null | Constraint/Ý nghĩa |
 |---|---|---:|---|
 | teacher_id | VARCHAR(36) | No | PK và tenant-safe FK users.user_id |
-| department | VARCHAR(150) | Yes | Bộ môn/đơn vị chuyên môn |
+| subject_id | VARCHAR(36) | Yes | Tenant-safe FK tới subjects; bắt buộc ở API tạo/cập nhật giáo viên, nullable cho dữ liệu cũ chưa xác định môn |
+| department | VARCHAR(150) | Yes | Văn bản cũ; khi tạo/cập nhật lấy từ tên môn học đã chọn |
 | bio | VARCHAR(500) | Yes | Giới thiệu chuyên môn ngắn |
 | ...MTA | | | Kế thừa audit, soft-delete, tenant và row_version tại mục 2.3 |
 
@@ -337,7 +338,9 @@ Constraints:
 - PK(teacher_id).
 - UX(center_id, teacher_id).
 - FK(center_id, teacher_id) → users(center_id, user_id).
+- FK(center_id, subject_id) → subjects(center_id, subject_id), ON DELETE RESTRICT; index(center_id, subject_id).
 - User tương ứng phải có role Teacher; kiểm tra ở BLL.
+- Migration `20261119171417_BindTeachersToSubjects` gắn môn theo lớp cũ nếu chỉ có một môn, sau đó theo tên/mã bộ môn khớp duy nhất. Hồ sơ mơ hồ giữ null để quản lý chọn lại. Không được xóa mềm môn còn giáo viên sử dụng.
 
 ## 8. students [MTA]
 

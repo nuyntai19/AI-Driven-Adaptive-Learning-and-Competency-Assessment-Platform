@@ -24,6 +24,7 @@ public class UpdateTeacherUseCaseTests
 {
     private readonly Mock<ITenantContext> _mockTenantContext;
     private readonly Guid _centerId = Guid.Parse("e331c1f3-18d2-43bb-a5a4-1507dfbb7d90");
+    private readonly Guid _subjectId = Guid.NewGuid();
     private readonly Guid _managerId = Guid.NewGuid();
     private readonly DateTimeOffset _fixedTime = new(2025, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
@@ -94,6 +95,8 @@ public class UpdateTeacherUseCaseTests
             });
         }
 
+        context.Subjects.Add(new Subject { SubjectId = _subjectId, CenterId = _centerId, SubjectName = "New Dept", SubjectCode = "MATH", IsActive = true, CreatedAt = _fixedTime.UtcDateTime, UpdatedAt = _fixedTime.UtcDateTime });
+
         var user = new User
         {
             UserId = teacherId,
@@ -117,6 +120,7 @@ public class UpdateTeacherUseCaseTests
                 TeacherId = teacherId,
                 CenterId = actualTeacherCenterId,
                 Department = "Old Dept",
+                SubjectId = _subjectId,
                 RowVersion = rowVersion,
                 IsDeleted = isDeleted,
                 CreatedAt = _fixedTime.UtcDateTime,
@@ -168,8 +172,7 @@ public class UpdateTeacherUseCaseTests
         mockTime.Setup(t => t.GetUtcNow()).Returns(newTime);
 
         var sut = new UpdateTeacherUseCase(dbContext, _mockTenantContext.Object, mockTime.Object);
-        var request = new UpdateTeacherRequest
-        {
+        var request = new UpdateTeacherRequest { SubjectId = _subjectId,
             DisplayName = "New Name",
             Department = "New Dept",
             Status = UserStatus.Locked,
@@ -217,8 +220,7 @@ public class UpdateTeacherUseCaseTests
         dbContext.ChangeTracker.Clear();
 
         var sut = new UpdateTeacherUseCase(dbContext, _mockTenantContext.Object, TimeProvider.System);
-        var request = new UpdateTeacherRequest
-        {
+        var request = new UpdateTeacherRequest { SubjectId = _subjectId,
             DisplayName = "N",
             Status = UserStatus.Active,
             RowVersion = rowVersion
@@ -243,8 +245,7 @@ public class UpdateTeacherUseCaseTests
         dbContext.ChangeTracker.Clear();
 
         var sut = new UpdateTeacherUseCase(dbContext, _mockTenantContext.Object, TimeProvider.System);
-        var request = new UpdateTeacherRequest
-        {
+        var request = new UpdateTeacherRequest { SubjectId = _subjectId,
             DisplayName = "Valid",
             Status = null,
             RowVersion = actualRowVersion.ToString()
@@ -273,8 +274,7 @@ public class UpdateTeacherUseCaseTests
         dbContext.ChangeTracker.Clear();
 
         var sut = new UpdateTeacherUseCase(dbContext, _mockTenantContext.Object, TimeProvider.System);
-        var request = new UpdateTeacherRequest
-        {
+        var request = new UpdateTeacherRequest { SubjectId = _subjectId,
             DisplayName = "N",
             Status = UserStatus.Active,
             RowVersion = (actualRowVersion + 1).ToString() // mismatched
@@ -304,8 +304,7 @@ public class UpdateTeacherUseCaseTests
         interceptor.OnSavingChangesAsyncAction = () => throw new DbUpdateConcurrencyException("Simulated concurrency failure");
 
         var sut = new UpdateTeacherUseCase(dbContext, _mockTenantContext.Object, TimeProvider.System);
-        var request = new UpdateTeacherRequest
-        {
+        var request = new UpdateTeacherRequest { SubjectId = _subjectId,
             DisplayName = "New",
             Status = UserStatus.Active,
             RowVersion = actualRowVersion.ToString()
@@ -333,8 +332,7 @@ public class UpdateTeacherUseCaseTests
         interceptor.OnSavingChangesAsyncAction = () => throw new DbUpdateException("Simulated unrelated failure");
 
         var sut = new UpdateTeacherUseCase(dbContext, _mockTenantContext.Object, TimeProvider.System);
-        var request = new UpdateTeacherRequest
-        {
+        var request = new UpdateTeacherRequest { SubjectId = _subjectId,
             DisplayName = "New",
             Status = UserStatus.Active,
             RowVersion = actualRowVersion.ToString()
@@ -368,7 +366,7 @@ public class UpdateTeacherUseCaseTests
         await SeedDataAsync(dbContext, teacherId);
 
         var sut = new UpdateTeacherUseCase(dbContext, _mockTenantContext.Object, TimeProvider.System);
-        var request = new UpdateTeacherRequest { DisplayName = "N", Status = UserStatus.Active, RowVersion = "1" };
+        var request = new UpdateTeacherRequest { SubjectId = _subjectId, DisplayName = "N", Status = UserStatus.Active, RowVersion = "1" };
 
         var result = await sut.ExecuteAsync(teacherId, request);
         Assert.False(result.IsSuccess);
@@ -394,7 +392,7 @@ public class UpdateTeacherUseCaseTests
         await dbContext.SaveChangesAsync();
 
         var sut = new UpdateTeacherUseCase(dbContext, _mockTenantContext.Object, TimeProvider.System);
-        var request = new UpdateTeacherRequest { DisplayName = "N", Status = UserStatus.Active, RowVersion = "1" };
+        var request = new UpdateTeacherRequest { SubjectId = _subjectId, DisplayName = "N", Status = UserStatus.Active, RowVersion = "1" };
         var result = await sut.ExecuteAsync(teacherId, request);
 
         Assert.False(result.IsSuccess);
@@ -407,7 +405,7 @@ public class UpdateTeacherUseCaseTests
         var dbName = Guid.NewGuid().ToString();
         var (dbContext, _) = CreateContext(dbName);
         var sut = new UpdateTeacherUseCase(dbContext, _mockTenantContext.Object, TimeProvider.System);
-        var request = new UpdateTeacherRequest { DisplayName = "N", Status = UserStatus.Active, RowVersion = "1" };
+        var request = new UpdateTeacherRequest { SubjectId = _subjectId, DisplayName = "N", Status = UserStatus.Active, RowVersion = "1" };
 
         var result = await sut.ExecuteAsync(Guid.Empty, request);
         Assert.False(result.IsSuccess);
@@ -428,7 +426,7 @@ public class UpdateTeacherUseCaseTests
         await SeedDataAsync(dbContext, teacherId, isDeleted: teacherDeleted, teacherCenterId: Guid.Parse(teacherCenter), userCenterId: Guid.Parse(userCenter), userIsDeleted: userDeleted, userRole: role);
 
         var sut = new UpdateTeacherUseCase(dbContext, _mockTenantContext.Object, TimeProvider.System);
-        var request = new UpdateTeacherRequest { DisplayName = "N", Status = UserStatus.Active, RowVersion = "1" };
+        var request = new UpdateTeacherRequest { SubjectId = _subjectId, DisplayName = "N", Status = UserStatus.Active, RowVersion = "1" };
 
         var result = await sut.ExecuteAsync(teacherId, request);
         Assert.False(result.IsSuccess);
@@ -448,7 +446,7 @@ public class UpdateTeacherUseCaseTests
         await dbContext.SaveChangesAsync();
 
         var sut = new UpdateTeacherUseCase(dbContext, _mockTenantContext.Object, TimeProvider.System);
-        var request = new UpdateTeacherRequest { DisplayName = "N", Status = UserStatus.Active, RowVersion = "1" };
+        var request = new UpdateTeacherRequest { SubjectId = _subjectId, DisplayName = "N", Status = UserStatus.Active, RowVersion = "1" };
 
         var result = await sut.ExecuteAsync(Guid.NewGuid(), request);
         Assert.False(result.IsSuccess);
@@ -456,7 +454,7 @@ public class UpdateTeacherUseCaseTests
     }
 
     [Fact]
-    public async Task UpdateTeacher_DepartmentWhitespace_SetsToNull()
+    public async Task UpdateTeacher_DepartmentTextCannotOverrideSelectedSubject()
     {
         var dbName = Guid.NewGuid().ToString();
         var (dbContext, _) = CreateContext(dbName);
@@ -465,10 +463,11 @@ public class UpdateTeacherUseCaseTests
         dbContext.ChangeTracker.Clear();
 
         var sut = new UpdateTeacherUseCase(dbContext, _mockTenantContext.Object, TimeProvider.System);
-        var request = new UpdateTeacherRequest { DisplayName = "N", Department = "   ", Status = UserStatus.Active, RowVersion = "1" };
+        var request = new UpdateTeacherRequest { SubjectId = _subjectId, DisplayName = "N", Department = "   ", Status = UserStatus.Active, RowVersion = "1" };
 
         var result = await sut.ExecuteAsync(teacherId, request);
         Assert.True(result.IsSuccess);
-        Assert.Null(result.Data!.Department);
+        Assert.Equal("New Dept", result.Data!.Department);
+        Assert.Equal(_subjectId, result.Data.SubjectId);
     }
 }

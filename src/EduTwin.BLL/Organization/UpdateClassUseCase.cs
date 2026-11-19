@@ -100,7 +100,7 @@ public class UpdateClassUseCase : IUpdateClassUseCase
                 Teacher = _context.Teachers
                     .Where(t => t.TeacherId == request.TeacherId && t.CenterId == centerId && !t.IsDeleted &&
                                 t.User != null && t.User.CenterId == centerId && !t.User.IsDeleted && t.User.RoleName == UserRole.Teacher)
-                    .Select(t => new { t.TeacherId, UserDisplayName = t.User.DisplayName })
+                    .Select(t => new { t.TeacherId, t.SubjectId, t.User.Status, UserDisplayName = t.User.DisplayName })
                     .FirstOrDefault(),
                 Subject = _context.Subjects
                     .Where(s => s.SubjectId == existingClass.SubjectId && s.CenterId == centerId && !s.IsDeleted)
@@ -113,6 +113,10 @@ public class UpdateClassUseCase : IUpdateClassUseCase
         {
             return UpdateClassResult.Failure(ErrorCodes.ResourceNotFound);
         }
+
+        if (centerAndTeacher.Teacher.SubjectId != existingClass.SubjectId ||
+            (request.TeacherId != existingClass.TeacherId && centerAndTeacher.Teacher.Status != UserStatus.Active))
+            return UpdateClassResult.Failure(ErrorCodes.ValidationFailed);
 
         if (existingClass.RowVersion != expectedRowVersion)
         {

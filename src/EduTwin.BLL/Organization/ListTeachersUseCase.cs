@@ -35,7 +35,7 @@ public class ListTeachersUseCase : IListTeachersUseCase
             return ListTeachersResult.Failure(ErrorCodes.ResourceNotFound);
         }
 
-        if (query.Page < 1 || query.PageSize < 1 || query.PageSize > 100)
+        if (query.Page < 1 || query.PageSize < 1 || query.PageSize > 100 || query.SubjectId == Guid.Empty)
         {
             return ListTeachersResult.Failure(ErrorCodes.ValidationFailed);
         }
@@ -68,12 +68,19 @@ public class ListTeachersUseCase : IListTeachersUseCase
             teacherQuery = teacherQuery.Where(t =>
                 (t.User!.Username != null && t.User.Username.Contains(search)) ||
                 (t.User.DisplayName != null && t.User.DisplayName.Contains(search)) ||
-                (t.Department != null && t.Department.Contains(search)));
+                (t.Subject != null && !t.Subject.IsDeleted && t.Subject.SubjectName.Contains(search)) ||
+                (t.SubjectId == null && t.Department != null && t.Department.Contains(search)));
         }
 
         if (query.Status.HasValue)
         {
             teacherQuery = teacherQuery.Where(t => t.User!.Status == query.Status.Value);
+        }
+
+        if (query.SubjectId.HasValue)
+        {
+            teacherQuery = teacherQuery.Where(t => t.SubjectId == query.SubjectId &&
+                t.Subject != null && t.Subject.CenterId == centerId && !t.Subject.IsDeleted);
         }
 
         var totalItems = await teacherQuery.CountAsync(cancellationToken);
@@ -95,7 +102,8 @@ public class ListTeachersUseCase : IListTeachersUseCase
                 TeacherId = t.TeacherId.ToString("D").ToLowerInvariant(),
                 Username = t.User!.Username,
                 DisplayName = t.User.DisplayName,
-                Department = t.Department,
+                Department = t.Subject != null && !t.Subject.IsDeleted ? t.Subject.SubjectName : t.Department,
+                SubjectId = t.SubjectId,
                 Status = t.User.Status.ToString(),
                 ClassCount = _dbContext.Classes.Count(c => c.CenterId == centerId && c.TeacherId == t.TeacherId && !c.IsDeleted && c.Status == ClassStatus.Active),
                 RowVersion = t.RowVersion.ToString(CultureInfo.InvariantCulture)

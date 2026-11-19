@@ -64,7 +64,8 @@ public class GetTeacherUseCase : IGetTeacherUseCase
                 TeacherId = t.TeacherId.ToString("D").ToLowerInvariant(),
                 Username = t.User!.Username,
                 DisplayName = t.User.DisplayName,
-                Department = t.Department,
+                Department = t.Subject != null && !t.Subject.IsDeleted ? t.Subject.SubjectName : t.Department,
+                SubjectId = t.SubjectId,
                 Status = t.User.Status.ToString(),
                 ClassCount = _dbContext.Classes.Count(c => c.CenterId == centerId && c.TeacherId == t.TeacherId && !c.IsDeleted && c.Status == ClassStatus.Active),
                 RowVersion = t.RowVersion.ToString(CultureInfo.InvariantCulture)

@@ -66,6 +66,7 @@ public class UpdateTeacherUseCase : IUpdateTeacherUseCase
         var department = request.Department;
 
         if (string.IsNullOrWhiteSpace(displayName) || displayName.Length > 200 ||
+            request.SubjectId == Guid.Empty ||
             (department != null && department.Length > 150) ||
             !request.Status.HasValue ||
             !Enum.IsDefined(typeof(UserStatus), request.Status.Value))
@@ -95,6 +96,18 @@ public class UpdateTeacherUseCase : IUpdateTeacherUseCase
             return UpdateTeacherResult.Failure(ErrorCodes.ConcurrencyConflict);
         }
 
+        var subject = await _dbContext.Subjects.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.SubjectId == request.SubjectId && s.CenterId == centerId &&
+                !s.IsDeleted && (s.IsActive || s.SubjectId == teacher.SubjectId), cancellationToken);
+        if (subject == null)
+            return UpdateTeacherResult.Failure(ErrorCodes.ValidationFailed);
+
+        // A subject change must not invalidate current teaching assignments.
+        if (teacher.SubjectId != subject.SubjectId && await _dbContext.Classes.AnyAsync(c =>
+                c.CenterId == centerId && c.TeacherId == teacherId && !c.IsDeleted &&
+                c.Status == ClassStatus.Active && c.SubjectId != subject.SubjectId, cancellationToken))
+            return UpdateTeacherResult.Failure(ErrorCodes.ValidationFailed);
+
         // Set original value for EF optimistic concurrency
         _dbContext.Entry(teacher).Property(t => t.RowVersion).OriginalValue = parsedRowVersion;
 
@@ -106,7 +119,8 @@ public class UpdateTeacherUseCase : IUpdateTeacherUseCase
         teacher.User.UpdatedAt = now;
         teacher.User.UpdatedBy = managerId;
 
-        teacher.Department = department;
+        teacher.SubjectId = subject.SubjectId;
+        teacher.Department = subject.SubjectName;
         teacher.UpdatedAt = now;
         teacher.UpdatedBy = managerId;
 
@@ -129,6 +143,7 @@ public class UpdateTeacherUseCase : IUpdateTeacherUseCase
             Username = teacher.User.Username,
             DisplayName = teacher.User.DisplayName,
             Department = teacher.Department,
+            SubjectId = teacher.SubjectId,
             Status = teacher.User.Status.ToString(),
             ClassCount = classCount,
             RowVersion = teacher.RowVersion.ToString(CultureInfo.InvariantCulture)

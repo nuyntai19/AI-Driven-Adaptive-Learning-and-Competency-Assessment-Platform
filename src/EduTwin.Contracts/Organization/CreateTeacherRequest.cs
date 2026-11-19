@@ -4,6 +4,7 @@ namespace EduTwin.Contracts.Organization;
 
 public class CreateTeacherRequest
 {
+    public System.Guid SubjectId { get; set; }
     private string _username = string.Empty;
     private string _displayName = string.Empty;
     private string? _department;

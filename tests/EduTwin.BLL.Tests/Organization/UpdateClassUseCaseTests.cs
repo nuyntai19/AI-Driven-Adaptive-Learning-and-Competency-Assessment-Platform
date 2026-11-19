@@ -97,8 +97,8 @@ public class UpdateClassUseCaseTests
         context.Users.Add(originalUser);
         context.Users.Add(newUser);
 
-        context.Teachers.Add(new Teacher { TeacherId = originalTeacherId, CenterId = centerId, User = originalUser, CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc, IsDeleted = originalTeacherDeleted });
-        context.Teachers.Add(new Teacher { TeacherId = newTeacherId, CenterId = newTeacherCenterId.Value, User = newUser, CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc, IsDeleted = newTeacherDeleted });
+        context.Teachers.Add(new Teacher { TeacherId = originalTeacherId, CenterId = centerId, SubjectId = subjectId, User = originalUser, CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc, IsDeleted = originalTeacherDeleted });
+        context.Teachers.Add(new Teacher { TeacherId = newTeacherId, CenterId = newTeacherCenterId.Value, SubjectId = subjectId, User = newUser, CreatedAt = SeedTimeUtc, UpdatedAt = SeedTimeUtc, IsDeleted = newTeacherDeleted });
 
         var originalClass = new Class { ClassId = classId, CenterId = classCenterId.Value, ClassName = className, AcademicYear = academicYear, SubjectId = subjectId, TeacherId = originalTeacherId, CreatedAt = SeedTimeUtc, CreatedBy = Guid.NewGuid(), UpdatedAt = SeedTimeUtc, UpdatedBy = Guid.NewGuid(), Status = ClassStatus.Active, RowVersion = rowVersion, IsDeleted = classDeleted, GradeLevel = gradeLevel };
         context.Classes.Add(originalClass);

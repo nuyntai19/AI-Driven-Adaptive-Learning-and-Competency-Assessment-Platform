@@ -58,10 +58,26 @@ export const organizationApi = {
       queryParams.status = params.status;
     }
 
+    if (params.subjectId) queryParams.subjectId = params.subjectId;
+
     const response = await httpClient.get<TeacherListResponse>("/teachers", {
       params: queryParams,
     });
     return response.data;
+  },
+
+  listTeachersForSubject: async (subjectId: string): Promise<TeacherDto[]> => {
+    if (!subjectId) return [];
+    const teachers: TeacherDto[] = [];
+    let page = 1;
+    let totalPages = 1;
+    do {
+      const response = await organizationApi.listTeachers({ page, pageSize: 100, status: "Active", subjectId });
+      teachers.push(...response.data);
+      totalPages = response.meta.totalPages;
+      page += 1;
+    } while (page <= totalPages);
+    return teachers;
   },
 
   createTeacher: async (request: CreateTeacherRequest): Promise<TeacherDto> => {
@@ -69,7 +85,7 @@ export const organizationApi = {
       username: request.username.trim(),
       temporaryPassword: request.temporaryPassword,
       displayName: request.displayName.trim(),
-      department: request.department?.trim() || undefined,
+      subjectId: request.subjectId,
     };
 
     const response = await httpClient.post<TeacherDto>("/teachers", payload);

@@ -59,12 +59,12 @@ const CenterManagerTeacherListView: React.FC = () => {
   const [createUsername, setCreateUsername] = useState("");
   const [createPassword, setCreatePassword] = useState("");
   const [createDisplayName, setCreateDisplayName] = useState("");
-  const [createDepartment, setCreateDepartment] = useState("");
+  const [createSubjectId, setCreateSubjectId] = useState("");
 
   // Edit modal state
   const [editingTeacher, setEditingTeacher] = useState<TeacherDto | null>(null);
   const [editDisplayName, setEditDisplayName] = useState("");
-  const [editDepartment, setEditDepartment] = useState("");
+  const [editSubjectId, setEditSubjectId] = useState("");
   const [editStatus, setEditStatus] = useState<UserStatus>("Active");
 
   // Reset password modal state
@@ -112,6 +112,16 @@ const CenterManagerTeacherListView: React.FC = () => {
   });
 
   // Create mutation
+  const { data: subjectsData, isPending: isLoadingSubjects, isError: isSubjectsError, refetch: refetchSubjects } = useQuery({
+    queryKey: ["subjects", "teacher-form"],
+    queryFn: () => organizationApi.listSubjects(),
+    enabled: (isCreating && canCreateTeacher) || (!!editingTeacher && canUpdateTeacher),
+  });
+  const availableSubjects = subjectsData?.data ?? [];
+  const canSubmitCreate = !!createUsername.trim() && !!createDisplayName.trim() &&
+    !!createPassword.trim() && createPassword.length >= 12 && createPassword.length <= 200 &&
+    availableSubjects.some((subject) => subject.subjectId === createSubjectId && subject.isActive) && !isSubjectsError;
+
   const createMutation = useMutation({
     mutationFn: async (request: CreateTeacherRequest) => {
       try {
@@ -126,7 +136,7 @@ const CenterManagerTeacherListView: React.FC = () => {
       setCreateUsername("");
       setCreatePassword("");
       setCreateDisplayName("");
-      setCreateDepartment("");
+      setCreateSubjectId("");
       showFeedback("success", "Đã tạo tài khoản giáo viên thành công.");
     },
     onError: (error) => {
@@ -148,6 +158,7 @@ const CenterManagerTeacherListView: React.FC = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["teachers"] });
+      queryClient.invalidateQueries({ queryKey: ["teacherDetail"] });
       setEditingTeacher(null);
       showFeedback("success", "Đã cập nhật thông tin giáo viên thành công.");
     },
@@ -218,7 +229,7 @@ const CenterManagerTeacherListView: React.FC = () => {
   const openEditModal = (teacher: TeacherDto) => {
     setEditingTeacher(teacher);
     setEditDisplayName(teacher.displayName);
-    setEditDepartment(teacher.department || "");
+    setEditSubjectId(teacher.subjectId || "");
     setEditStatus(teacher.status);
     setFeedback(null);
   };
@@ -233,11 +244,16 @@ const CenterManagerTeacherListView: React.FC = () => {
       return;
     }
 
+    if (!availableSubjects.some((subject) => subject.subjectId === editSubjectId)) {
+      showFeedback("error", "Vui lòng chọn bộ môn cho giáo viên.");
+      return;
+    }
+
     updateMutation.mutate({
       teacherId: editingTeacher.teacherId,
       request: {
         displayName: trimmedName,
-        department: editDepartment.trim() || null,
+        subjectId: editSubjectId,
         status: editStatus,
         rowVersion: editingTeacher.rowVersion,
       },
@@ -312,7 +328,7 @@ const CenterManagerTeacherListView: React.FC = () => {
     },
     {
       id: "department",
-      header: "Tổ / Bộ môn",
+      header: "Bộ môn",
       render: (teacher) => (
         <span className="text-[var(--cm-text-secondary)]">
           {teacher.department || "—"}
@@ -538,11 +554,12 @@ const CenterManagerTeacherListView: React.FC = () => {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (!canSubmitCreate) return;
                   createMutation.mutate({
                     username: createUsername.trim(),
                     temporaryPassword: createPassword,
                     displayName: createDisplayName.trim(),
-                    department: createDepartment.trim() || undefined,
+                    subjectId: createSubjectId,
                   });
                 }}
                 className="space-y-4"
@@ -599,18 +616,25 @@ const CenterManagerTeacherListView: React.FC = () => {
 
                 <div>
                   <label htmlFor="create-department" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
-                    Bộ môn / Phòng ban
+                    Bộ môn <span className="text-rose-400">*</span>
                   </label>
-                  <input
-                    type="text"
+                  <select
                     id="create-department"
-                    value={createDepartment}
-                    onChange={(e) => setCreateDepartment(e.target.value)}
-                    maxLength={150}
-                    disabled={createMutation.isPending}
-                    placeholder="Ví dụ: Tổ Toán - Tin"
+                    value={createSubjectId}
+                    onChange={(e) => setCreateSubjectId(e.target.value)}
+                    required
+                    disabled={createMutation.isPending || isLoadingSubjects || isSubjectsError}
                     className="cm-field mt-1 w-full px-3 text-sm"
-                  />
+                  >
+                    <option value="">{isLoadingSubjects ? "Đang tải môn học..." : "-- Chọn bộ môn --"}</option>
+                    {availableSubjects.filter((subject) => subject.isActive).map((subject) => (
+                      <option key={subject.subjectId} value={subject.subjectId}>
+                        {subject.subjectName} ({subject.subjectCode}){!subject.isActive ? " — Ngừng hoạt động" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {isSubjectsError && <p role="alert" className="mt-2 text-sm text-rose-500">Không thể tải môn học. <button type="button" onClick={() => refetchSubjects()}>Thử lại</button></p>}
+                  {!isLoadingSubjects && !isSubjectsError && !availableSubjects.some((subject) => subject.isActive) && <p className="mt-2 text-sm">Chưa có môn học đang hoạt động. Vui lòng thêm môn học trước.</p>}
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4">
@@ -625,7 +649,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   <button
                     type="submit"
                     id="btn-submit-create-teacher"
-                    disabled={createMutation.isPending}
+                    disabled={createMutation.isPending || !canSubmitCreate}
                     className="cm-primary-button text-sm"
                   >
                     {createMutation.isPending ? "Đang tạo..." : "Tạo giáo viên"}
@@ -675,8 +699,8 @@ const CenterManagerTeacherListView: React.FC = () => {
                       <span className="font-medium text-[var(--cm-text)]">{teacherDetail.displayName}</span>
                     </div>
                     <div>
-                      <span className="block text-xs text-[var(--cm-text-muted)]">Tổ / Bộ môn</span>
-                      <span className="text-[var(--cm-text-secondary)]">{teacherDetail.department || "Chưa phân tổ"}</span>
+                      <span className="block text-xs text-[var(--cm-text-muted)]">Bộ môn</span>
+                      <span className="text-[var(--cm-text-secondary)]">{teacherDetail.department || "Chưa chọn môn học"}</span>
                     </div>
                     <div>
                       <span className="block text-xs text-[var(--cm-text-muted)]">Trạng thái</span>
@@ -726,17 +750,25 @@ const CenterManagerTeacherListView: React.FC = () => {
 
                 <div>
                   <label htmlFor="edit-department" className="block text-xs font-medium text-[var(--cm-text-secondary)]">
-                    Bộ môn / Phòng ban
+                    Bộ môn <span className="text-rose-400">*</span>
                   </label>
-                  <input
-                    type="text"
+                  <select
                     id="edit-department"
-                    value={editDepartment}
-                    onChange={(e) => setEditDepartment(e.target.value)}
-                    maxLength={150}
-                    disabled={updateMutation.isPending}
+                    value={editSubjectId}
+                    onChange={(e) => setEditSubjectId(e.target.value)}
+                    required
+                    disabled={updateMutation.isPending || isLoadingSubjects || isSubjectsError}
                     className="cm-field mt-1 w-full px-3 text-sm"
-                  />
+                  >
+                    <option value="">{isLoadingSubjects ? "Đang tải môn học..." : "-- Chọn bộ môn --"}</option>
+                    {availableSubjects.filter((subject) => subject.isActive || subject.subjectId === editSubjectId).map((subject) => (
+                      <option key={subject.subjectId} value={subject.subjectId}>
+                        {subject.subjectName} ({subject.subjectCode}){!subject.isActive ? " — Ngừng hoạt động" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {isSubjectsError && <p role="alert" className="mt-2 text-sm text-rose-500">Không thể tải môn học. <button type="button" onClick={() => refetchSubjects()}>Thử lại</button></p>}
+                  {!isLoadingSubjects && !isSubjectsError && !availableSubjects.some((subject) => subject.isActive) && <p className="mt-2 text-sm">Chưa có môn học đang hoạt động. Vui lòng thêm môn học trước.</p>}
                 </div>
 
                 <div>
@@ -768,7 +800,7 @@ const CenterManagerTeacherListView: React.FC = () => {
                   <button
                     type="submit"
                     id="btn-save-edit-teacher"
-                    disabled={updateMutation.isPending}
+                    disabled={updateMutation.isPending || isLoadingSubjects || isSubjectsError || !editSubjectId}
                     className="cm-primary-button text-sm"
                   >
                     {updateMutation.isPending ? "Đang lưu..." : "Lưu thay đổi"}
@@ -961,11 +993,11 @@ const LegacyTeacherListPage: React.FC = () => {
   const [createUsername, setCreateUsername] = useState("");
   const [createPassword, setCreatePassword] = useState("");
   const [createDisplayName, setCreateDisplayName] = useState("");
-  const [createDepartment, setCreateDepartment] = useState("");
+  const [createSubjectId, setCreateSubjectId] = useState("");
 
   const [editingTeacher, setEditingTeacher] = useState<TeacherDto | null>(null);
   const [editDisplayName, setEditDisplayName] = useState("");
-  const [editDepartment, setEditDepartment] = useState("");
+  const [editSubjectId, setEditSubjectId] = useState("");
   const [editStatus, setEditStatus] = useState<UserStatus>("Active");
 
   const [resetTeacher, setResetTeacher] = useState<TeacherDto | null>(null);
@@ -1003,6 +1035,16 @@ const LegacyTeacherListPage: React.FC = () => {
     enabled: !!viewingTeacherId,
   });
 
+  const { data: subjectsData, isPending: isLoadingSubjects, isError: isSubjectsError, refetch: refetchSubjects } = useQuery({
+    queryKey: ["subjects", "teacher-form"],
+    queryFn: () => organizationApi.listSubjects(),
+    enabled: (isCreating && canCreateTeacher) || (!!editingTeacher && canUpdateTeacher),
+  });
+  const availableSubjects = subjectsData?.data ?? [];
+  const canSubmitCreate = !!createUsername.trim() && !!createDisplayName.trim() &&
+    !!createPassword.trim() && createPassword.length >= 12 && createPassword.length <= 200 &&
+    availableSubjects.some((subject) => subject.subjectId === createSubjectId && subject.isActive) && !isSubjectsError;
+
   const createMutation = useMutation({
     mutationFn: async (request: CreateTeacherRequest) => {
       try {
@@ -1017,7 +1059,7 @@ const LegacyTeacherListPage: React.FC = () => {
       setCreateUsername("");
       setCreatePassword("");
       setCreateDisplayName("");
-      setCreateDepartment("");
+      setCreateSubjectId("");
       showFeedback("success", "Đã tạo tài khoản giáo viên thành công.");
     },
     onError: (error) => {
@@ -1038,6 +1080,7 @@ const LegacyTeacherListPage: React.FC = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["teachers"] });
+      queryClient.invalidateQueries({ queryKey: ["teacherDetail"] });
       setEditingTeacher(null);
       showFeedback("success", "Đã cập nhật thông tin giáo viên thành công.");
     },
@@ -1108,7 +1151,7 @@ const LegacyTeacherListPage: React.FC = () => {
   const openEditModal = (teacher: TeacherDto) => {
     setEditingTeacher(teacher);
     setEditDisplayName(teacher.displayName);
-    setEditDepartment(teacher.department || "");
+    setEditSubjectId(teacher.subjectId || "");
     setEditStatus(teacher.status);
     setFeedback(null);
   };
@@ -1123,11 +1166,16 @@ const LegacyTeacherListPage: React.FC = () => {
       return;
     }
 
+    if (!availableSubjects.some((subject) => subject.subjectId === editSubjectId)) {
+      showFeedback("error", "Vui lòng chọn bộ môn cho giáo viên.");
+      return;
+    }
+
     updateMutation.mutate({
       teacherId: editingTeacher.teacherId,
       request: {
         displayName: trimmedName,
-        department: editDepartment.trim() || null,
+        subjectId: editSubjectId,
         status: editStatus,
         rowVersion: editingTeacher.rowVersion,
       },
@@ -1251,11 +1299,12 @@ const LegacyTeacherListPage: React.FC = () => {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (!canSubmitCreate) return;
                   createMutation.mutate({
                     username: createUsername.trim(),
                     temporaryPassword: createPassword,
                     displayName: createDisplayName.trim(),
-                    department: createDepartment.trim() || undefined,
+                    subjectId: createSubjectId,
                   });
                 }}
                 className="space-y-4"
@@ -1312,18 +1361,25 @@ const LegacyTeacherListPage: React.FC = () => {
 
                 <div>
                   <label htmlFor="create-department" className="block text-sm font-medium text-gray-700">
-                    Bộ môn / Phòng ban
+                    Bộ môn <span className="text-rose-400">*</span>
                   </label>
-                  <input
-                    type="text"
+                  <select
                     id="create-department"
-                    value={createDepartment}
-                    onChange={(e) => setCreateDepartment(e.target.value)}
-                    maxLength={150}
-                    disabled={createMutation.isPending}
-                    placeholder="Ví dụ: Tổ Toán - Tin"
+                    value={createSubjectId}
+                    onChange={(e) => setCreateSubjectId(e.target.value)}
+                    required
+                    disabled={createMutation.isPending || isLoadingSubjects || isSubjectsError}
                     className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
+                  >
+                    <option value="">{isLoadingSubjects ? "Đang tải môn học..." : "-- Chọn bộ môn --"}</option>
+                    {availableSubjects.filter((subject) => subject.isActive).map((subject) => (
+                      <option key={subject.subjectId} value={subject.subjectId}>
+                        {subject.subjectName} ({subject.subjectCode}){!subject.isActive ? " — Ngừng hoạt động" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {isSubjectsError && <p role="alert" className="mt-2 text-sm text-rose-500">Không thể tải môn học. <button type="button" onClick={() => refetchSubjects()}>Thử lại</button></p>}
+                  {!isLoadingSubjects && !isSubjectsError && !availableSubjects.some((subject) => subject.isActive) && <p className="mt-2 text-sm">Chưa có môn học đang hoạt động. Vui lòng thêm môn học trước.</p>}
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
@@ -1338,7 +1394,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   <button
                     type="submit"
                     id="btn-submit-create-teacher"
-                    disabled={createMutation.isPending}
+                    disabled={createMutation.isPending || !canSubmitCreate}
                     className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
                   >
                     {createMutation.isPending ? "Đang tạo..." : "Tạo giáo viên"}
@@ -1374,8 +1430,8 @@ const LegacyTeacherListPage: React.FC = () => {
                       <span className="font-medium text-gray-900">{teacherDetail.displayName}</span>
                     </div>
                     <div>
-                      <span className="text-xs text-gray-500 block">Tổ / Bộ môn</span>
-                      <span className="text-gray-800">{teacherDetail.department || "Chưa phân tổ bộ môn"}</span>
+                      <span className="text-xs text-gray-500 block">Bộ môn</span>
+                      <span className="text-gray-800">{teacherDetail.department || "Chưa chọn môn học bộ môn"}</span>
                     </div>
                     <div>
                       <span className="text-xs text-gray-500 block">Trạng thái tài khoản</span>
@@ -1446,17 +1502,25 @@ const LegacyTeacherListPage: React.FC = () => {
 
                 <div>
                   <label htmlFor="edit-department" className="block text-sm font-medium text-gray-700">
-                    Bộ môn / Phòng ban
+                    Bộ môn <span className="text-rose-400">*</span>
                   </label>
-                  <input
-                    type="text"
+                  <select
                     id="edit-department"
-                    value={editDepartment}
-                    onChange={(e) => setEditDepartment(e.target.value)}
-                    maxLength={150}
-                    disabled={updateMutation.isPending}
+                    value={editSubjectId}
+                    onChange={(e) => setEditSubjectId(e.target.value)}
+                    required
+                    disabled={updateMutation.isPending || isLoadingSubjects || isSubjectsError}
                     className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
+                  >
+                    <option value="">{isLoadingSubjects ? "Đang tải môn học..." : "-- Chọn bộ môn --"}</option>
+                    {availableSubjects.filter((subject) => subject.isActive || subject.subjectId === editSubjectId).map((subject) => (
+                      <option key={subject.subjectId} value={subject.subjectId}>
+                        {subject.subjectName} ({subject.subjectCode}){!subject.isActive ? " — Ngừng hoạt động" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {isSubjectsError && <p role="alert" className="mt-2 text-sm text-rose-500">Không thể tải môn học. <button type="button" onClick={() => refetchSubjects()}>Thử lại</button></p>}
+                  {!isLoadingSubjects && !isSubjectsError && !availableSubjects.some((subject) => subject.isActive) && <p className="mt-2 text-sm">Chưa có môn học đang hoạt động. Vui lòng thêm môn học trước.</p>}
                 </div>
 
                 <div>
@@ -1488,7 +1552,7 @@ const LegacyTeacherListPage: React.FC = () => {
                   <button
                     type="submit"
                     id="btn-save-edit-teacher"
-                    disabled={updateMutation.isPending}
+                    disabled={updateMutation.isPending || isLoadingSubjects || isSubjectsError || !editSubjectId}
                     className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-500 disabled:opacity-50"
                   >
                     {updateMutation.isPending ? "Đang lưu..." : "Lưu thay đổi"}

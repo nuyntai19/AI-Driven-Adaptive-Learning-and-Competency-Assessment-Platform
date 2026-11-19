@@ -391,6 +391,7 @@ Response 200:
   "username": "teacher.math",
   "displayName": "Nguyễn Văn Giáo",
   "department": "Toán",
+  "subjectId": "2ed34b81-0b0d-457c-888d-6a78f50a33d2",
   "status": "Active",
   "classCount": 2,
   "rowVersion": "1"
@@ -408,7 +409,7 @@ Request:
   "username": "teacher.math",
   "temporaryPassword": "change-me-123",
   "displayName": "Nguyễn Văn Giáo",
-  "department": "Toán"
+  "subjectId": "2ed34b81-0b0d-457c-888d-6a78f50a33d2"
 }
 ~~~
 
@@ -416,11 +417,15 @@ Response 201: Teacher DTO.
 
 Transaction: User + Teacher profile.
 
+Tên đăng nhập, mật khẩu tạm thời (12–200 ký tự), họ tên và `subjectId` đều bắt buộc. Môn học phải đang hoạt động, chưa bị xóa và thuộc cùng trung tâm. `department` trong DTO được lấy từ tên môn học; trường văn bản cũ trong request chỉ còn để tương thích và không quyết định bộ môn. Thiếu hoặc sai môn trả 400 `VALIDATION_FAILED`.
+
 ## 17. GET /teachers
 
 Quyền: CenterManager.
-Query: page, pageSize, search, status.
+Query: page, pageSize, search, status, subjectId.
 Response 200: collection Teacher DTO.
+
+`subjectId` lọc theo liên kết môn học trước khi đếm và phân trang. Dùng `status=Active&subjectId={id}` cho danh sách giáo viên phụ trách lớp.
 
 ## 18. GET /teachers/{teacherId}
 
@@ -436,13 +441,15 @@ Request:
 ~~~json
 {
   "displayName": "Nguyễn Văn Giáo",
-  "department": "Khoa Toán",
+  "subjectId": "2ed34b81-0b0d-457c-888d-6a78f50a33d2",
   "status": "Active",
   "rowVersion": "1"
 }
 ~~~
 
 Response 200: Teacher DTO với rowVersion mới.
+
+`subjectId` bắt buộc. Không được đổi bộ môn nếu còn lớp đang hoạt động thuộc môn khác; trả 400 `VALIDATION_FAILED`. Có thể giữ môn đã ngừng hoạt động khi cập nhật thông tin khác. Hồ sơ cũ chưa xác định được môn trả `subjectId: null` và cần chọn bộ môn khi chỉnh sửa.
 
 ## 20. DELETE /teachers/{teacherId}
 
@@ -690,6 +697,8 @@ Request:
 ~~~
 
 Response 201: Class DTO.
+
+Giáo viên phải đang hoạt động và có `subjectId` trùng môn học của lớp; môn học phải đang hoạt động và cùng trung tâm. Tạo lớp hoặc đổi giáo viên sang người dạy môn khác trả 400 `VALIDATION_FAILED`.
 
 ## 30. GET /classes
 
