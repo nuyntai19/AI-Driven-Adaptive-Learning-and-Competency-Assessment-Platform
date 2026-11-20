@@ -7,6 +7,7 @@ import { transcribeHandwriting } from "../../api/handwritingApi";
 import { readScratchpadPhoto } from "../../utils/scratchpadPngImport";
 import { deriveFinalAnswer } from "../../utils/finalAnswer";
 import { answerReasoningPlaceholder, answerWorkPlaceholder, usesMathInput } from "../../utils/answerPlaceholders";
+import { useModalAccessibility } from "../../utils/useModalAccessibility";
 import { useStudentSubjects } from "../../utils/useStudentSubjects";
 import { WorkToolbar } from "../learning/WorkToolbar";
 import { BookmarkButton } from "../learning/BookmarkButton";
@@ -120,14 +121,8 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
     const timer = setInterval(() => setActiveSeconds(v => v + 1), 1000);
     return () => clearInterval(timer);
   }, [paused, runActive, current]);
-  // Lock the page behind the fullscreen player: without this the underlying
-  // page keeps its own scrollbar next to the player's (two scrollbars at once).
-  useEffect(() => {
-    if (!isOpen) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = previous; };
-  }, [isOpen]);
+  const dialogRef = useRef<HTMLElement>(null);
+  useModalAccessibility({ isOpen: isOpen && !!mission, onClose: close, containerRef: dialogRef });
   const abandon = useMutation({ mutationFn: () => abandonMissionRun(mission!.missionId, run.data!.sessionRunId), onSuccess: () => close() });
   const submittedCount = activities.filter(done).length;
   const feedbackDraft = feedbackActivity ? activityDraft(feedbackActivity) : {};
@@ -136,7 +131,7 @@ export function MissionPlayerModal({ isOpen, onClose, onResumeMission, mission, 
   if (!isOpen || !mission) return null;
   const ongoing = ongoingMissionFromError(run.error, mission);
   return <div className="fixed inset-0 z-50 bg-white dark:bg-slate-900">
-    <section role="dialog" aria-modal="true" aria-labelledby="mission-title" className="flex h-full w-full flex-col overflow-hidden bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
+    <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="mission-title" className="flex h-full w-full flex-col overflow-hidden bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
       <header className="z-10 flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
         <div>{contextLabel && <p className="mb-1 text-xs font-medium text-slate-500">{contextLabel}</p>}<p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">{mission.skillName}</p><h2 id="mission-title" className="mt-1 text-xl font-semibold">{mission.title}</h2>
           {mission.remediationOriginLabel && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{mission.remediationOriginLabel}</p>}
@@ -378,7 +373,7 @@ function Activity({ activity: a, subjectId, onSubmitted, paused, activeTool, onA
   const elapsedSeconds = () => Math.floor((activeMs.current + (since.current != null ? Date.now() - since.current : 0)) / 1000);
   const q = a.question?.question;
   const { subjects } = useStudentSubjects();
-  const mathInput = usesMathInput(subjects.find((s) => s.subjectId === subjectId)?.subjectName);
+  const mathInput = usesMathInput(subjects.find((s) => s.subjectId === subjectId)?.subjectCode);
   const payload = (a.content?.payload ?? {}) as Record<string, unknown>;
   const steps = Array.isArray(payload.steps) ? payload.steps as Record<string, unknown>[] : [];
   const workedExamples = Array.isArray(payload.examples) ? (payload.examples as Record<string, unknown>[])

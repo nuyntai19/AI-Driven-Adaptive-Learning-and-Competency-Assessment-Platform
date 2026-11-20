@@ -32,6 +32,7 @@ export interface AdaptivePracticeTopicOption {
 export interface AdaptivePracticeProposal {
   subjectId: string;
   subjectName: string;
+  subjectCode?: string;
   topicNodeId: string;
   topicName: string;
   focusSkillDescription: string;
@@ -65,6 +66,7 @@ export interface AdaptivePracticeSession {
   classId?: string | null;
   subjectId: string;
   subjectName: string;
+  subjectCode?: string;
   topicNodeId: string;
   topicName: string;
   practiceMode: AdaptivePracticeMode;
@@ -171,6 +173,7 @@ export interface AdaptivePracticeAnswerFeedback {
 export interface AdaptivePracticeHistoryItem {
   sessionId: string;
   subjectName: string;
+  subjectCode?: string;
   topicName: string;
   practiceMode: AdaptivePracticeMode;
   totalQuestions: number;
@@ -189,6 +192,7 @@ export interface TeacherAdaptivePracticeSession {
   studentName: string;
   className: string;
   subjectName: string;
+  subjectCode?: string;
   topicName: string;
   totalQuestions: number;
   correctCount: number;
@@ -206,6 +210,7 @@ export interface TeacherAdaptivePracticeAlert {
   className: string;
   subjectId: string;
   subjectName: string;
+  subjectCode?: string;
   topicNodeId: string;
   topicName: string;
   alertType: string;

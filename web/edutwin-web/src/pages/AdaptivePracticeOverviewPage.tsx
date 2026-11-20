@@ -141,6 +141,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
   const recentCorrect = history.reduce((sum, item) => sum + item.correctCount, 0);
   const recentAccuracy = recentQuestions > 0 ? Math.round((recentCorrect / recentQuestions) * 100) : null;
 
+  if (!classResolved) return <div role="status" className="p-6">{access.pending ? "Đang xác minh lớp và giáo trình…" : access.reason}</div>;
   return (
     <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5 min-w-0 student-shell st-practice-builder">
       {/* Header */}

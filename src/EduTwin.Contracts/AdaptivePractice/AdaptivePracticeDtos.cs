@@ -20,6 +20,7 @@ public sealed class AdaptivePracticeProposalDto
 {
     public Guid SubjectId { get; set; }
     public string SubjectName { get; set; } = null!;
+    public string SubjectCode { get; set; } = null!;
 
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString)]
     public ulong TopicNodeId { get; set; }
@@ -87,6 +88,7 @@ public sealed class AdaptivePracticeSessionDto
     public Guid? ClassId { get; set; }
     public Guid SubjectId { get; set; }
     public string SubjectName { get; set; } = null!;
+    public string SubjectCode { get; set; } = null!;
 
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString)]
     public ulong TopicNodeId { get; set; }
@@ -208,6 +210,7 @@ public sealed class AdaptivePracticeHistoryItemDto
 {
     public Guid SessionId { get; set; }
     public string SubjectName { get; set; } = null!;
+    public string SubjectCode { get; set; } = null!;
     public string TopicName { get; set; } = null!;
     public AdaptivePracticeMode PracticeMode { get; set; }
     public int TotalQuestions { get; set; }
@@ -227,6 +230,7 @@ public sealed class TeacherAdaptivePracticeSessionDto
     public string StudentName { get; set; } = null!;
     public string ClassName { get; set; } = null!;
     public string SubjectName { get; set; } = null!;
+    public string SubjectCode { get; set; } = null!;
     public string TopicName { get; set; } = null!;
     public int TotalQuestions { get; set; }
     public int CorrectCount { get; set; }
@@ -245,6 +249,7 @@ public sealed class TeacherAdaptivePracticeAlertDto
     public string ClassName { get; set; } = null!;
     public Guid SubjectId { get; set; }
     public string SubjectName { get; set; } = null!;
+    public string SubjectCode { get; set; } = null!;
 
     [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString | JsonNumberHandling.WriteAsString)]
     public ulong TopicNodeId { get; set; }

@@ -1,8 +1,8 @@
 const MATH_INPUT_HINT = "(Gõ $ hoặc Ctrl+M để chèn công thức toán)";
 
-/** Whether answers in this subject and question language are written with math tools. */
-export function usesMathInput(subjectName?: string | null, languageCode?: string | null): boolean {
-  return !/tiếng anh|english|ngoại ngữ|ngữ văn|literature/i.test(subjectName ?? "") && languageCode?.toLowerCase() !== "en";
+/** Input policy uses the catalog code, never the editable display name or question language. */
+export function usesMathInput(subjectCode?: string | null): boolean {
+  return !new Set(["ENG", "EN", "ENGLISH", "LIT", "VAN", "LITERATURE"]).has(subjectCode?.trim().toUpperCase() ?? "");
 }
 
 /** Placeholder of the single answer box for free-response questions. */

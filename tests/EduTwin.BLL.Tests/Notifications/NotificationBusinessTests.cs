@@ -138,7 +138,7 @@ public sealed class NotificationBusinessTests
         await db.SaveChangesAsync(); f.Clock.Now = f.Clock.Now.AddSeconds(20);
         foreach (var marker in await db.NotificationEvents.Where(e => e.EventType == "AICompletionMarker").ToArrayAsync()) await new NotificationDispatcher(db, f.Clock).DispatchAsync(marker.EventId);
         var aggregate = await db.NotificationEvents.Where(e => e.EventType == "AssignmentAiReady").ToArrayAsync(); Assert.Equal(2, aggregate.Length);
-        Assert.All(aggregate, e => { Assert.Contains($"{count - 1} câu fallback", e.Body); Assert.Contains("1 câu lỗi terminal", e.Body); Assert.Contains("chưa phải", e.Body); });
+        Assert.All(aggregate, e => { Assert.Contains($"{count - 1} câu dùng kết quả chấm dự phòng", e.Body); Assert.Contains("1 câu chưa có phân tích AI hoàn chỉnh", e.Body); Assert.Contains("Giáo viên sẽ xem xét", e.Body); Assert.DoesNotContain("AI đã xử lý toàn bài", e.Title); });
         foreach (var e in aggregate) Assert.True(await new NotificationDispatcher(db, f.Clock).DispatchAsync(e.EventId));
         Assert.Equal(2, await db.NotificationDeliveries.CountAsync());
         var retry = await db.Attempts.SingleAsync(x => x.AttemptId == 1); retry.ManualRetryCount++; retry.LastManualRetryAt = f.Clock.GetUtcNow().UtcDateTime; retry.Status = AttemptStatus.PendingAnalysis;

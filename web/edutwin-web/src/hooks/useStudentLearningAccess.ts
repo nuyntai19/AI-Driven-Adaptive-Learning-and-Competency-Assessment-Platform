@@ -12,9 +12,10 @@ export function useStudentLearningAccess(subjectId: string) {
     queryFn: () => getReconciledStudentAcademicContext(subjectId, classId, history),
     enabled: !!user && !!subjectId && !history, staleTime: 30_000 });
   const hasClasses = !!query.data?.classes.length;
+  const noClasses = !subjectId || (query.isSuccess && !hasClasses);
   const noCurrentClass = hasClasses && !query.data?.classes.some(c => !c.isHistorical);
   const noCurriculum = hasClasses && !noCurrentClass && query.data?.curriculums.length === 0;
-  const readOnly = history || query.isError || noCurrentClass || noCurriculum;
+  const readOnly = history || query.isError || noClasses || noCurrentClass || noCurriculum;
   // Wait for the header to replace a rejected bookmark before enabling writes.
   const selectionChanging = !!classId && !!query.data && query.data.selectedClassId !== classId;
   const pending = !history && !!subjectId && (query.isPending || selectionChanging);
@@ -24,5 +25,6 @@ export function useStudentLearningAccess(subjectId: string) {
   return { history, classId: effectiveClassId, pending, readOnly, writable: !pending && !readOnly && !!subjectId,
     reason: history ? "Bạn đang xem lịch sử lớp học. Không thể tạo lộ trình, bắt đầu buổi học hoặc nộp bài mới trong phạm vi này."
       : query.isError ? "Chưa xác minh được lớp đang học. Không gửi bài mới khi phạm vi lớp chưa hợp lệ."
+      : noClasses ? "Bạn chưa được phân công lớp học cho môn này. Hãy liên hệ giáo viên hoặc quản trị viên trung tâm."
       : query.data?.message || "Lớp đã lưu trữ hoặc bạn đã rời lớp. Chỉ được xem lại dữ liệu cũ." };
 }

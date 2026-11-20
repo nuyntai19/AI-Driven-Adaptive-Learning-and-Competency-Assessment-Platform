@@ -35,6 +35,7 @@ function load(file: string, dependencies: Record<string, any> = {}) {
       if (key) return dependencies[key];
       if (name.endsWith("TimeBudgetSlider")) return { TimeBudgetSlider: () => null };
       if (name.endsWith("DateInput")) return { DateInput: () => null, DateTimeInput: () => null };
+      if (name.endsWith("useModalAccessibility")) return { useModalAccessibility: () => {} };
       if (name.endsWith("studyTime")) return { MIN_GOAL_STUDY_MINUTES: 10 };
       throw new Error(`Missing test dependency ${name}`);
     } });

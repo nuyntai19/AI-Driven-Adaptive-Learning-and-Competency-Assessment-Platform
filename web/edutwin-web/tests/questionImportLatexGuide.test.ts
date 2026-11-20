@@ -81,6 +81,7 @@ test("guide opens accessibly inside the import modal and renders every example w
   const html = renderToStaticMarkup(tree);
   assert.equal((html.match(/class="katex"/g) ?? []).length, 12);
   assert.doesNotMatch(html, /katex-error|katex-display|role="dialog"/);
+  // eslint-disable-next-line no-control-regex -- This assertion deliberately detects forbidden control characters.
   assert.doesNotMatch(html, /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/, "LaTeX commands must not become control characters in any instructional example");
   assert.match(html, /NumericRational/);
   for (const { latex } of QUESTION_IMPORT_LATEX_EXAMPLES)

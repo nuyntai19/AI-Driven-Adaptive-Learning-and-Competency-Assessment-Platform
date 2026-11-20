@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useAuthStore } from "../stores/authStore";
+import { practiceDraftKey, readPracticeDraft, savePracticeDraft } from "../utils/practiceDraft";
 import { useStudentTheme } from "../hooks/useStudentTheme";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -54,8 +56,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [selectedOption, setSelectedOption] = useState<string>("");
-  const [reasoningText, setReasoningText] = useState<string>("");
+  const user = useAuthStore(s => s.user);
   const [activeHint, setActiveHint] = useState<AdaptivePracticeHint | null>(null);
   const [highestHintRead, setHighestHintRead] = useState<number>(0);
   const [hintLoading, setHintLoading] = useState<boolean>(false);
@@ -100,6 +101,23 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
     refetchOnWindowFocus: false,
   });
   const question = questionQuery.data;
+  const draftKey = question && user && sessionId ? practiceDraftKey(user.centerId, user.userId, sessionId, String(question.sessionItemId)) : "";
+  const [draft, setDraft] = useState(() => ({ key: draftKey, ...readPracticeDraft(draftKey) }));
+  const selectedOption = draft.key === draftKey ? draft.selectedOption : "";
+  const reasoningText = draft.key === draftKey ? draft.reasoningText : "";
+  const [draftSaveFailed, setDraftSaveFailed] = useState(false);
+  const setSelectedOption = (value: string) => setDraft(d => ({ ...d, selectedOption: value }));
+  const setReasoningText = (value: string) => setDraft(d => ({ ...d, reasoningText: value }));
+  useEffect(() => { setDraft({ key: draftKey, ...readPracticeDraft(draftKey) }); }, [draftKey]);
+  useEffect(() => {
+    if (draftKey && draft.key === draftKey && !feedback) setDraftSaveFailed(!savePracticeDraft(draftKey, draft));
+  }, [draftKey, draft, feedback]);
+  useEffect(() => {
+    if (!draftSaveFailed || !(selectedOption || reasoningText)) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [draftSaveFailed, selectedOption, reasoningText]);
 
   // The server closes the session when no question is left, so the cached
   // status is stale; refresh it to show the ended state instead of nothing.
@@ -142,8 +160,6 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   // Reset inputs when a new question arrives
   useEffect(() => {
     if (question) {
-      setSelectedOption("");
-      setReasoningText("");
       setActiveHint(null);
       setIsHintOpen(false);
       setFeedback(null);
@@ -162,7 +178,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
       if (!question || !sessionId) return;
       // One single work box: the submitted answer is derived from the work
       // — the whole text for essays and language subjects, its last non-empty line otherwise.
-      const derivedAnswer = deriveFinalAnswer(reasoningText, question.questionType, question.answerEvaluationMode, !usesMathInput(session?.subjectName));
+      const derivedAnswer = deriveFinalAnswer(reasoningText, question.questionType, question.answerEvaluationMode, !usesMathInput(session?.subjectCode));
       const finalAnswer = question.questionType === "MultipleChoice" && question.options.length > 0 ? selectedOption : derivedAnswer;
       const timeSpent = Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000));
 
@@ -177,6 +193,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
     },
     onSuccess: (data) => {
       if (data) {
+        try { sessionStorage.removeItem(draftKey); } catch { /* Optional local storage. */ }
         setFeedback(data);
         queryClient.invalidateQueries({ queryKey: ["adaptive-practice", "session", sessionId] });
       }
@@ -336,7 +353,7 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
     );
   }
 
-  const mathInput = usesMathInput(session?.subjectName);
+  const mathInput = usesMathInput(session?.subjectCode);
   const isMcq = question?.questionType === "MultipleChoice" && question.options.length > 0;
   // Follow what is on screen: a multiple-choice question that arrives without options shows the text box, so the
   // typed answer must be enough to submit (otherwise the button stays disabled forever).
@@ -381,9 +398,9 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
           <span className="text-xs text-slate-500 dark:text-slate-400">Đã dùng {Math.max(question.hintsUsedCount, highestHintRead)} mức</span>
         )}
       </div>
-      <button type="button" onClick={() => submitMutation.mutate()} disabled={!answerEntered || submitMutation.isPending} className={PRIMARY}>
+      <>{draftSaveFailed && <p role="alert" className="text-sm text-amber-700">Chưa lưu được bản nháp trên trình duyệt. Hãy giữ trang mở và sao chép bài làm trước khi rời trang.</p>}<button type="button" onClick={() => submitMutation.mutate()} disabled={!answerEntered || submitMutation.isPending} className={PRIMARY}>
         {submitMutation.isPending ? "Đang chấm..." : "Nộp câu trả lời"}
-      </button>
+      </button></>
     </div>
   );
 

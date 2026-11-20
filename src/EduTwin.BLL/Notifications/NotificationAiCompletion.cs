@@ -56,8 +56,8 @@ internal static class NotificationAiCompletion
         var generation = NotificationBusinessStager.Hash(string.Join(";", attempts.Select(a => $"{a.AttemptId}:{a.ManualRetryCount}:{jobs.GetValueOrDefault(a.AttemptId)?.AnalysisJobId ?? 0}")));
         var @class = await db.Classes.AsNoTracking().SingleOrDefaultAsync(c => c.ClassId == assignment.ClassId, ct);
         if (@class is null) return true;
-        var body = $"AI đã xử lý bài: {success} câu có phân tích AI, {fallback} câu fallback, {failed} câu lỗi terminal, {missingAnalysis} câu chưa có phân tích hợp lệ, {skipped} câu bỏ qua, {noAi} câu không có phân tích AI. " +
-            "Đây chưa phải kết quả toàn bài đã chốt. Nhận xét/lộ trình tổng hợp có thể cập nhật sau; thông báo không khẳng định chúng đã sẵn sàng.";
+        var body = $"Bài làm đã được lưu: {success} câu có phân tích AI, {fallback} câu dùng kết quả chấm dự phòng, {failed + missingAnalysis + noAi} câu chưa có phân tích AI hoàn chỉnh, {skipped} câu bỏ qua. " +
+            "Giáo viên sẽ xem xét và chốt kết quả toàn bài. Bạn có thể mở bài để xem trạng thái từng câu.";
         foreach (var (role, recipient, kind) in new[] { ("student", studentId, "HistoricalAssignment"), ("teacher", @class.TeacherId, "TeacherWork") })
         {
             if (role == "student" && EduTwin.BLL.Assignments.ExamResultVisibility.IsTermExam(assignment.Kind)) continue;
@@ -67,7 +67,7 @@ internal static class NotificationAiCompletion
             if (await db.NotificationEvents.AnyAsync(e => e.DeduplicationKey == key, ct) || db.NotificationEvents.Local.Any(e => e.DeduplicationKey == key)) continue;
             var now = clock.GetUtcNow().UtcDateTime; var id = Guid.NewGuid();
             db.NotificationEvents.Add(new() { CenterId = marker.CenterId, EventId = id, CreatedAt = now, EventType = "AssignmentAiReady",
-                DeduplicationKey = key, Title = "AI đã xử lý toàn bài", Body = body, RecipientUserIds = JsonSerializer.Serialize(new[] { recipient }),
+                DeduplicationKey = key, Title = success > 0 && fallback + failed + missingAnalysis + noAi == 0 ? "Đã có phân tích AI của bài làm" : "Bài làm đã lưu · Chờ giáo viên xem xét", Body = body, RecipientUserIds = JsonSerializer.Serialize(new[] { recipient }),
                 ResourceContext = JsonSerializer.Serialize(new NotificationBusinessContext(kind, @class.ClassId, assignmentId, studentId, Version: generation)) });
             db.NotificationDispatches.Add(new() { CenterId = marker.CenterId, EventId = id, AvailableAt = now, RowVersion = 1 });
         }

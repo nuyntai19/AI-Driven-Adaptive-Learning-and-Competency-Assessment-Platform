@@ -73,7 +73,7 @@ public static class LearningPathFeasibility
         {
             status = "InsufficientTime";
             var calendarDays = deadline.Value.DayNumber - today.DayNumber;
-            if (currentScore.HasValue && target.HasValue)
+            if (currentScore.HasValue && target.HasValue && currentScore.Value < target.Value)
             {
                 var availableDays = LearningPathCalendar.Days(today, deadline.Value, plan.Schedule, plan.AvailableDaysPerWeek).Count;
                 var availableGross = availableDays * (decimal)minutes * (100m - reserve) / 100m;

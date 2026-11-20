@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createOrUpdateLearningGoal, estimateLearningGoal, generatePathProposal, acceptPathProposal, customizePathProposal } from "../../api/learningPathApi";
 import type { CreateLearningGoalRequest, CustomizePathProposalRequest, LearningGoalEstimateDto, PathProposalDto, PlacementReportDto, AcceptPathProposalResponse, SkillCapabilityStatusDto, LearningInsightsDto, LearningScheduleSettings } from "../../types/learningPath";
+import { useModalAccessibility } from "../../utils/useModalAccessibility";
 import { DateInput } from "../DateInput";
 import { extractProblemDetails } from "../../utils/problemDetails";
 import { recommendLearningGoal } from "../../utils/learningPathRecommendation";
@@ -115,11 +116,12 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
   // Same rule as the preview: with a target score, a route that cannot reach it in time cannot be chosen.
   const blockedByDeadline = infeasibleDeadline && estimateCurrent?.targetScore != null;
   // Warn once per picked date; the details stay under the field until the date or the plan changes.
+  const [recalcMinutes, setRecalcMinutes] = useState(false);
   const [warnedDeadline, setWarnedDeadline] = useState("");
   const [warningOpen, setWarningOpen] = useState(false);
   useEffect(() => {
-    if (infeasibleDeadline && deadlineChosen && warnedDeadline !== deadline) { setWarnedDeadline(deadline); setWarningOpen(true); }
-  }, [infeasibleDeadline, deadlineChosen, deadline, warnedDeadline]);
+    if (!recalcMinutes && infeasibleDeadline && deadlineChosen && warnedDeadline !== deadline) { setWarnedDeadline(deadline); setWarningOpen(true); }
+  }, [recalcMinutes, infeasibleDeadline, deadlineChosen, deadline, warnedDeadline]);
   const applySuggestedDeadline = () => {
     if (estimateCurrent?.suggestedDeadline) setDeadline(estimateCurrent.suggestedDeadline);
     setDeadlineChosen(false); setWarningOpen(false);
@@ -131,19 +133,20 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
   // Daily time follows the date: when the student picks a deadline or changes the study days, the minutes per day
   // needed to finish by that date are filled in (rounded up to the slider's 5-minute steps). Moving the slider
   // afterwards is the student's own choice and only re-checks the date.
-  const [recalcMinutes, setRecalcMinutes] = useState(false);
   const [autoMinutesNote, setAutoMinutesNote] = useState("");
   useEffect(() => {
     if (!recalcMinutes || !deadlineChosen || !estimateCurrent) return;
-    setRecalcMinutes(false);
     const perDay = estimateCurrent.minutesPerDayForDeadline;
-    if (!perDay || !estimateCurrent.studyDaysUntilDeadline) { setAutoMinutesNote(""); return; }
-    const next = Math.min(MAX_STUDY_MINUTES, Math.max(MIN_GOAL_STUDY_MINUTES, Math.ceil(perDay / 5) * 5));
+    if (!perDay || !estimateCurrent.studyDaysUntilDeadline) { setRecalcMinutes(false); setAutoMinutesNote(""); return; }
+    const needed = Math.max(MIN_GOAL_STUDY_MINUTES, Math.ceil(perDay / 5) * 5);
+    // Re-estimate after every adjustment: set sizes and review time can change with the budget.
+    const next = Math.min(MAX_STUDY_MINUTES, Math.max(minutes, needed));
+    if (next === minutes || next === MAX_STUDY_MINUTES) setRecalcMinutes(false);
     setMinutes(next);
     setAutoMinutesNote(perDay > MAX_STUDY_MINUTES
       ? `Để kịp ${formatIsoDate(deadline)} cần khoảng ${formatStudyMinutes(perDay)}/ngày, vượt mức tối đa ${formatStudyMinutes(MAX_STUDY_MINUTES)}. Hãy dời ngày hoặc thêm ngày học trong tuần.`
-      : `Đã tự tính ${formatStudyMinutes(next)}/ngày để học xong trước ${formatIsoDate(deadline)} (cần khoảng ${estimateCurrent.requiredStudyMinutes ?? 0} phút trong ${estimateCurrent.studyDaysUntilDeadline} ngày học). Em vẫn có thể kéo thanh để đổi.`);
-  }, [recalcMinutes, deadlineChosen, estimateCurrent, deadline]);
+      : `Đã điều chỉnh lên ${formatStudyMinutes(next)}/ngày theo ước lượng ban đầu. Hệ thống sẽ kiểm tra lại lịch tới ${formatIsoDate(deadline)} với thời lượng mới; kết quả khả thi bên dưới là kết luận mới nhất. Em vẫn có thể kéo thanh để đổi.`);
+  }, [recalcMinutes, deadlineChosen, estimateCurrent, deadline, minutes]);
   const changeMinutes = (value: number) => { setMinutes(value); setRecalcMinutes(false); setAutoMinutesNote(""); };
   const changeStudyDays = (count: number, studyDays: number[]) => { setDays(count); setSchedule(s => ({ ...s, studyDays })); if (deadlineChosen) setRecalcMinutes(true); };
 
@@ -191,6 +194,13 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
       setDeadline(date ? `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}` : ""); setDeadlineChosen(!!date);
       setTargets(value.milestones.flatMap(m => m.skillIds)); setCustomizing(false); contentRef.current?.scrollTo({ top: 0 });
     } });
+  const dialogRef = useRef<HTMLElement>(null);
+  const placementDialogRef = useRef<HTMLElement>(null);
+  const warningDialogRef = useRef<HTMLElement>(null);
+  const warningVisible = warningOpen && editing && !!estimateCurrent && infeasibleDeadline;
+  useModalAccessibility({ isOpen: isOpen && !placementAddedIds && !warningVisible, onClose: () => { if (!accept.isPending) onClose(); }, containerRef: dialogRef });
+  useModalAccessibility({ isOpen: isOpen && !!placementAddedIds, onClose: () => { if (!accept.isPending) cancelPlacementAddition(); }, containerRef: placementDialogRef });
+  useModalAccessibility({ isOpen: isOpen && warningVisible, onClose: pickAnotherDeadline, containerRef: warningDialogRef });
   if (!isOpen) return null;
   const blockers = pathChangeBlockersFromError(accept.error);
   const infeasibleWithTarget = !!proposal && proposal.feasibilityStatus === "InsufficientTime" && proposal.targetScore != null;
@@ -201,7 +211,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
     contentRef.current?.scrollTo({ top: 0 });
   };
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-    <section role="dialog" aria-modal="true" aria-labelledby="goal-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100">
+    <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="goal-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100">
       <header inert={placementAddedIds ? true : undefined} className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 pb-4"><div><h2 id="goal-title" className="text-2xl font-semibold">{customizing ? "Tùy chỉnh tuyến học" : placement ? "Kiểm tra đầu vào" : editing ? "Mục tiêu học" : fromPlacement ? "Lộ trình đề xuất từ kết quả kiểm tra ·" : "Tuyến học đề xuất"} {subjectName}</h2>
         <p className="mt-2 text-sm text-slate-500">{placement ? "Chọn phần muốn kiểm tra. Nếu cần thêm phần nền tảng, hệ thống sẽ yêu cầu em xác nhận trước khi mở bài. Các phần nối tiếp nhau trong một bài." : fromPlacement && !editing ? "Lộ trình lập từ kết quả kiểm tra đầu vào. Em có thể tùy chỉnh phần học, số câu và lịch học trước khi chọn." : entryMode === "Update" ? "Giữ phạm vi đã chọn và lập tuyến mới từ bài làm hiện có. Em có thể điều chỉnh trước khi xác nhận." : automatic ? "Mục tiêu, nội dung và lịch học đã được đề xuất sẵn. Xem lại hoặc chỉnh sửa, rồi chọn tuyến khi phù hợp." : "Chọn phạm vi của bạn. Xem trước chưa thay tuyến đang học; chỉ kích hoạt khi bạn xác nhận."}</p></div>
         <button onClick={onClose} aria-label="Đóng" className="rounded-lg border px-3 py-1">×</button></header>
@@ -299,8 +309,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
           <button disabled={accept.isPending || infeasibleWithTarget} className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white disabled:opacity-50" onClick={() => accept.mutate()}>{accept.isPending ? "Đang kích hoạt…" : accept.error ? "Thử lại" : proposal.isPlacement ? "Bắt đầu kiểm tra đầu vào" : "Chọn tuyến học này"}</button></div>
       </footer>}
       {placementAddedIds && proposal && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
-        <section role="alertdialog" aria-modal="true" aria-labelledby="placement-addition-title" aria-describedby="placement-addition-description"
-          onKeyDown={e => { if (e.key === "Escape") cancelPlacementAddition(); }}
+        <section ref={placementDialogRef} tabIndex={-1} role="alertdialog" aria-modal="true" aria-labelledby="placement-addition-title" aria-describedby="placement-addition-description"
           className="max-h-[85vh] w-full max-w-xl space-y-4 overflow-y-auto rounded-2xl border border-amber-200 bg-white p-6 text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100">
           <h3 id="placement-addition-title" className="text-lg font-semibold">Cần thêm phần nền tảng vào bài kiểm tra</h3>
           <p id="placement-addition-description" className="text-sm">Em chưa chọn các phần dưới đây. Đây là nền tảng của nội dung em đã chọn nên cần kiểm tra thêm để xác định đúng điểm xuất phát.</p>
@@ -314,7 +323,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
         </section>
       </div>}
       {warningOpen && editing && estimateCurrent && infeasibleDeadline && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
-        <section role="alertdialog" aria-modal="true" aria-labelledby="deadline-warning-title" onKeyDown={e => { if (e.key === "Escape") pickAnotherDeadline(); }}
+        <section ref={warningDialogRef} tabIndex={-1} role="alertdialog" aria-modal="true" aria-labelledby="deadline-warning-title"
           className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-rose-200 bg-white p-6 text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100">
           <h3 id="deadline-warning-title" className="text-lg font-semibold text-rose-700 dark:text-rose-300">Ngày {formatIsoDate(deadline)} chưa đủ thời gian</h3>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{estimateCurrent.targetScore != null ? "Với lịch học hiện tại, mốc này không đủ để đạt điểm mục tiêu nên chưa xem trước được lộ trình." : "Với lịch học hiện tại, mốc này không đủ để học hết phần đã chọn."} Hãy dời ngày, tăng thời gian học mỗi ngày/số ngày mỗi tuần hoặc hạ điểm mục tiêu.</p>

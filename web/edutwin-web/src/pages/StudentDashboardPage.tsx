@@ -152,7 +152,7 @@ export const StudentDashboardPage: React.FC = () => {
     </div>
   );
 
-  const goalDiff = goal.hasGoal && goal.hasPrediction !== false ? goalGapLabel(goal.targetScore, goal.currentPredictedScore) : "—";
+  const goalDiff = goal.hasGoal && goal.hasPrediction === true ? goalGapLabel(goal.targetScore, goal.currentPredictedScore) : "—";
   const currentMonth = new Date().getMonth() + 1;
   const currentSemester = currentMonth >= 8 || currentMonth === 1 ? "Học kỳ I" : "Học kỳ II";
   const pathLink = studentScopeUrl("/hoc-tap/lo-trinh-hoc-tap", searchParams);
@@ -170,7 +170,7 @@ export const StudentDashboardPage: React.FC = () => {
   const streak = !workspaceError && workspace ? workspace.dailyStreak : null;
   const studiedToday = !workspaceError && (workspace?.studiedToday ?? false);
   const pendingAssignments = !workspaceError && typeof workspace?.assignmentCount === "number" ? workspace.assignmentCount : null;
-  const predicted = goal.hasGoal && goal.hasPrediction !== false ? goal.currentPredictedScore : null;
+  const predicted = goal.hasGoal && goal.hasPrediction === true ? goal.currentPredictedScore : null;
   const todayLabel = new Date().toLocaleDateString("vi-VN", { weekday: "long", day: "2-digit", month: "2-digit" });
 
   const tasks: TodayTaskData[] = [];
@@ -445,15 +445,15 @@ export const StudentDashboardPage: React.FC = () => {
             </div>
             {goal.hasGoal ? (
               <div>
-                {goal.hasPrediction === false
+                {goal.hasPrediction !== true
                   ? <p className="text-xl font-extrabold [font-family:var(--student-font-display)]">Chưa có dự đoán</p>
                   : <p className="flex items-baseline gap-1.5"><span className="text-4xl font-extrabold tabular-nums tracking-tight [font-family:var(--student-font-display)]">{goal.currentPredictedScore.toFixed(1)}</span><span className="text-sm text-[var(--student-muted)]">dự đoán</span></p>}
-                <div className="relative mt-3 h-2 rounded-full bg-[var(--student-surface-subtle)]" role="img" aria-label={`Dự đoán ${goal.currentPredictedScore} trên 10, mục tiêu ${goal.targetScore}`}>
-                  <span className="absolute inset-y-0 left-0 rounded-full bg-[linear-gradient(90deg,var(--atlas-sun),var(--student-brand-2))] st-bar-fill" style={{ width: `${goal.hasPrediction === false ? 0 : Math.min(100, goal.currentPredictedScore * 10)}%` }} />
+                <div className="relative mt-3 h-2 rounded-full bg-[var(--student-surface-subtle)]" role="img" aria-label={goal.hasPrediction === true ? `Dự đoán ${goal.currentPredictedScore} trên 10, mục tiêu ${goal.targetScore}` : `Chưa đủ dữ liệu dự báo, mục tiêu ${goal.targetScore}`}>
+                  <span className="absolute inset-y-0 left-0 rounded-full bg-[linear-gradient(90deg,var(--atlas-sun),var(--student-brand-2))] st-bar-fill" style={{ width: `${goal.hasPrediction !== true ? 0 : Math.min(100, goal.currentPredictedScore * 10)}%` }} />
                   <span className="absolute -top-1.5 h-5 w-[3px] rounded bg-[var(--student-ink)]" style={{ left: `${Math.min(100, goal.targetScore * 10)}%` }} />
                 </div>
                 <p className="mt-3 text-xs text-[var(--student-ink-secondary)]">
-                  {goal.hasPrediction === false ? "Làm thêm bài để có ước lượng." : <>Khoảng cách: <b>{goalDiff}</b></>} · nguy cơ chưa đạt <b>{goal.riskScore.toFixed(0)}%</b>{goal.remainingDays != null ? ` · còn ${goal.remainingDays} ngày` : ""}
+                  {goal.hasPrediction !== true ? "Chưa đủ dữ liệu dự báo. Làm thêm bài để có ước lượng." : <>Khoảng cách: <b>{goalDiff}</b> · nguy cơ chưa đạt <b>{goal.riskScore.toFixed(0)}%</b></>}{goal.remainingDays != null ? ` · còn ${goal.remainingDays} ngày` : ""}
                 </p>
               </div>
             ) : (

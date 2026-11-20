@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { useModalAccessibility } from "../../utils/useModalAccessibility";
 import { useMutation } from "@tanstack/react-query";
 import { extendPathWithCheck } from "../../api/learningPathApi";
 import type { SkillCapabilityStatusDto } from "../../types/learningPath";
@@ -27,8 +28,10 @@ export function ExtendCheckModal({ subjectId, classId, subjectName, candidates, 
       if (res.missionIds.length) onStarted(res.missionIds, res.unavailableSkillIds.map(nameOf));
     }
   });
+  const dialogRef = useRef<HTMLElement>(null);
+  useModalAccessibility({ isOpen: true, onClose: () => { if (!start.isPending) onClose(); }, containerRef: dialogRef });
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-    <section role="dialog" aria-modal="true" aria-labelledby="extend-title" className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100">
+    <section ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="extend-title" className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100">
       <header className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
         <div><h2 id="extend-title" className="text-2xl font-semibold">Kiểm tra thêm phần khác · {subjectName}</h2>
           <p className="mt-2 text-sm text-slate-500">Lộ trình đang học được giữ nguyên. Mỗi phần tối đa 5 câu, ưu tiên câu em chưa làm; thiếu câu mới thì dùng lại câu đã làm trước đây. Đạt thì giữ lịch ôn, chưa đạt sẽ thêm bộ rèn lại vào lộ trình hiện tại.</p></div>

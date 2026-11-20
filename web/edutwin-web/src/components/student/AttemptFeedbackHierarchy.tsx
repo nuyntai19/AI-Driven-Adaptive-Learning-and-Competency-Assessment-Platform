@@ -191,6 +191,7 @@ export function AttemptFeedbackHierarchy({
     }
   };
 
+  const teacherReviewed = grading.source === "Teacher" && reviewRequest?.status !== "Pending";
   const processingNotice = studentSubmission?.skipped ? null : getAIProcessingNotice(feedbackData, scoreAndFeedbackOnly);
   const hasReasoningAnalysis = Boolean(analysis && !analysis.isFallback && analysis.isRawAI !== false && (studentSubmission?.reasoningText?.trim() || studentSubmission?.attachmentUrl));
   const presentation = getAttemptFeedbackPresentation(grading, analysis, feedbackData.status);
@@ -362,7 +363,7 @@ export function AttemptFeedbackHierarchy({
         </div>
 
         {/* Graceful Degradation / Fallback Notice */}
-        {processingNotice && (
+        {processingNotice && !teacherReviewed && (
           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-900 dark:text-amber-200 space-y-2">
             <div className="flex items-center gap-2 font-bold">
               <span>ℹ</span>
@@ -404,10 +405,10 @@ export function AttemptFeedbackHierarchy({
 
             <div className="rounded-lg bg-indigo-50/70 dark:bg-indigo-950/50 p-3.5">
               <p className="text-xs font-extrabold text-indigo-900 dark:text-indigo-300 uppercase tracking-wider">
-                {presentation.feedbackLabel}
+                {teacherReviewed ? "Nhận xét hiện tại của giáo viên" : presentation.feedbackLabel}
               </p>
               <div className="mt-1 text-sm text-indigo-950 dark:text-indigo-200 leading-relaxed font-medium">
-                <RichMathText content={normalizeAITextLineBreaks(practiceMode && analysis.isFallback
+                <RichMathText content={normalizeAITextLineBreaks(teacherReviewed ? teacherFinalEvaluation?.teacherFeedback || teacherFinalEvaluation?.teacherReviewNote || "Giáo viên đã xem xét và xác nhận kết quả câu hỏi. Phân tích tự động trước đó không thay thế kết luận này." : practiceMode && analysis.isFallback
                   ? "Bài luyện đã được lưu. Phân tích AI chưa hoàn tất; hãy đối chiếu lời giải hoặc thử chấm lại khi được phép."
                   : analysis.feedback)} />
               </div>
@@ -759,7 +760,7 @@ export function AttemptFeedbackHierarchy({
           <div role="dialog" aria-modal="true" aria-label="Yêu cầu xem xét kết quả" className="w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-3xl bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 p-6 sm:p-7 shadow-2xl space-y-5">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <h3 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                <span>🙋</span> Yêu Cầu Xem Xét Kết Quả AI
+                <span>🙋</span> Yêu Cầu Xem Xét Kết Quả
               </h3>
               <button
                 type="button"
@@ -772,7 +773,7 @@ export function AttemptFeedbackHierarchy({
 
             <div className="space-y-3">
               <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Nếu bạn cảm thấy AI hiểu nhầm phương pháp giải của bạn, đánh giá sót bước đúng, hoặc bài làm của bạn dùng cách giải khác hợp lệ, vui lòng mô tả chi tiết để thầy/cô xem xét lại.
+                Nếu bạn muốn giáo viên kiểm tra lại đáp án, cách chấm hoặc phương pháp giải của mình, vui lòng mô tả cụ thể phần cần xem xét và lý do.
               </p>
 
               <div>

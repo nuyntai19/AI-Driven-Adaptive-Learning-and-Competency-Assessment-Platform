@@ -91,6 +91,37 @@ public sealed class StudentQuestionBookmarkServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task A_closed_exam_keeps_bookmark_answers_hidden_until_publication()
+    {
+        await _service.AddAsync(_centerId, _studentId, QuestionId, CancellationToken.None);
+        await AnswerAsync();
+        var assignment = new Assignment { AssignmentId = Guid.NewGuid(), CenterId = _centerId, Title = "Thi", Kind = AssignmentKind.Midterm,
+            Status = AssignmentStatus.Closed, DueAt = UtcNow.AddDays(-1), CreatedAt = UtcNow, UpdatedAt = UtcNow };
+        _db.Assignments.Add(assignment);
+        _db.AssignmentQuestions.Add(new AssignmentQuestion { CenterId = _centerId, AssignmentId = assignment.AssignmentId, QuestionId = QuestionId, OrderIndex = 1, CreatedAt = UtcNow });
+        await _db.SaveChangesAsync();
+        var hidden = Assert.Single(await _service.ListAsync(_centerId, _studentId, CancellationToken.None));
+        Assert.Null(hidden.CorrectAnswer); Assert.Null(hidden.Solution);
+        assignment.ResultsPublishedAt = UtcNow;
+        await _db.SaveChangesAsync();
+        var published = Assert.Single(await _service.ListAsync(_centerId, _studentId, CancellationToken.None));
+        Assert.Equal("2x", published.CorrectAnswer);
+    }
+
+    [Fact]
+    public async Task Multiple_choice_bookmark_exposes_answer_content_instead_of_an_unusable_letter()
+    {
+        var question = await _db.Questions.SingleAsync();
+        question.QuestionType = QuestionType.MultipleChoice; question.CorrectAnswer = "C";
+        _db.QuestionOptions.Add(new QuestionOption { CenterId = _centerId, QuestionId = QuestionId, OptionId = 11, OptionLabel = "C", OptionText = "2x", IsCorrect = true, CreatedAt = UtcNow, UpdatedAt = UtcNow });
+        await _db.SaveChangesAsync();
+        await _service.AddAsync(_centerId, _studentId, QuestionId, CancellationToken.None);
+        await AnswerAsync();
+        var mark = Assert.Single(await _service.ListAsync(_centerId, _studentId, CancellationToken.None));
+        Assert.Equal("C. 2x", mark.CorrectAnswer);
+    }
+
+    [Fact]
     public async Task Marks_belong_to_one_student_and_can_be_removed()
     {
         await _service.AddAsync(_centerId, _studentId, QuestionId, CancellationToken.None);

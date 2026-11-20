@@ -8,6 +8,8 @@ import { NotificationIcon } from "../components/notifications/NotificationIcon";
 import { NotificationComposer } from "../components/notifications/NotificationComposer";
 import { notificationSendAccess } from "../utils/notificationHelpers";
 import type { NotificationFilters, NotificationSent } from "../types/notifications";
+import { dateRangeError } from "../utils/dateRange";
+import { notificationDateInput } from "../utils/notificationHelpers";
 import { NotificationFiltersBar, NotificationReceiptActions, NotificationSentActions } from "../components/notifications/NotificationInteractions";
 
 import { NotificationOperations } from "../components/notifications/NotificationOperations";
@@ -64,7 +66,13 @@ function ReceivedInbox() {
   const [page, setPage] = useState(1);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [filters, setFilters] = useState<NotificationFilters>({});
-  const list = useQuery({ queryKey: [...key, "list", page, unreadOnly, filters], queryFn: ({ signal }) => notificationsApi.list(page, 20, unreadOnly, signal, filters), enabled: access.read, retry: false });
+  const [requestFilters, setRequestFilters] = useState<NotificationFilters>({});
+  const rangeError = dateRangeError(notificationDateInput(filters.from), notificationDateInput(filters.until));
+  const changeFilters = (value: NotificationFilters) => {
+    setFilters(value);
+    if (!dateRangeError(notificationDateInput(value.from), notificationDateInput(value.until))) { setRequestFilters(value); setPage(1); }
+  };
+  const list = useQuery({ queryKey: [...key, "list", page, unreadOnly, requestFilters], queryFn: ({ signal }) => notificationsApi.list(page, 20, unreadOnly, signal, requestFilters), enabled: access.read, retry: false });
   const detail = useQuery({ queryKey: [...key, "detail", id], queryFn: ({ signal }) => notificationsApi.detail(id!, signal), enabled: access.read && !!id, retry: false });
   const lastPage = list.data?.meta.totalPages;
   useEffect(() => {
@@ -81,7 +89,8 @@ function ReceivedInbox() {
   const empty = list.isSuccess && list.data.data.length === 0;
   return <>
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-slate-900">{[{ label: "Tất cả", value: false }, { label: "Chưa đọc", value: true }].map(filter => <button key={filter.label} type="button" aria-pressed={unreadOnly === filter.value} onClick={() => { setUnreadOnly(filter.value); setPage(1); }} className={`rounded-lg px-3 py-2 text-sm font-medium ${unreadOnly === filter.value ? "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white" : "text-slate-500"}`}>{filter.label}</button>)}</div>{access.update && visibleIds.length > 0 && <button type="button" disabled={read.isPending} onClick={() => read.mutate(visibleIds)} className="inline-flex items-center gap-2 text-sm font-medium text-indigo-600 disabled:opacity-40 dark:text-indigo-400"><NotificationIcon kind="check" className="h-4 w-4" />Đọc các thông báo đang hiển thị</button>}</div>
-    <NotificationFiltersBar filters={filters} onChange={value => { setFilters(value); setPage(1); }} />
+    <NotificationFiltersBar filters={filters} onChange={changeFilters} />
+    {rangeError && <p role="alert" className="mb-4 text-sm text-rose-600">{rangeError} Danh sách vẫn giữ bộ lọc hợp lệ gần nhất.</p>}
     {read.isError && <p role="alert" className="mb-4 text-sm text-rose-600 dark:text-rose-400">Chưa đánh dấu đọc được. Bạn có thể thử lại; dữ liệu học tập không bị thay đổi.</p>}
     <div className={id ? "grid gap-5 lg:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.2fr)]" : ""}>
       {empty ? <EmptyInbox unread={unreadOnly} /> : <div className={card}>

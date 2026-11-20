@@ -2521,7 +2521,7 @@ const PracticePlayerPage = () => {
     };
   }, [assignment, isAssignmentSubmitted, assignmentQuestions]);
 
-  const mathToolsEnabled = usesMathInput(assignment?.subjectName, question?.languageCode);
+  const mathToolsEnabled = usesMathInput(assignment?.subjectCode);
 
   const isReadOnly =
     classReadOnly || (!assignmentId && !learningAccess.writable) ||
@@ -3653,7 +3653,8 @@ const PracticePlayerPage = () => {
             )}
 
             {/* 0. Assignment Result Overview Banner when submitted */}
-            {assignmentId && isAssignmentSubmitted && assignmentStats && (
+            {assignmentId && isAssignmentSubmitted && awaitingExamResults && <section role="status" className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5 text-indigo-950 dark:border-indigo-800 dark:bg-indigo-950 dark:text-indigo-100"><h2 className="font-bold">Kết quả chưa được công bố</h2><p className="mt-2 text-sm">Bài làm đã được lưu. Điểm, số câu đúng và lời giải sẽ hiển thị sau khi giảng viên công bố kết quả.</p></section>}
+            {assignmentId && isAssignmentSubmitted && !awaitingExamResults && assignmentStats && (
               <div className="rounded-2xl bg-white dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-800 p-4 sm:p-5 shadow-xs space-y-3">
                 <div className="flex flex-col xl:flex-row xl:items-center gap-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 xl:shrink-0 xl:whitespace-nowrap">
@@ -3966,7 +3967,7 @@ const PracticePlayerPage = () => {
                       {assignmentQuestion?.latestAttempt?.skipped
                         ? "Câu hỏi này đã được bỏ qua khi nộp bài."
                         : assignmentQuestion?.attemptStatus === "PendingAnalysis" || assignmentQuestion?.attemptStatus === "Processing" || assignmentQuestion?.latestAttempt?.status === "PendingAnalysis" || assignmentQuestion?.latestAttempt?.status === "Processing"
-                        ? "Câu hỏi này đã nộp bài thành công. AI đang phân tích bài làm..."
+                        ? awaitingExamResults ? "Bài làm đã lưu. Chờ giảng viên công bố kết quả." : "Câu hỏi này đã nộp bài thành công. AI đang phân tích bài làm..."
                         : assignmentQuestion?.attemptStatus === "NeedsTeacherReview" || assignmentQuestion?.latestAttempt?.status === "NeedsTeacherReview"
                         ? hasDeterminedGrade(assignmentQuestion!) ? "Câu hỏi đã có điểm. Giáo viên sẽ xem xét trước khi chốt kết quả." : "Câu hỏi đã nộp và đang chờ giáo viên chấm."
                         : assignmentQuestion?.attemptStatus === "Completed" || assignmentQuestion?.latestAttempt?.status === "Completed"
@@ -3976,7 +3977,7 @@ const PracticePlayerPage = () => {
                   </div>
                   <span className="px-2.5 py-1 rounded-full font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-900 dark:text-indigo-200 shrink-0">
                     {assignmentQuestion?.attemptStatus === "PendingAnalysis" || assignmentQuestion?.attemptStatus === "Processing" || assignmentQuestion?.latestAttempt?.status === "PendingAnalysis" || assignmentQuestion?.latestAttempt?.status === "Processing"
-                      ? "Đã nộp · AI đang phân tích"
+                      ? awaitingExamResults ? "Đã nộp · Chờ công bố" : "Đã nộp · AI đang phân tích"
                       : assignmentQuestion?.attemptStatus === "Completed" || assignmentQuestion?.latestAttempt?.status === "Completed"
                       ? "Đã đánh giá"
                       : "Đã nộp · Chế độ xem lại"}

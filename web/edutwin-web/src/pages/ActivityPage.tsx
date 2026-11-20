@@ -6,6 +6,7 @@ import { useAuthStore } from "../stores/authStore";
 import type { ApiCollectionResponse } from "../types/api";
 import { activitySourceLabels as sourceLabels, activityActionLabels as actionLabels, activityTitle, activityDescription, activityTargetLabel, activityStatus } from "../utils/activityPresentation";
 import { notificationDateBoundary } from "../utils/notificationHelpers";
+import { dateRangeError } from "../utils/dateRange";
 import { DateInput } from "../components/DateInput";
 
 interface Activity {
@@ -22,11 +23,17 @@ function ActivityView({ embedded }: { embedded: boolean }) {
   const user = useAuthStore(s => s.user);
   const [page, setPage] = useState(1); const [source, setSource] = useState(""); const [from, setFrom] = useState(""); const [until, setUntil] = useState("");
   const [action, setAction] = useState("");
+  const [range, setRange] = useState({ from: "", until: "" });
+  const rangeError = dateRangeError(from, until);
+  const changeRange = (nextFrom: string, nextUntil: string) => {
+    setFrom(nextFrom); setUntil(nextUntil);
+    if (!dateRangeError(nextFrom, nextUntil)) { setRange({ from: nextFrom, until: nextUntil }); setPage(1); }
+  };
   const [expanded, setExpanded] = useState<string | null>(null);
   const administrative = user?.accountType === "CenterManager" || user?.accountType === "PlatformAdmin";
-  const query = useQuery({ queryKey: ["activity", user?.centerId, user?.userId, page, source, action, from, until],
+  const query = useQuery({ queryKey: ["activity", user?.centerId, user?.userId, page, source, action, range.from, range.until],
     queryFn: async ({ signal }) => (await httpClient.get<ApiCollectionResponse<Activity>>("/activity", { signal, params: { page, pageSize: 20,
-      source: source || undefined, action: action || undefined, from: notificationDateBoundary(from), until: notificationDateBoundary(until, true) } })).data,
+      source: source || undefined, action: action || undefined, from: notificationDateBoundary(range.from), until: notificationDateBoundary(range.until, true) } })).data,
     retry: false, enabled: !!user });
   const totalPages = Math.max(1, query.data?.meta.totalPages ?? 1);
   const Heading = embedded ? "h2" : "h1";
@@ -35,10 +42,11 @@ function ActivityView({ embedded }: { embedded: boolean }) {
     <div className="mb-5 flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
       <label className="min-w-[180px] flex-1 text-xs font-medium text-slate-500">Nguồn lịch sử<select value={source} onChange={e => { setSource(e.target.value); setPage(1); }} className="mt-2 block w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:text-white"><option value="">Tất cả nguồn được phép</option>{Object.entries(sourceLabels).filter(([key]) => !administrative || ["Audit", "Curriculum", "Business"].includes(key)).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
       <label className="min-w-[180px] flex-1 text-xs font-medium text-slate-500">Hoạt động<select value={action} onChange={e => { setAction(e.target.value); setPage(1); }} className="mt-2 block w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm dark:border-slate-700"><option value="">Tất cả hoạt động</option>{Object.entries(actionLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-      <label className="text-xs font-medium text-slate-500">Từ ngày<DateInput value={from} onChange={value => { setFrom(value); setPage(1); }} className="mt-2 block rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm dark:border-slate-700" /></label>
-      <label className="text-xs font-medium text-slate-500">Đến ngày<DateInput value={until} onChange={value => { setUntil(value); setPage(1); }} className="mt-2 block rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm dark:border-slate-700" /></label>
-      <button type="button" className={button} onClick={() => { setSource(""); setAction(""); setFrom(""); setUntil(""); setPage(1); }}>Xóa bộ lọc</button>
+      <label className="text-xs font-medium text-slate-500">Từ ngày<DateInput value={from} onChange={value => changeRange(value, until)} className="mt-2 block rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm dark:border-slate-700" /></label>
+      <label className="text-xs font-medium text-slate-500">Đến ngày<DateInput value={until} onChange={value => changeRange(from, value)} className="mt-2 block rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm dark:border-slate-700" /></label>
+      <button type="button" className={button} onClick={() => { setSource(""); setAction(""); setFrom(""); setUntil(""); setRange({ from: "", until: "" }); setPage(1); }}>Xóa bộ lọc</button>
     </div>
+    {rangeError && <p role="alert" className="mb-4 text-sm text-rose-600">{rangeError} Danh sách vẫn giữ khoảng ngày hợp lệ gần nhất.</p>}
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
       {query.isPending && <p role="status" className="p-12 text-center text-slate-500">Đang đọc các nguồn lịch sử…</p>}
       {query.isError && <div role="alert" className="p-10 text-center"><h2 className="font-semibold">Chưa tải được nhật ký</h2><p className="mt-2 text-sm text-slate-500">Kiểm tra kết nối/quyền hoặc khoảng ngày rồi thử lại. Lỗi không được coi là lịch sử rỗng.</p></div>}

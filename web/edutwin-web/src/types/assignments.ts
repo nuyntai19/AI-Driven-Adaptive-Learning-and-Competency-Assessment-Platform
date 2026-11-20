@@ -193,6 +193,7 @@ export interface StudentAssignmentDetailDto {
   dueAt: string | null;
   subjectId?: string | null;
   subjectName?: string | null;
+  subjectCode?: string | null;
   timeLimitMinutes?: number | null;
   startedAt?: string | null;
   isSubmitted?: boolean;
@@ -223,6 +224,7 @@ export interface StudentAssignmentListItemDto {
   dueAt: string | null;
   subjectId?: string | null;
   subjectName?: string | null;
+  subjectCode?: string | null;
   progress: StudentProgressDto;
   summary?: AssignmentResultSummaryDto | null;
 }

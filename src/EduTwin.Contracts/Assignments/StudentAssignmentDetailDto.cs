@@ -13,6 +13,7 @@ public class StudentAssignmentDetailDto
     public string? Instructions { get; set; }
     public string? SubjectId { get; set; }
     public string? SubjectName { get; set; }
+    public string? SubjectCode { get; set; }
     public string? ClassId { get; set; }
     public bool IsReadOnly { get; set; }
     public string? ReadOnlyReason { get; set; }

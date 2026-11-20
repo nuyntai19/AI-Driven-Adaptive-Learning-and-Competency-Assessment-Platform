@@ -111,7 +111,7 @@ public sealed partial class NotificationMySqlTests
             if ((await db.NotificationDispatches.SingleAsync(d => d.EventId == marker.EventId)).State == "Pending")
                 Assert.True(await new NotificationDispatcher(db, TimeProvider.System).DispatchAsync(marker.EventId));
         var old = await db.NotificationEvents.Where(e => e.EventType == "AssignmentAiReady").ToArrayAsync(); Assert.Equal(2, old.Length);
-        Assert.All(old, e => Assert.Contains("50 câu fallback", e.Body)); Assert.Empty(await db.NotificationDeliveries.ToArrayAsync());
+        Assert.All(old, e => Assert.Contains("50 câu dùng kết quả chấm dự phòng", e.Body)); Assert.Empty(await db.NotificationDeliveries.ToArrayAsync());
         var retry = await db.Attempts.OrderBy(a => a.AttemptId).FirstAsync(); retry.ManualRetryCount++; retry.LastManualRetryAt = DateTime.UtcNow; retry.Status = AttemptStatus.PendingAnalysis;
         var reused = await db.AIAnalysisJobs.SingleAsync(j => j.AttemptId == retry.AttemptId); reused.Status = AIJobStatus.Pending; reused.CompletedAt = null; reused.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();

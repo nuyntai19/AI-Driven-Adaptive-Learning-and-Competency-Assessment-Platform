@@ -62,6 +62,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         {
             SubjectId = subjectId,
             SubjectName = subject.Name,
+            SubjectCode = subject.SubjectCode,
             AvailableTopics = [],
             UnavailableReason = reason
         };
@@ -209,6 +210,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         {
             SubjectId = subjectId,
             SubjectName = subject.Name,
+            SubjectCode = subject.SubjectCode,
             TopicNodeId = selectedTopic.NodeId,
             TopicName = selectedTopic.Name,
             FocusSkillDescription = $"Rèn luyện và củng cố kỹ năng vận dụng trong '{selectedTopic.Name}'",
@@ -1192,6 +1194,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             {
                 SessionId = s.SessionId,
                 SubjectName = s.Subject.Name,
+            SubjectCode = s.Subject.SubjectCode,
                 TopicName = s.TopicNode.Name,
                 PracticeMode = s.PracticeMode,
                 TotalQuestions = sum?.TotalQuestions ?? s.QuestionCount,
@@ -1253,6 +1256,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
                 StudentName = x.Session.Student.FullName,
                 ClassName = x.Class!.ClassName,
                 SubjectName = x.Session.Subject.Name,
+            SubjectCode = x.Session.Subject.SubjectCode,
                 TopicName = x.Session.TopicNode.Name,
                 TotalQuestions = x.Session.Summary?.TotalQuestions ?? x.Session.QuestionCount,
                 CorrectCount = x.Session.Summary?.CorrectCount ?? 0,
@@ -1303,6 +1307,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
                 ClassName = x.Class!.ClassName,
                 SubjectId = x.Session.SubjectId,
                 SubjectName = x.Session.Subject.Name,
+            SubjectCode = x.Session.Subject.SubjectCode,
                 TopicNodeId = x.Session.TopicNodeId,
                 TopicName = x.Session.TopicNode.Name,
                 AlertType = "PREREQUISITE_DEFICIT",
@@ -1395,6 +1400,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             ClassId = s.ClassId,
             SubjectId = s.SubjectId,
             SubjectName = s.Subject?.Name ?? "",
+            SubjectCode = s.Subject?.SubjectCode ?? "",
             TopicNodeId = s.TopicNodeId,
             TopicName = s.TopicNode?.Name ?? "",
             PracticeMode = s.PracticeMode,

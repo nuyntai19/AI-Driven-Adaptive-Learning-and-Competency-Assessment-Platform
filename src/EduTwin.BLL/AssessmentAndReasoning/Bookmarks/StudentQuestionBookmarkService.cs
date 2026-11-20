@@ -30,6 +30,9 @@ public sealed class StudentQuestionBookmarkService(EduTwinDbContext db, TimeProv
             .Where(q => q.CenterId == centerId && questionIds.Contains(q.QuestionId) && !q.IsDeleted)
             .Select(q => new { q.QuestionId, q.SubjectId, q.QuestionText, q.CorrectAnswer, q.Solution, TopicName = q.PrimaryTopicNode!.NodeName })
             .ToDictionaryAsync(q => q.QuestionId, ct);
+        var options = await db.QuestionOptions.AsNoTracking()
+            .Where(o => o.CenterId == centerId && questionIds.Contains(o.QuestionId) && !o.IsDeleted)
+            .OrderBy(o => o.OrderIndex).ToListAsync(ct);
         var answered = (await db.Attempts.AsNoTracking()
             .Where(a => a.CenterId == centerId && a.StudentId == studentId && !a.Skipped && questionIds.Contains(a.QuestionId))
             .Select(a => a.QuestionId).Distinct().ToListAsync(ct)).ToHashSet();
@@ -38,7 +41,8 @@ public sealed class StudentQuestionBookmarkService(EduTwinDbContext db, TimeProv
         var now = clock.GetUtcNow().UtcDateTime;
         var stillOpen = (await db.AssignmentQuestions.AsNoTracking()
             .Where(q => q.CenterId == centerId && questionIds.Contains(q.QuestionId) && q.Assignment != null && !q.Assignment.IsDeleted &&
-                (q.Assignment.Status == AssignmentStatus.Draft || q.Assignment.Status == AssignmentStatus.Published && (!q.Assignment.DueAt.HasValue || q.Assignment.DueAt > now)))
+                (q.Assignment.Status == AssignmentStatus.Draft || q.Assignment.Status == AssignmentStatus.Published && (!q.Assignment.DueAt.HasValue || q.Assignment.DueAt > now) ||
+                    (q.Assignment.Kind == AssignmentKind.Midterm || q.Assignment.Kind == AssignmentKind.Final) && q.Assignment.ResultsPublishedAt == null))
             .Select(q => q.QuestionId).Distinct().ToListAsync(ct)).ToHashSet();
 
         return bookmarks.Where(b => questions.ContainsKey(b.QuestionId)).Select(b =>
@@ -46,10 +50,12 @@ public sealed class StudentQuestionBookmarkService(EduTwinDbContext db, TimeProv
             var question = questions[b.QuestionId];
             var isAnswered = answered.Contains(b.QuestionId);
             var reveal = isAnswered && !stillOpen.Contains(b.QuestionId);
+            var answerOption = options.FirstOrDefault(o => o.QuestionId == b.QuestionId && (o.OptionLabel == question.CorrectAnswer || o.OptionId.ToString(CultureInfo.InvariantCulture) == question.CorrectAnswer));
+            var answerText = answerOption == null ? question.CorrectAnswer : $"{answerOption.OptionLabel}. {answerOption.OptionText}";
             return new StudentQuestionBookmarkDto(
                 b.QuestionId.ToString(CultureInfo.InvariantCulture), question.SubjectId, isAnswered,
                 isAnswered ? question.QuestionText : null, isAnswered ? question.TopicName : null,
-                reveal ? question.CorrectAnswer : null, reveal ? question.Solution : null, b.CreatedAt);
+                reveal ? answerText : null, reveal ? question.Solution : null, b.CreatedAt);
         }).ToList();
     }
 

@@ -342,8 +342,10 @@ public sealed class DashboardBoundaryUnitTests
         Assert.Equal(Guid.Empty, result.Data.Subject.SubjectId);
         // Average TargetScore: (9.0 + 8.0) / 2 = 8.5
         Assert.Equal(8.5m, result.Data.Goal.TargetScore);
-        // Average PredictedScore: (7.5 + 6.5) / 2 = 7.0
-        Assert.Equal(7.0m, result.Data.Goal.CurrentPredictedScore);
+        // Legacy stored scores/Twin percentages are not a new forecast. This
+        // fixture has no eligible independent question evidence in either subject.
+        Assert.False(result.Data.Goal.HasPrediction);
+        Assert.Equal(0m, result.Data.Goal.CurrentPredictedScore);
         // Min RemainingDays: min(60, 90) = 60
         Assert.Equal(60u, result.Data.Goal.RemainingDays);
         // Max RiskScore: max(20.0, 45.0) = 45.0

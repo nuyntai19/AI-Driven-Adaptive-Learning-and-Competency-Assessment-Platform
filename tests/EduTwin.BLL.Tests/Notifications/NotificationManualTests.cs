@@ -46,7 +46,7 @@ public sealed class NotificationManualTests
         var service = fixture.Service(db, sender);
         var draft = Draft(kind, kind == "CenterManagersRelay" ? target.CenterId : target.UserId);
         var preview = await service.PreviewAsync(draft, default);
-        Assert.True(preview.IsSuccess); Assert.Equal(1, preview.Data!.RecipientCount);
+        Assert.True(preview.IsSuccess, preview.ErrorCode); Assert.Equal(1, preview.Data!.RecipientCount);
         var request = SendRequest(draft, preview.Data.Token);
         var result = await service.SendAsync(request, default);
         Assert.True(result.IsSuccess);

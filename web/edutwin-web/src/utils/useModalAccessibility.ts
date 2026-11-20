@@ -76,6 +76,9 @@ export function useModalAccessibility({
     return () => {
       clearTimeout(focusTimer);
       document.body.style.overflow = originalOverflow;
+      // Fullscreen players are removed from the tree when closed, so there may
+      // never be a render with isOpen=false to restore the original trigger.
+      if (previousActiveElement.current?.isConnected) previousActiveElement.current.focus();
     };
   }, [isOpen, containerRef, initialFocusRef]);
 
@@ -96,7 +99,7 @@ export function useModalAccessibility({
           containerRef.current.querySelectorAll<HTMLElement>(
             'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
           )
-        ).filter((el) => el.offsetParent !== null || el.offsetWidth > 0 || el.offsetHeight > 0);
+        ).filter((el) => !el.closest("[inert]") && (el.offsetParent !== null || el.offsetWidth > 0 || el.offsetHeight > 0));
 
         if (focusableElements.length === 0) {
           event.preventDefault();

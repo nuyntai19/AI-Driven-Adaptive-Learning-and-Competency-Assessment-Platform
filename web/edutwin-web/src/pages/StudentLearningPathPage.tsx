@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { organizationApi } from "../api/organizationApi";
+import { useStudentSubjects } from "../utils/useStudentSubjects";
+import { readLastStudentSubject, rememberStudentSubject } from "../utils/studentSubjectScope";
 import { getCapabilityMap, getLearningAgenda } from "../api/learningPathApi";
 import { useStudentLearningAccess } from "../hooks/useStudentLearningAccess";
 import { useAuthStore } from "../stores/authStore";
@@ -10,7 +11,7 @@ import { GoalAndProposalModal } from "../components/learningPathV4/GoalAndPropos
 import { MissionPlayerModal } from "../components/learningPathV4/MissionPlayerModal";
 import { TimeBudgetSlider } from "../components/learningPathV4/TimeBudgetSlider";
 import { formatStudyMinutes, splitReason } from "../utils/studyTime";
-import { formatDayMonth } from "../utils/dateInput";
+import { formatDayMonth, formatDateInput } from "../utils/dateInput";
 import type { AgendaItemDto, LearningAgendaDto, MissionRunSummaryDto } from "../types/learningPath";
 import { learningPathTimeline } from "../utils/learningPathTimeline";
 import { missionAction } from "../utils/learningMission";
@@ -74,9 +75,10 @@ export function StudentLearningPathPage() {
   const [params, setParams] = useSearchParams();
   const actor = useAuthStore(s => s.user);
   const history = params.get("history") === "true";
-  const subjects = useQuery({ queryKey: ["subjects", "student-learning-path", actor?.centerId, actor?.userId, history],
-    queryFn: () => organizationApi.listSubjects(history ? undefined : true) });
-  const storedSubjectId = (() => { try { return localStorage.getItem("edutwin_last_subject_id"); } catch { return null; } })();
+  const studentSubjects = useStudentSubjects(history);
+  const subjects = { data: { data: studentSubjects.subjects }, isError: studentSubjects.isError,
+    isPending: studentSubjects.isLoading, refetch: studentSubjects.refetch };
+  const storedSubjectId = readLastStudentSubject(actor?.userId);
   const subject = subjects.data?.data.find(s => s.subjectId === params.get("subjectId"))
     ?? subjects.data?.data.find(s => s.subjectId === storedSubjectId)
     ?? subjects.data?.data[0];
@@ -84,13 +86,13 @@ export function StudentLearningPathPage() {
   // the subject picked on the dashboard stays the same on this page.
   useEffect(() => {
     if (!subject) return;
-    try { localStorage.setItem("edutwin_last_subject_id", subject.subjectId); } catch { /* ignore */ }
+    rememberStudentSubject(actor?.userId, subject.subjectId);
     if (params.get("subjectId") === subject.subjectId) return;
     const next = new URLSearchParams(params);
     next.set("subjectId", subject.subjectId);
     for (const key of ["classId", "pathId", "sessionId", "examId"]) next.delete(key);
     setParams(next, { replace: true });
-  }, [subject, params, setParams]);
+  }, [subject, params, setParams, actor?.userId]);
   if (subjects.isError) return <div role="alert" className="p-6">Không thể tải môn học. <button className="underline" onClick={() => void subjects.refetch()}>Thử lại</button></div>;
   if (subjects.isPending || (subject && params.get("subjectId") !== subject.subjectId)) return <p role="status" className="p-6">Đang tải môn học…</p>;
   if (!subject) return <p className="p-6">Chưa có môn học khả dụng. Hãy liên hệ giáo viên để được bổ sung môn học.</p>;
@@ -349,7 +351,7 @@ function LearningPathWorkspace({ subject, examId }: { subject: SubjectDto; examI
         {hasPath && !isPlacement && <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
           {agenda.data?.scheduleSummary && <span className="rounded-full border border-[var(--student-border)] px-3 py-1 text-[var(--student-ink-secondary)]">{agenda.data.scheduleSummary.phase === "MockExam" ? "Giai đoạn thi thử và vá lỗ hổng" : agenda.data.scheduleSummary.phase === "ShortChecks" ? "Giai đoạn tăng kiểm tra ngắn" : "Học, luyện và ôn cân bằng"}</span>}
           {agenda.data?.targetScore != null && <span className="rounded-full bg-[var(--student-brand-soft)] px-3 py-1 text-[var(--student-brand-ink)]">Mục tiêu {agenda.data.targetScore}/10</span>}
-          {agenda.data?.deadlineDate && <span className="rounded-full bg-[var(--student-brand-soft)] px-3 py-1 text-[var(--student-brand-ink)]">Ngày đích {agenda.data.deadlineDate.split("-").reverse().join("/")}</span>}
+          {agenda.data?.deadlineDate && <span className="rounded-full bg-[var(--student-brand-soft)] px-3 py-1 text-[var(--student-brand-ink)]">Ngày đích {formatDateInput(agenda.data.deadlineDate)}</span>}
           {(agenda.data?.scheduleSummary?.missingMinutes ?? 0) > 0 && <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">Thiếu thời gian so với mục tiêu</span>}
         </div>}</div>
       <div className="flex flex-wrap items-center gap-3">
@@ -662,7 +664,7 @@ function LearningPathWorkspace({ subject, examId }: { subject: SubjectDto; examI
       }} />}
     {mission && <MissionPlayerModal key={`${mission.missionId}:${mission.retry ? "retry" : mission.reviewOnly ? `review-${mission.latestRunId}` : "open"}`} isOpen mission={mission} subjectId={subjectId}
       contextLabel={historyContext ?? (placementRunning ? sectionLabel(mission) : mission.title.startsWith("Kiểm tra thêm") ? "Kiểm tra thêm phần khác · lộ trình hiện tại được giữ" : undefined)}
-      nextLabel={placementRunning && sectionLabel(mission) ? placementSections.filter(m => m.missionId !== mission.missionId).some(m => m.canStart && m.status !== "Completed" && !m.latestRunId) ? "Sang phần tiếp theo" : "Xem kết quả và lộ trình đề xuất" : undefined}
+      nextLabel={placementRunning && sectionLabel(mission) ? placementSections.some(m => m.missionId !== mission.missionId && m.status !== "Completed" && !m.latestRunId) ? "Sang phần tiếp theo" : "Xem kết quả và lộ trình đề xuất" : undefined}
       onResumeMission={setMission}
       onClose={async () => {
         const closedId = mission.missionId; setMission(null);

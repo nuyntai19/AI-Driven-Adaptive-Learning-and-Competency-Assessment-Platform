@@ -88,12 +88,12 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
                 .ToListAsync(cancellationToken);
 
             var forecastBySubject = new Dictionary<Guid, decimal?>();
-            foreach (var cg in canonicalGoals)
+            foreach (var catalogSubject in activeSubjects)
             {
-                if (forecastBySubject.ContainsKey(cg.SubjectId)) continue;
-                var f = await Recommendations.Planning.LearningGoalForecast.ReadAsync(_dbContext, centerId, studentId, cg.SubjectId,
-                    cg.ClassId, _timeProvider.GetUtcNow().UtcDateTime, Recommendations.Planning.LearningGoalScope.Read(cg.TargetSkillIds).TargetSkillIds, cancellationToken);
-                forecastBySubject[cg.SubjectId] = f?.Score;
+                var cg = canonicalGoals.FirstOrDefault(g => g.SubjectId == catalogSubject.SubjectId);
+                var f = await Recommendations.Planning.LearningGoalForecast.ReadAsync(_dbContext, centerId, studentId, catalogSubject.SubjectId,
+                    cg?.ClassId ?? classId, _timeProvider.GetUtcNow().UtcDateTime, cg == null ? [] : Recommendations.Planning.LearningGoalScope.Read(cg.TargetSkillIds).TargetSkillIds, cancellationToken);
+                forecastBySubject[catalogSubject.SubjectId] = f?.Score;
             }
 
             var targets = activeSubjects
@@ -113,7 +113,7 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
                         : governedGoal?.RemainingDays ?? 0u;
                     var forecastScore = forecastBySubject.TryGetValue(subject.SubjectId, out var fs) ? fs : null;
                     var predictedScore = forecastScore ?? governedGoal?.CurrentPredictedScore ?? 0m;
-                    var hasPrediction = forecastScore.HasValue || governedGoal is not null;
+                    var hasPrediction = forecastScore.HasValue;
                     var riskScore = hasTarget
                         ? (preference is not null
                             ? StudentSubjectGoalRiskCalculator.CalculateRisk(targetScore, predictedScore, checked((int)remainingDays))
@@ -299,13 +299,13 @@ public sealed class GetStudentDashboardUseCase : IGetStudentDashboardUseCase
             ? checked((uint)learningPathPreference.TargetWeeks * 7u)
             : goalEntity?.RemainingDays ?? 0u;
         var currentPredictedScore = goalEntity?.CurrentPredictedScore ?? 0m;
-        var forecast = canonicalGoal == null ? null : await Recommendations.Planning.LearningGoalForecast.ReadAsync(_dbContext, centerId, studentId, targetSubjectId,
-            canonicalGoal.ClassId, _timeProvider.GetUtcNow().UtcDateTime, Recommendations.Planning.LearningGoalScope.Read(canonicalGoal.TargetSkillIds).TargetSkillIds, cancellationToken);
+        var forecast = await Recommendations.Planning.LearningGoalForecast.ReadAsync(_dbContext, centerId, studentId, targetSubjectId,
+            canonicalGoal?.ClassId ?? classId, _timeProvider.GetUtcNow().UtcDateTime, canonicalGoal == null ? [] : Recommendations.Planning.LearningGoalScope.Read(canonicalGoal.TargetSkillIds).TargetSkillIds, cancellationToken);
         if (forecast?.Score is { } estimate) currentPredictedScore = estimate;
 
         var singleGoalDto = new StudentGoalSummaryDto
         {
-            HasPrediction = forecast == null ? null : forecast.Score.HasValue,
+            HasPrediction = forecast?.Score.HasValue == true,
             HasDeadline = canonicalGoal?.DeadlineDate.HasValue,
             ForecastMessage = forecast?.Message,
             HasGoal = canonicalGoal != null || learningPathPreference is not null || goalEntity is not null,
