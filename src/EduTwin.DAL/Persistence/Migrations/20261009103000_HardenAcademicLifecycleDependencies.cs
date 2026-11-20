@@ -27,6 +27,30 @@ public sealed class HardenAcademicLifecycleDependencies : Migration
               THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='EDUTWIN_ACADEMIC_DEPENDENCY: curriculum still used by active classes'; END IF;
             END;
             """);
+        AddKnowledgeNodeLifecycleTrigger(migrationBuilder);
+        var edgeUse = LiveUsage("EXISTS (SELECT 1 FROM curriculum_nodes cn WHERE cn.center_id=cu.center_id AND cn.curriculum_id=cu.curriculum_id AND cn.node_id IN (NEW.source_node_id,NEW.target_node_id))");
+        foreach (var operation in new[] { "INSERT", "UPDATE" })
+        {
+            var changed = operation == "INSERT" ? "TRUE" : "(NOT(NEW.weight <=> OLD.weight) OR NOT(NEW.is_deleted <=> OLD.is_deleted) OR NOT(NEW.source_node_id <=> OLD.source_node_id) OR NOT(NEW.target_node_id <=> OLD.target_node_id) OR NOT(NEW.relation_type <=> OLD.relation_type))";
+            migrationBuilder.Sql($"""
+                CREATE TRIGGER tr_knowledge_edge_lifecycle_{operation.ToLowerInvariant()} BEFORE {operation} ON knowledge_edges FOR EACH ROW
+                BEGIN
+                  IF NEW.is_deleted=0 AND NOT EXISTS (SELECT 1 FROM knowledge_nodes s JOIN knowledge_nodes t ON t.center_id=s.center_id AND t.subject_id=s.subject_id
+                    WHERE s.center_id=NEW.center_id AND s.node_id=NEW.source_node_id AND t.node_id=NEW.target_node_id
+                      AND s.subject_id=NEW.subject_id AND s.is_deleted=0 AND t.is_deleted=0 AND s.is_active=1 AND t.is_active=1)
+                  THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='EDUTWIN_ACADEMIC_DEPENDENCY: edge endpoints must be active in the same subject'; END IF;
+                  IF {changed} AND {edgeUse}
+                  THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='EDUTWIN_ACADEMIC_DEPENDENCY: edge still used by active classes'; END IF;
+                END;
+                """);
+        }
+    }
+
+    internal static void DropKnowledgeNodeLifecycleTrigger(MigrationBuilder migrationBuilder)
+        => migrationBuilder.Sql("DROP TRIGGER IF EXISTS tr_knowledge_node_lifecycle;");
+
+    internal static void AddKnowledgeNodeLifecycleTrigger(MigrationBuilder migrationBuilder)
+    {
         var nodeUse = LiveUsage("EXISTS (SELECT 1 FROM curriculum_nodes cn WHERE cn.center_id=cu.center_id AND cn.curriculum_id=cu.curriculum_id AND cn.node_id=OLD.node_id)");
         migrationBuilder.Sql($"""
             CREATE TRIGGER tr_knowledge_node_lifecycle BEFORE UPDATE ON knowledge_nodes FOR EACH ROW
@@ -64,22 +88,6 @@ public sealed class HardenAcademicLifecycleDependencies : Migration
               THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='EDUTWIN_ACADEMIC_DEPENDENCY: node still referenced'; END IF;
             END;
             """);
-        var edgeUse = LiveUsage("EXISTS (SELECT 1 FROM curriculum_nodes cn WHERE cn.center_id=cu.center_id AND cn.curriculum_id=cu.curriculum_id AND cn.node_id IN (NEW.source_node_id,NEW.target_node_id))");
-        foreach (var operation in new[] { "INSERT", "UPDATE" })
-        {
-            var changed = operation == "INSERT" ? "TRUE" : "(NOT(NEW.weight <=> OLD.weight) OR NOT(NEW.is_deleted <=> OLD.is_deleted) OR NOT(NEW.source_node_id <=> OLD.source_node_id) OR NOT(NEW.target_node_id <=> OLD.target_node_id) OR NOT(NEW.relation_type <=> OLD.relation_type))";
-            migrationBuilder.Sql($"""
-                CREATE TRIGGER tr_knowledge_edge_lifecycle_{operation.ToLowerInvariant()} BEFORE {operation} ON knowledge_edges FOR EACH ROW
-                BEGIN
-                  IF NEW.is_deleted=0 AND NOT EXISTS (SELECT 1 FROM knowledge_nodes s JOIN knowledge_nodes t ON t.center_id=s.center_id AND t.subject_id=s.subject_id
-                    WHERE s.center_id=NEW.center_id AND s.node_id=NEW.source_node_id AND t.node_id=NEW.target_node_id
-                      AND s.subject_id=NEW.subject_id AND s.is_deleted=0 AND t.is_deleted=0 AND s.is_active=1 AND t.is_active=1)
-                  THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='EDUTWIN_ACADEMIC_DEPENDENCY: edge endpoints must be active in the same subject'; END IF;
-                  IF {changed} AND {edgeUse}
-                  THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='EDUTWIN_ACADEMIC_DEPENDENCY: edge still used by active classes'; END IF;
-                END;
-                """);
-        }
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)

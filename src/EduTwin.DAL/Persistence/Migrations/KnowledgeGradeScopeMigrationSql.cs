@@ -297,17 +297,7 @@ internal static class KnowledgeGradeScopeMigrationSql
               THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='EDUTWIN_ACADEMIC_DEPENDENCY: published curriculum composition is immutable'; END IF;
             END;
             """);
-        m.Sql("""
-            CREATE TRIGGER tr_canonical_node_graph_freeze BEFORE UPDATE ON knowledge_nodes FOR EACH ROW
-            BEGIN
-              IF (NOT(NEW.node_name <=> OLD.node_name) OR (OLD.description IS NOT NULL AND OLD.description<>'' AND NOT(NEW.description <=> OLD.description)) OR NOT(NEW.node_type <=> OLD.node_type) OR
-                NOT(NEW.node_code <=> OLD.node_code) OR NOT(NEW.subject_id <=> OLD.subject_id) OR NOT(NEW.order_index <=> OLD.order_index) OR
-                NOT(NEW.exam_importance <=> OLD.exam_importance) OR NOT(NEW.estimated_learning_minutes <=> OLD.estimated_learning_minutes) OR NEW.is_deleted=1 OR NEW.is_active=0) AND EXISTS(
-                  SELECT 1 FROM knowledge_node_grades n JOIN knowledge_graph_versions v ON v.center_id=n.center_id AND v.graph_version_id=n.graph_version_id
-                  WHERE n.center_id=OLD.center_id AND n.node_id=OLD.node_id AND v.status<>'Draft')
-              THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='EDUTWIN_ACADEMIC_DEPENDENCY: canonical node used by published graph is immutable'; END IF;
-            END;
-            """);
+        AddCanonicalNodeGraphFreezeTrigger(m);
         m.Sql("""
             CREATE TRIGGER tr_canonical_edge_graph_freeze BEFORE UPDATE ON knowledge_edges FOR EACH ROW
             BEGIN
@@ -357,4 +347,20 @@ internal static class KnowledgeGradeScopeMigrationSql
             END;
             """);
     }
+
+    internal static void DropCanonicalNodeGraphFreezeTrigger(MigrationBuilder m)
+        => m.Sql("DROP TRIGGER IF EXISTS tr_canonical_node_graph_freeze;");
+
+    internal static void AddCanonicalNodeGraphFreezeTrigger(MigrationBuilder m)
+        => m.Sql("""
+            CREATE TRIGGER tr_canonical_node_graph_freeze BEFORE UPDATE ON knowledge_nodes FOR EACH ROW
+            BEGIN
+              IF (NOT(NEW.node_name <=> OLD.node_name) OR (OLD.description IS NOT NULL AND OLD.description<>'' AND NOT(NEW.description <=> OLD.description)) OR NOT(NEW.node_type <=> OLD.node_type) OR
+                NOT(NEW.node_code <=> OLD.node_code) OR NOT(NEW.subject_id <=> OLD.subject_id) OR NOT(NEW.order_index <=> OLD.order_index) OR
+                NOT(NEW.exam_importance <=> OLD.exam_importance) OR NOT(NEW.estimated_learning_minutes <=> OLD.estimated_learning_minutes) OR NEW.is_deleted=1 OR NEW.is_active=0) AND EXISTS(
+                  SELECT 1 FROM knowledge_node_grades n JOIN knowledge_graph_versions v ON v.center_id=n.center_id AND v.graph_version_id=n.graph_version_id
+                  WHERE n.center_id=OLD.center_id AND n.node_id=OLD.node_id AND v.status<>'Draft')
+              THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='EDUTWIN_ACADEMIC_DEPENDENCY: canonical node used by published graph is immutable'; END IF;
+            END;
+            """);
 }
