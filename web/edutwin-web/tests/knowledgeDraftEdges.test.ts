@@ -63,11 +63,10 @@ test("a relation created just now (library refreshing) is unknown, other checks 
   assert.deepEqual(invalidDraftEdges([...draftMappings, reverse], withoutTarget, draftCatalog, true)?.map(m => m.edgeId), ["25013"]);
 });
 
-test("version panel only raises the alert from a loaded library and blocks saving until it is ready", () => {
-  const panel = fs.readFileSync(new URL("../src/components/teacher/KnowledgeVersionPanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /invalidDraftEdges\(edges, nodes, catalogReady \? catalog\.data\.edges : null, catalog\.isFetching\)/);
-  assert.match(panel, /const catalogReady = catalog\.isSuccess;/);
-  assert.match(panel, /disabled=\{busy \|\| !dirty \|\| stale \|\| !catalogReady \|\| catalog\.isFetching \|\| invalidEdges\.length > 0\}/);
-  assert.match(panel, /catalog\.isPending && <p role="status"/, "loading is a status, never an alert toast");
-  assert.doesNotMatch(panel, /catalogEdges\.find\(e => e\.edgeId === mapping\.edgeId\)/);
+test("editor retains the loaded-library save gate and does not use diagnostic issues as a new gate", () => {
+ const panel = fs.readFileSync(new URL("../src/components/teacher/KnowledgeVersionPanel.tsx", import.meta.url),"utf8");
+ assert.ok(panel.includes("e.catalog.isSuccess ? e.catalog.data.edges : null"));
+ assert.ok(panel.includes("e.catalog.isFetching || invalidEdges.length > 0"));
+ const gate = panel.split("const saveDisabled =")[1].split(";")[0];
+ assert.ok(!gate.includes("issues"));
 });

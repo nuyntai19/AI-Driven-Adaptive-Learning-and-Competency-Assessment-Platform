@@ -50,7 +50,7 @@ test("labels are bounded to two lines while the canvas keeps full accessible nam
   const longToken = graphLabelLines("X".repeat(200));
   assert.equal(longToken.length, 2); assert.ok(longToken.every(line => line.length <= 29));
   const source=fs.readFileSync(new URL("../src/components/teacher/KnowledgeGraphCanvas.tsx",import.meta.url),"utf8");
-  assert.match(source,/aria-label=\{`Điểm tri thức: \$\{node.nodeName\}`\}/);
+  assert.match(source,/aria-label=\{`Điểm tri thức: \$\{node.nodeName\}/);
   assert.match(source,/<title>\{node.nodeName\}/);
   assert.doesNotMatch(source,/httpClient|knowledgeGraphApi|mutate\(/);
 });

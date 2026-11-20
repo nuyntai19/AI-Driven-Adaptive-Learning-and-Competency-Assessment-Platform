@@ -22,6 +22,12 @@ interface Props {
   edgeColors: Record<KnowledgeRelationType, string>;
   /** Tenant/actor/scope identity for the layout cache; geometry is never reused across scopes. */
   cacheScope?: string;
+  issueNodeIds?: ReadonlySet<string>;
+  issueEdgeIds?: ReadonlySet<string>;
+  nodeMarkers?: ReadonlyMap<string, string>;
+  reveal?: { nodeIds: string[]; edgeIds: string[]; nonce: number };
+  showParents?: boolean;
+  compactToolbar?: boolean;
 }
 
 /** Colour is never the only cue: each relation type also has its own dash pattern and name. */
@@ -87,21 +93,23 @@ interface NodeCardHandlers {
  * Memoised card: selecting a node only re-renders the cards whose state changes. Dimming of
  * unrelated cards is a CSS rule on the SVG (`data-dim` + `data-near`), not a per-card prop.
  */
-const NodeCard = memo(function NodeCard({ node, x, y, selected, active, near, overview, color, typeLabel, handlers }: {
+const NodeCard = memo(function NodeCard({ node, x, y, selected, active, near, overview, color, typeLabel, handlers, issue, marker }: {
   node: KnowledgeGraphNodeDto; x: number; y: number; selected: boolean; active: boolean; near: boolean; overview: boolean;
   color: string; typeLabel: string; handlers: NodeCardHandlers;
+  issue?: boolean; marker?: string;
 }) {
   const ref = useCallback((element: SVGGElement | null) => handlers.register(`node:${node.nodeId}`, element), [handlers, node.nodeId]);
   return <g ref={ref} transform={`translate(${x},${y})`} data-graph-interactive="node" data-node-id={node.nodeId} data-near={near || undefined}
     role="button" tabIndex={-1} aria-pressed={selected}
-    aria-label={`Điểm tri thức: ${node.nodeName}`} style={{ cursor: "pointer" }}
+    aria-label={`Điểm tri thức: ${node.nodeName}${issue ? " · Có lỗi cấu trúc" : ""}${marker ? ` · ${marker}` : ""}`} data-issue={issue || undefined} style={{ cursor: "pointer" }}
     onFocus={() => handlers.activate(node.nodeId)}
     onClick={e => { e.stopPropagation(); handlers.select(node.nodeId); }}
     onDoubleClick={e => { e.stopPropagation(); handlers.focusSubgraph(node.nodeId); }}
     onKeyDown={e => handlers.keyDown(e, node.nodeId)}>
     <title>{node.nodeName} ({node.nodeCode}) · {typeLabel}{node.gradeLevel ? ` · Khối ${node.gradeLevel}` : node.gradeLevels?.length ? ` · Khối ${node.gradeLevels.join(", ")}` : " · Chưa xác định khối"}{node.sources?.map(s => ` · ${s.curriculumTitle || "Giáo trình"}`).join("")}{node.isActive ? "" : " · Đã tắt"}</title>
-    <rect width={cardWidth} height={cardHeight} rx={10} fill="var(--th-surface)" stroke={selected || active ? "var(--th-teal)" : "var(--th-border)"} strokeWidth={selected ? 3 : active ? 2.5 : 1.5} strokeDasharray={node.isActive ? undefined : "6 4"} />
+    <rect width={cardWidth} height={cardHeight} rx={10} fill="var(--th-surface)" stroke={issue ? "var(--th-danger)" : selected || active ? "var(--th-teal)" : "var(--th-border)"} strokeWidth={issue || selected ? 3 : active ? 2.5 : 1.5} strokeDasharray={node.isActive ? undefined : "6 4"} />
     <rect width={cardWidth} height={5} rx={2} fill={color} />
+    {(issue || marker) && <text x={cardWidth - 12} y={24} textAnchor="end" fontSize={12} fontWeight={700} fill={issue ? "var(--th-danger)" : "var(--th-teal)"}>{issue ? "⚠" : marker}</text>}
     {overview ? graphLabelLines(node.nodeName, 15).map((line, i) => <text key={i} x={12} y={48 + i * 32} fontSize={26} fontWeight={700} fill="var(--th-text)">{line}</text>) : <>
       <text x={12} y={25} fontSize={11} fill={color} fontFamily="monospace">{node.nodeCode.length > 30 ? `${node.nodeCode.slice(0, 29)}…` : node.nodeCode}</text>
       {graphLabelLines(node.nodeName).map((line, i) => <text key={i} x={12} y={46 + i * 17} fontSize={13} fontWeight={700} fill="var(--th-text)">{line}</text>)}
@@ -162,6 +170,25 @@ export function KnowledgeGraphCanvas(props: Props) {
   const view = cameraViewBox(activeCamera, size);
   const lod: GraphLod = overBudget ? "overview" : lodState;
   const focusNode = focusId ? nodeById.get(focusId) : undefined;
+  const previousView = useRef<{ focus: string | null; camera: GraphCamera | null } | null>(null);
+  const revealNonce = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!props.reveal) return;
+    if (revealNonce.current !== props.reveal.nonce) {
+      previousView.current = { focus: focusId, camera };
+      revealNonce.current = props.reveal.nonce;
+      setFocusId(null); setQuery("");
+    }
+    const nodeIds = new Set(props.reveal.nodeIds);
+    for (const id of props.reveal.edgeIds) { const edge = props.edges.find(e => e.edgeId === id); if (edge) { nodeIds.add(edge.sourceNodeId); nodeIds.add(edge.targetNodeId); } }
+    const rects = [...nodeIds].flatMap(id => { const n = scene.nodes.get(id); return n ? [n] : []; });
+    if (!rects.length) return;
+    const x = Math.min(...rects.map(n => n.x)), y = Math.min(...rects.map(n => n.y));
+    const right = Math.max(...rects.map(n => n.x + n.width)), bottom = Math.max(...rects.map(n => n.y + n.height));
+    setCamera(fitGraphBounds({ x: x - 40, y: y - 40, width: right - x + 80, height: bottom - y + 80 }, size));
+    // Camera and focus are captured once per explicit reveal, not continuously while panning.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.reveal, scene, size]);
   const results = useMemo(() => {
     const q = query.trim().toLocaleLowerCase("vi");
     return q ? props.nodes.filter(n => `${n.nodeName} ${n.nodeCode}`.toLocaleLowerCase("vi").includes(q)) : [];
@@ -327,25 +354,27 @@ export function KnowledgeGraphCanvas(props: Props) {
   const hitWidth = Math.max(18, 14 / activeCamera.scale); // ≥14 CSS px target at any zoom
   const listEdges = graph.edges.filter(e => !listRelation || e.relationType === listRelation);
 
-  return <section aria-label="Bản đồ tri thức tương tác" data-testid="knowledge-graph-canvas">
+  return <section aria-label="Bản đồ tri thức tương tác" data-testid="knowledge-graph-canvas" data-compact={props.compactToolbar || undefined}>
     <div className="border-b border-[var(--th-border)] bg-[var(--th-surface-raised)] p-3 space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="th-secondary-button" onClick={overview}>Toàn cảnh</button>
         <button type="button" className="th-secondary-button" onClick={() => setCamera(null)}>Vừa khung</button>
-        <button type="button" className="th-secondary-button" disabled={!props.selectedNodeId || !nodeById.has(props.selectedNodeId)}
-          onClick={() => props.selectedNodeId && focus(props.selectedNodeId)}>Nút & liên kết gần</button>
+        {previousView.current && <button type="button" className="th-secondary-button" onClick={() => { const previous = previousView.current; if (previous) { setFocusId(previous.focus); setCamera(previous.camera); previousView.current = null; } }}>Trở lại chế độ xem trước</button>}
+        {(!props.compactToolbar || props.selectedNodeId) && <button type="button" className="th-secondary-button" disabled={!props.selectedNodeId || !nodeById.has(props.selectedNodeId)}
+          onClick={() => props.selectedNodeId && focus(props.selectedNodeId)}>Nút & liên kết gần</button>}
         <div className="flex items-center gap-1 ml-auto">
           <button type="button" className="th-icon-button" aria-label="Thu nhỏ đồ thị" onClick={() => zoom(1 / 1.25)}>−</button>
           <output className="w-12 text-center text-xs tabular-nums" aria-label="Mức phóng đồ thị">{Math.round(activeCamera.scale * 100)}%</output>
           <button type="button" className="th-icon-button" aria-label="Phóng to đồ thị" onClick={() => zoom(1.25)}>+</button>
-          <button type="button" className="th-secondary-button" onClick={() => setCamera({ ...activeCamera, scale: 1 })}>100%</button>
+          <button type="button" className="th-secondary-button kg-reset-zoom" onClick={() => setCamera({ ...activeCamera, scale: 1 })}>100%</button>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--th-text-secondary)]">
-        <span>{focusNode ? `Đang xem quanh: ${focusNode.nodeName} (nút được chọn và liên kết trực tiếp)` : "Toàn bộ đồ thị trong phạm vi đang chọn"} · {graph.nodes.length}/{props.nodes.length} nút · {graph.edges.length} liên kết · đang vẽ {visibleNodes.length} nút, {visibleEdges.length} đường</span>
-        <label className="flex items-center gap-2 ml-auto"><input type="checkbox" checked={props.hideInactive} onChange={e => props.onHideInactive(e.target.checked)} />Ẩn nút đã tắt ({props.inactiveCount})</label>
+        <span>{props.compactToolbar ? `${graph.nodes.length}/${props.nodes.length} chủ đề · ${graph.edges.length} quan hệ${focusNode ? ` · Quanh ${focusNode.nodeName}` : ""}` : `${focusNode ? `Đang xem quanh: ${focusNode.nodeName} (nút được chọn và liên kết trực tiếp)` : "Toàn bộ đồ thị trong phạm vi đang chọn"} · ${graph.nodes.length}/${props.nodes.length} nút · ${graph.edges.length} liên kết · đang vẽ ${visibleNodes.length} nút, ${visibleEdges.length} đường`}</span>
+        {!props.compactToolbar && <label className="flex items-center gap-2 ml-auto"><input type="checkbox" checked={props.hideInactive} onChange={e => props.onHideInactive(e.target.checked)} />Ẩn nút đã tắt ({props.inactiveCount})</label>}
       </div>
-      <div className="flex flex-wrap items-center gap-3 text-xs">
+      <details open={!props.compactToolbar || undefined}><summary className="cursor-pointer text-xs font-semibold">Tùy chọn hiển thị</summary><div className="flex flex-wrap items-center gap-3 text-xs mt-2">
+        {props.compactToolbar && <label className="flex items-center gap-2"><input type="checkbox" checked={props.hideInactive} onChange={e => props.onHideInactive(e.target.checked)} />Ẩn nút đã tắt ({props.inactiveCount})</label>}
         <label className="flex items-center gap-2">Nhãn trọng số
           <select className="th-select" aria-label="Chế độ hiển thị nhãn trọng số" value={labelMode} onChange={e => setLabelMode(e.target.value as LabelMode)}>
             <option value="auto">Tự động theo mức phóng</option>
@@ -360,7 +389,7 @@ export function KnowledgeGraphCanvas(props: Props) {
             <option value="legacy">Đường cong cũ (dự phòng)</option>
           </select>
         </label>
-      </div>
+      </div></details>
       {props.nodes.some(n => n.nodeType === "Chapter") && <label className="flex flex-wrap items-center gap-2 text-sm font-semibold">
         Chương / nhóm:
         <select className="th-select max-w-full min-w-0" aria-label="Chương hoặc nhóm tri thức đang xem"
@@ -384,7 +413,7 @@ export function KnowledgeGraphCanvas(props: Props) {
       <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-[var(--th-text-secondary)]">
         {relations.map(r => <span className="flex items-center gap-1.5" key={r.type}>
           <svg width="28" height="8" aria-hidden="true"><line x1="0" y1="4" x2="28" y2="4" stroke={props.edgeColors[r.type]} strokeWidth="2.5" strokeDasharray={r.dash} /></svg>{r.label}</span>)}
-        <span>Kéo nền để di chuyển · +/− phóng/thu · Tab vào sơ đồ, Enter chọn nút, mũi tên sang nút gần, E duyệt liên kết, Esc thoát</span>
+        {!props.compactToolbar && <span>Kéo nền để di chuyển · +/− phóng/thu · Tab vào sơ đồ, Enter chọn nút, mũi tên sang nút gần, E duyệt liên kết, Esc thoát</span>}
       </div>
       {overBudget && <p role="status" className="text-sm text-amber-600">Phạm vi có {graph.nodes.length} nút / {graph.edges.length} liên kết, vượt ngân sách xem chi tiết ({detailBudget.nodes} nút / {detailBudget.edges} liên kết). Sơ đồ đang ở dạng toàn cảnh rút gọn; chọn chương hoặc tìm một nút để xem chi tiết. Danh sách liên kết bên dưới vẫn có đủ quan hệ.</p>}
       {scene.hasDependencyCycle && <p role="status" className="text-sm text-amber-600">Phát hiện vòng tiên quyết không hợp lệ: các nút trong vòng được đặt ở cột cuối để vẫn hiển thị được. Dữ liệu không bị sửa.</p>}
@@ -432,10 +461,10 @@ export function KnowledgeGraphCanvas(props: Props) {
           {edgeOrder.map(edge => {
             const selected = edge.edgeId === props.selectedEdgeId;
             const strong = selected || edge.edgeId === hoverEdgeId || edge.edgeId === activeEdgeId || incidentToSelected.has(edge.edgeId);
-            const color = props.edgeColors[edge.relationType];
+            const color = props.issueEdgeIds?.has(edge.edgeId) ? "var(--th-danger)" : props.edgeColors[edge.relationType];
             return <g key={edge.edgeId} ref={el => { if (el) itemRefs.current.set(`edge:${edge.edgeId}`, el); else itemRefs.current.delete(`edge:${edge.edgeId}`); }}
               data-graph-interactive="edge" data-edge-id={edge.edgeId} role="button" tabIndex={-1} aria-pressed={selected}
-              aria-label={edgeText(edge)} style={{ cursor: "pointer" }}
+              aria-label={`${edgeText(edge)}${props.issueEdgeIds?.has(edge.edgeId) ? " · Có lỗi cấu trúc" : ""}`} data-issue={props.issueEdgeIds?.has(edge.edgeId) || undefined} style={{ cursor: "pointer" }}
               onMouseEnter={() => setHoverEdgeId(edge.edgeId)} onMouseLeave={() => setHoverEdgeId(h => h === edge.edgeId ? null : h)}
               onFocus={() => setActiveItem(a => a?.kind === "edge" && a.id === edge.edgeId ? a : { kind: "edge", id: edge.edgeId })}
               onClick={e => { e.stopPropagation(); props.onSelectEdge(edge.edgeId); }}
@@ -457,12 +486,23 @@ export function KnowledgeGraphCanvas(props: Props) {
               <text x={label.cx} y={label.cy + labelFontSize * 0.36} textAnchor="middle" fontSize={labelFontSize} fontWeight={600} fill="var(--th-text)">{label.text}</text>
             </g>;
           })}
+          {props.showParents && graph.nodes.map(node => {
+            const child = scene.nodes.get(node.nodeId), parent = node.parentNodeId ? scene.nodes.get(node.parentNodeId) : undefined;
+            if (!child || !parent) return null;
+            const x1 = child.x + cardWidth / 2, y1 = child.y + cardHeight, x2 = parent.x + cardWidth / 2, y2 = parent.y + cardHeight;
+            const error = props.issueNodeIds?.has(node.nodeId) && props.issueNodeIds?.has(node.parentNodeId!);
+            return <g key={`parent:${node.nodeId}`} aria-label={`${node.nodeName} nằm trong nhóm ${nodeById.get(node.parentNodeId!)?.nodeName}`} pointerEvents="none">
+              <title>Cấu trúc nhóm cha, không phải cạnh Thuộc về</title><path d={`M ${x1} ${y1} V ${y1 + 24} H ${x2} V ${y2}`} fill="none" stroke={error ? "var(--th-danger)" : "#d97706"} strokeWidth={2} strokeDasharray="3 7" />
+              <text x={(x1 + x2) / 2} y={y1 + 20} fontSize={10} fill={error ? "var(--th-danger)" : "#d97706"}>Nằm trong nhóm</text>
+            </g>;
+          })}
           {visibleNodes.map(node => {
             const pos = scene.nodes.get(node.nodeId)!;
             const selected = node.nodeId === props.selectedNodeId;
             return <NodeCard key={node.nodeId} node={node} x={pos.x} y={pos.y} selected={selected}
               active={activeItem?.kind === "node" && activeItem.id === node.nodeId}
               near={selected || adjacentIds.has(node.nodeId)} overview={lod === "overview"}
+              issue={props.issueNodeIds?.has(node.nodeId)} marker={props.nodeMarkers?.get(node.nodeId)}
               color={node.isActive ? props.nodeColors[node.nodeType] : "#94a3b8"} typeLabel={props.nodeLabels[node.nodeType]} handlers={nodeHandlers} />;
           })}
         </svg>

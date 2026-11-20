@@ -198,7 +198,7 @@ export interface KnowledgeGraphVersion {
   createdBy?: string | null;
   subjectId: string;
   gradeLevel: number;
-  title: string;
+  title: string | null;
   status: "Draft" | "Published" | "Archived";
   isCurrent: boolean;
   rowVersion: string;

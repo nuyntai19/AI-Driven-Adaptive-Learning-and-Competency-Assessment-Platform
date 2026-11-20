@@ -74,66 +74,28 @@ test("prefix match requires the exact prefix and a numeric sequence", () => {
   assert.ok(!codeMatchesPrefix("MATH12_T_GTTP_A1", "MATH12_T_GTTP"));
 });
 
-test("framework editor wiring: filters, edit/delete per topic, add buttons in place, created items ticked, sticky toolbar", () => {
-  const panel = fs.readFileSync(new URL("../src/components/teacher/KnowledgeVersionPanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /aria-label="Lọc chủ đề theo khung tri thức hoặc giáo trình"/);
-  assert.match(panel, /<optgroup label="Theo khung tri thức">/);
-  assert.match(panel, /<optgroup label="Theo giáo trình">/);
-  assert.match(panel, /<option value="all">Tất cả chủ đề của môn<\/option>/);
-  assert.match(panel, /canDeleteTopics && draftOnly &&/, "only draft topics offer deletion");
-  assert.match(panel, /disabled=\{dirty\}/, "no delete while the draft has unsaved changes");
-  assert.match(panel, /<KnowledgeNodeEditDialog node=\{editingTopic\}/);
-  assert.match(panel, /includeRequest\.nonce < mountedAt/, "requests made for another version are ignored");
-  assert.match(panel, /\+ Thêm chủ đề mới/);
-  assert.match(panel, /\+ Thêm liên kết/);
-  assert.match(panel, /sticky bottom-0/, "save bar stays visible while there are unsaved changes");
-  const view = fs.readFileSync(new URL("../src/pages/teacher/TeacherKnowledgeGraphView.tsx", import.meta.url), "utf8");
-  assert.match(view, /data-testid="kg-draft-toolbar"/);
-  assert.match(view, /className="sticky top-0 z-20/);
-  assert.match(view, /jumpTo\("kg-version-panel"\)/);
-  assert.match(view, /jumpTo\("kg-graph-area"\)/);
-  assert.match(view, /id="kg-graph-area"/);
-  assert.match(view, /setDraftInclude\(\{ kind: "node", id: created\.nodeId/);
-  assert.match(view, /setDraftInclude\(\{ kind: "edge", id: created\.edgeId/);
-  assert.match(view, /includeRequest=\{draftInclude\}/);
-  const dialog = fs.readFileSync(new URL("../src/components/teacher/KnowledgeNodeEditDialog.tsx", import.meta.url), "utf8");
-  assert.match(dialog, /\.\.\.\(codeChanged \? \{ nodeCode: code! \} : \{\}\)/, "code is only sent when it changes");
-  assert.match(dialog, /\.\.\.\(type !== node\.nodeType \? \{ nodeType: type \} : \{\}\)/);
-  const api = fs.readFileSync(new URL("../src/api/knowledgeGraphApi.ts", import.meta.url), "utf8");
-  assert.match(api, /\.\.\.\(request\.nodeCode \? \{ nodeCode: request\.nodeCode\.trim\(\) \} : \{\}\)/);
+
+test("editor keeps scoped creation, code payload and permission guards through the new components", () => {
+  const read = (file: string) => fs.readFileSync(new URL("../src/"+file, import.meta.url), "utf8");
+  const controller = read("components/teacher/useKnowledgeDraftEditor.ts");
+  const inspector = read("components/teacher/DraftInspector.tsx");
+  const view = read("pages/teacher/TeacherKnowledgeGraphView.tsx");
+  const dialog = read("components/teacher/KnowledgeNodeEditDialog.tsx");
+  assert.ok(controller.includes("includeRequest.nonce < mountedAt"));
+  assert.ok(controller.includes('selected?.status === "Draft" && !selected.isLegacy'));
+  assert.ok(inspector.includes("!p.lockedIds.has(node.nodeId)"));
+  assert.ok(inspector.includes("disabled={e.busy || e.dirty}"));
+  assert.ok(view.includes("includeRequest={draftInclude}"));
+  assert.ok(view.includes("onExit={() => updateScope({ gradeLevel: scope.gradeLevel })}"));
+  assert.ok(dialog.includes("...(codeChanged ? { nodeCode: code! } : {})"));
+  assert.ok(dialog.includes("...(type !== node.nodeType ? { nodeType: type } : {})"));
 });
-
-test("framework mode: no duplicate header add buttons, scope box hidden, explicit exit back to the grade view", () => {
-  const view = fs.readFileSync(new URL("../src/pages/teacher/TeacherKnowledgeGraphView.tsx", import.meta.url), "utf8");
-  assert.doesNotMatch(view, /Thêm Liên Kết Tiên Quyết|Thêm Chủ Đề Mới/, "add actions live only in the editor toolbar and lists");
-  assert.match(view, /const frameworkMode = !!scope\.graphVersionId && !!scope\.gradeLevel && !scope\.classId && !scope\.curriculumId;/);
-  assert.match(view, /\{!frameworkMode && <div className="th-surface rounded-xl p-4 my-4 space-y-3" aria-label="Phạm vi đồ thị tri thức">/,
-    "grade/year/class/curriculum pickers would leave the editor, so they are hidden there");
-  assert.match(view, /\{frameworkMode && selectedSubjectId && \(\s*<div role="toolbar"/);
-  assert.match(view, /onClick=\{\(\) => updateScope\(\{ gradeLevel: scope\.gradeLevel \}\)\}>Thoát chế độ soạn<\/button>/);
-  assert.match(view, /disabled=\{versionDirty\}\s*title=\{versionDirty \? "Lưu hoặc hủy cấu trúc nháp trước khi thoát\."/);
-});
-
-test("refused actions are never silent: delete reasons stay in the dialog, create errors show inside the modal", () => {
-  const panel = fs.readFileSync(new URL("../src/components/teacher/KnowledgeVersionPanel.tsx", import.meta.url), "utf8");
-  // 409 on DELETE /knowledge/nodes/{id}: the dialog stays open with the server's reason.
-  assert.match(panel, /onError: err => setDeleteError\(extractProblemDetails\(err\)\.detail/);
-  assert.doesNotMatch(panel, /onError: err => \{ setDeletingTopic\(null\); error\(err\); \}/);
-  assert.match(panel, /error=\{deleteError\}/);
-  // Relations/children already known to the library are listed up front and block the confirm button.
-  assert.match(panel, /relations: \(catalog\.data\?\.edges \?\? \[\]\)\.filter\(e => e\.sourceNodeId === deletingTopic\.nodeId \|\| e\.targetNodeId === deletingTopic\.nodeId\)/);
-  assert.match(panel, /confirmDisabled=\{!!deleteBlockers && \(deleteBlockers\.relations\.length > 0 \|\| deleteBlockers\.children\.length > 0\)\}/);
-  // Other panel errors are alerts (corner toast), not a status line at the bottom.
-  assert.match(panel, /<p role="alert" className="text-sm font-semibold text-\[var\(--th-danger\)\]">\{message\}<\/p>/);
-
-  const dialog = fs.readFileSync(new URL("../src/components/teacher/TeacherOverlays.tsx", import.meta.url), "utf8");
-  assert.match(dialog, /\{error && \(\s*<p role="alert"/);
-  assert.match(dialog, /disabled=\{isConfirming \|\| confirmDisabled\}/);
-
-  const view = fs.readFileSync(new URL("../src/pages/teacher/TeacherKnowledgeGraphView.tsx", import.meta.url), "utf8");
-  // 409 on POST /knowledge/nodes with a hand-typed code: specific message rendered inside both create modals.
-  assert.equal((view.match(/\{feedbackMsg\?\.type === "error" && <ModalError message=\{feedbackMsg\.text\}/g) ?? []).length, 2);
-  assert.match(view, /details\.errorCode === "DUPLICATE_RESOURCE"\s*\? `Mã \$\{req\.nodeCode\} đã được dùng cho một điểm tri thức khác trong môn\./);
-  assert.match(view, /const sameCode = nodes\.find\(n => n\.nodeCode\.toUpperCase\(\) === trimmedCode\);/);
-  assert.match(view, /const openAddNode = \(\) => \{ setFeedbackMsg\(null\); setIsAddNodeOpen\(true\); \};/, "stale errors are cleared when a dialog opens");
+test("refused library deletion stays in its dialog and scoped server errors remain visible", () => {
+  const panel = fs.readFileSync(new URL("../src/components/teacher/KnowledgeVersionPanel.tsx",import.meta.url),"utf8");
+  assert.ok(panel.includes("onError: err => setDeleteError("));
+  assert.ok(panel.includes("error={deleteError}"));
+  assert.ok(panel.includes("deleteBlockers.relations.length > 0 || deleteBlockers.children.length > 0"));
+  assert.ok(panel.includes('data-toast-mirror="off"'));
+  const view = fs.readFileSync(new URL("../src/pages/teacher/TeacherKnowledgeGraphView.tsx",import.meta.url),"utf8");
+  assert.equal((view.match(/<ModalError message=\{feedbackMsg\.text\}/g)??[]).length,2);
 });

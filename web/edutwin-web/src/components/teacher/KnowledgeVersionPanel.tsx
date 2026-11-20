@@ -1,285 +1,153 @@
-import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { knowledgeGraphApi } from "../../api/knowledgeGraphApi";
-import { curriculumApi } from "../../api/curriculumApi";
-import { useAuthStore } from "../../stores/authStore";
-import { knowledgeKeys } from "../../utils/knowledgeScope";
-import type { KnowledgeGraphEdgeDto, KnowledgeGraphNodeDto, KnowledgeVersionNodeMapping, KnowledgeVersionEdgeMapping, KnowledgeRelationType } from "../../types/knowledgeGraph";
-import { extractProblemDetails } from "../../utils/problemDetails";
+import { frameworkTitle } from "../../utils/knowledgeFrameworkTitle";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { permissions } from "../../auth/permissions";
-import { findReversePrerequisite, invalidDraftEdges, replaceDraftPrerequisite } from "../../utils/knowledgeDraftEdges";
-import { filterDraftTopics, lockedTopicIds, type DraftTopicFilter } from "../../utils/knowledgeDraftTopics";
+import { lockedTopicIds } from "../../utils/knowledgeDraftTopics";
+import { invalidDraftEdges } from "../../utils/knowledgeDraftEdges";
+import { diagnoseDraft, draftPreview, effectiveDraftEdges, type DraftIssue } from "../../utils/knowledgeDraftEditor";
+import { graphEdgeColors, graphNodeColors, graphNodeLabels, relationInfo } from "../../utils/knowledgeRelations";
+import { academicLifecycleError } from "../../utils/academicLifecycleError";
+import type { KnowledgeGraphDto, KnowledgeGraphNodeDto } from "../../types/knowledgeGraph";
+import { KnowledgeGraphCanvas } from "./KnowledgeGraphCanvas";
 import { KnowledgeNodeEditDialog } from "./KnowledgeNodeEditDialog";
-import { TeacherConfirmDialog } from "./TeacherOverlays";
+import { TeacherConfirmDialog, TeacherDrawer, TeacherModal } from "./TeacherOverlays";
+import { RelationHelpDialog } from "./RelationHelpDialog";
+import { TopicLibraryPanel } from "./TopicLibraryPanel";
+import { FrameworkPicker } from "./FrameworkPicker";
+import { DraftInspector, type DraftSelection } from "./DraftInspector";
+import { DraftRelationDialog } from "./DraftRelationDialog";
+import { useKnowledgeDraftEditor, type DraftIncludeRequest } from "./useKnowledgeDraftEditor";
+import "./knowledgeDraftEditor.css";
 
-/** A topic/relation just created elsewhere on the page, to tick in this draft (nonce makes repeats distinct). */
-export type DraftIncludeRequest =
-  | { kind: "node"; id: string; nonce: number }
-  | { kind: "edge"; id: string; relationType: KnowledgeRelationType; weight: number; nonce: number };
-
+export type { DraftIncludeRequest } from "./useKnowledgeDraftEditor";
 interface Props {
   subjectId: string; gradeLevel?: number; versionId?: string; canEdit: boolean;
   onSelect: (id: string, grade: number) => void; onDirtyChange?: (dirty: boolean) => void;
-  /** Used to derive standard codes when a topic is edited. */
-  subjectCode?: string; subjectName?: string;
-  /** Open the page's create dialogs right from the lists (no scrolling back to the header). */
-  onAddTopic?: () => void; onAddRelation?: () => void;
-  includeRequest?: DraftIncludeRequest | null;
+  subjectCode?: string; subjectName?: string; onAddTopic?: () => void; includeRequest?: DraftIncludeRequest | null;
+  readGraph?: KnowledgeGraphDto; onExit?: () => void; topicActions?: (id: string) => ReactNode;
+  readLoading?: boolean; readError?: unknown; onRetryRead?: () => void;
 }
-const relationLabels: Record<KnowledgeRelationType, string> = { PrerequisiteOf: "Tiên quyết", RelatedTo: "Liên quan", PartOf: "Thuộc về", CausesErrorIn: "Gây lỗi" };
-const rowId = (nodeId: string) => `kg-draft-topic-${nodeId}`;
+type Mode = { kind: "link"; source: string | null } | { kind: "parent"; child: string } | null;
+const smallScreen = () => !window.matchMedia("(min-width: 1700px)").matches;
 
-/** Explicit review of applicability. Existing usage is never treated as an approved grade automatically. */
-export function KnowledgeVersionPanel({ subjectId, gradeLevel, versionId, canEdit, onSelect, onDirtyChange, subjectCode, subjectName, onAddTopic, onAddRelation, includeRequest }: Props) {
-  const user = useAuthStore(s => s.user);
-  const hasPermission = useAuthStore(s => s.hasPermission);
-  const canCreateVersion = hasPermission(permissions.nodesCreate) && hasPermission(permissions.edgesCreate);
-  const client = useQueryClient();
-  const [title, setTitle] = useState("");
-  const [nodes, setNodes] = useState<KnowledgeVersionNodeMapping[]>([]);
-  const [edges, setEdges] = useState<KnowledgeVersionEdgeMapping[]>([]);
-  const [baseVersion, setBaseVersion] = useState("");
-  const [dirty, setDirty] = useState(false);
-  const [reviewed, setReviewed] = useState(false);
-  const [message, setMessage] = useState("");
-  const [messageIsError, setMessageIsError] = useState(false);
-  const versions = useQuery({ queryKey: knowledgeKeys.versions(user?.centerId, user?.userId, subjectId, gradeLevel),
-    queryFn: () => knowledgeGraphApi.listVersions(subjectId, gradeLevel), enabled: !!subjectId && !!gradeLevel });
-  const selected = versions.data?.find(v => v.graphVersionId === versionId);
-  const sourceVersions = useQuery({ queryKey: knowledgeKeys.versions(user?.centerId, user?.userId, subjectId),
-    queryFn: () => knowledgeGraphApi.listVersions(subjectId), enabled: !!subjectId && !!gradeLevel && canEdit });
-  const catalog = useQuery({ queryKey: knowledgeKeys.graph(user?.centerId, user?.userId, subjectId, {}),
-    queryFn: () => knowledgeGraphApi.getGraph(subjectId), enabled: !!subjectId && !!gradeLevel && canEdit });
-  const curricula = useQuery({ queryKey: ["teacherCurriculums", "version-panel", user?.centerId, user?.userId, subjectId],
-    queryFn: () => curriculumApi.getAll({ subjectId }), select: response => response.data, enabled: !!subjectId && !!gradeLevel && canEdit });
-  const [topicFilter, setTopicFilter] = useState<DraftTopicFilter>("grade");
-  const [topicSearch, setTopicSearch] = useState("");
+export function KnowledgeVersionPanel(props: Props) {
+  return props.gradeLevel ? <FrameworkEditor key={`${props.subjectId}:${props.gradeLevel}:${props.versionId ?? ""}`} {...props} gradeLevel={props.gradeLevel} /> : null;
+}
+function FrameworkEditor(props: Props & { gradeLevel: number }) {
+  const e = useKnowledgeDraftEditor(props);
+  const [selection, setSelection] = useState<DraftSelection>(null);
+  const [mode, setMode] = useState<Mode>(null);
+  const [drawer, setDrawer] = useState<"library" | "inspector" | null>(null);
+  const [help, setHelp] = useState(false);
+  const [picker, setPicker] = useState(false);
   const [editingTopic, setEditingTopic] = useState<KnowledgeGraphNodeDto | null>(null);
   const [deletingTopic, setDeletingTopic] = useState<KnowledgeGraphNodeDto | null>(null);
-  const [flashId, setFlashId] = useState<string | null>(null);
-  // The panel remounts per version; a request made for an earlier version must never apply here.
-  const [mountedAt] = useState(() => Date.now());
-  useEffect(() => {
-    if (!selected || dirty) return;
-    setNodes(selected.nodeMappings ?? []); setEdges(selected.edgeMappings ?? []);
-    setBaseVersion(selected.rowVersion); setReviewed(false);
-  }, [selected, dirty]);
-  // Tick what was just created on the page and bring it into view, instead of making the teacher find it.
-  useEffect(() => {
-    if (!includeRequest || includeRequest.nonce < mountedAt) return;
-    if (includeRequest.kind === "node") {
-      setNodes(prev => prev.some(n => n.nodeId === includeRequest.id) ? prev : [...prev, { nodeId: includeRequest.id, parentNodeId: null }]);
-      setTopicSearch(""); setTopicFilter(current => current === "unselected" ? "grade" : current);
-      setFlashId(includeRequest.id);
-    } else {
-      setEdges(prev => prev.some(e => e.edgeId === includeRequest.id) ? prev
-        : [...prev, { edgeId: includeRequest.id, relationType: includeRequest.relationType, weight: includeRequest.weight }]);
-    }
-    setDirty(true); setReviewed(false); setMessageIsError(false);
-    setMessage(includeRequest.kind === "node"
-      ? "Đã tích chọn chủ đề vừa tạo vào bản nháp. Chọn nút cha nếu cần rồi bấm “Lưu cấu trúc nháp”."
-      : "Đã tích chọn liên kết vừa tạo vào bản nháp. Bấm “Lưu cấu trúc nháp” để ghi.");
-  }, [includeRequest, mountedAt]);
-  useEffect(() => {
-    if (!flashId) return;
-    const frame = requestAnimationFrame(() => document.getElementById(rowId(flashId))?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
-    const timer = setTimeout(() => setFlashId(null), 2500);
-    return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
-  }, [flashId, catalog.data]);
-  const editable = canEdit && selected?.status === "Draft" && !selected.isLegacy;
-  const stale = dirty && !!selected && baseVersion !== selected.rowVersion;
-  const refresh = async () => { await client.invalidateQueries({ queryKey: knowledgeKeys.all }); };
-  // Errors are alerts (repeated as a corner toast), so a refused save/publish is visible wherever the teacher scrolled.
-  const error = (err: unknown) => { setMessage(extractProblemDetails(err).detail || (err as Error).message || "Thao tác không thành công."); setMessageIsError(true); };
-  const notify = (text: string) => { setMessage(text); setMessageIsError(false); };
-  const create = useMutation({ mutationFn: (source?: string) => knowledgeGraphApi.createVersion({ subjectId,
-    gradeLevel: gradeLevel!, title: title.trim() || undefined, sourceGraphVersionId: source }),
-    onSuccess: async version => { setDirty(false); notify("Đã tạo bản nháp. Rà soát chủ đề, nút cha và quan hệ trước khi duyệt.");
-      await refresh(); onSelect(version.graphVersionId, version.gradeLevel); }, onError: error });
-  const save = useMutation({ mutationFn: () => knowledgeGraphApi.saveVersion(versionId!, { rowVersion: baseVersion, nodeMappings: nodes, edgeMappings: edges }),
-    onSuccess: async version => { setBaseVersion(version.rowVersion); setDirty(false); setReviewed(false); notify("Đã lưu cấu trúc nháp."); await refresh(); }, onError: error });
-  const publish = useMutation({ mutationFn: () => knowledgeGraphApi.publishVersion(versionId!, baseVersion),
-    onSuccess: async () => { notify("Đã duyệt phiên bản khung tri thức cho khối đã chọn."); await refresh(); }, onError: error });
-  const reverse = useMutation({ mutationFn: async (edge: KnowledgeGraphEdgeDto) => {
-    const existing = findReversePrerequisite(catalog.data?.edges ?? [], edge);
-    if (existing) return existing.edgeId;
-    try {
-      const created = await knowledgeGraphApi.createEdge({ graphVersionId: versionId, subjectId,
-        sourceNodeId: edge.targetNodeId, targetNodeId: edge.sourceNodeId,
-        relationType: "PrerequisiteOf", weight: edge.weight });
-      return created.edgeId;
-    } catch (err) {
-      // Another editor may have created the reverse edge after the catalogue loaded.
-      if (extractProblemDetails(err).errorCode === "DUPLICATE_RESOURCE") {
-        const latest = await knowledgeGraphApi.getGraph(subjectId);
-        const found = findReversePrerequisite(latest.edges, edge);
-        if (found) return found.edgeId;
-      }
-      throw err;
-    }
-  }, onSuccess: async (reverseId, edge) => {
-    setEdges(previous => replaceDraftPrerequisite(previous, edge.edgeId, reverseId,
-      previous.find(mapping => mapping.edgeId === edge.edgeId)?.weight ?? edge.weight));
-    setDirty(true); setReviewed(false);
-    notify("Đã đảo chiều trong bản nháp. Bấm “Lưu cấu trúc nháp” để ghi thay đổi; liên kết cũ trong thư viện và các bản đã duyệt không đổi.");
-    await refresh();
-  }, onError: error });
-  // Deleting a library topic: the server refuses topics used by approved frameworks, curricula,
-  // questions, relations… and removes the topic from Draft frameworks it was ticked in.
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const removeTopic = useMutation({ mutationFn: (topic: KnowledgeGraphNodeDto) => knowledgeGraphApi.deleteNode(topic.nodeId),
-    onMutate: () => setDeleteError(null),
-    onSuccess: async (_, topic) => { setDeletingTopic(null); notify(`Đã xóa chủ đề “${topic.nodeName}” khỏi thư viện môn và các bản nháp.`); await refresh(); },
-    // Keep the dialog open and show the server's reason there: a refused delete must never look like nothing happened.
-    onError: err => setDeleteError(extractProblemDetails(err).detail || "Không thể xóa chủ đề. Vui lòng thử lại.") });
-  const busy = create.isPending || save.isPending || publish.isPending || reverse.isPending || removeTopic.isPending;
-  useEffect(() => { onDirtyChange?.(dirty || busy); return () => onDirtyChange?.(false); }, [dirty, busy, onDirtyChange]);
-  // Validate only against a loaded library; while it loads (or failed) validity is unknown, not invalid.
-  const catalogReady = catalog.isSuccess;
-  const allTopics = catalog.data?.nodes ?? [];
-  const selectedIds = new Set(nodes.map(n => n.nodeId));
-  const catalogNodes = filterDraftTopics({ topics: allTopics, gradeLevel, selectedIds, lockedIds: new Set(), filter: "grade" });
-  const lockedIds = lockedTopicIds(sourceVersions.data, curricula.data);
-  const visibleTopics = filterDraftTopics({ topics: allTopics, gradeLevel, selectedIds, lockedIds, versions: sourceVersions.data,
-    curricula: curricula.data, filter: topicFilter, search: topicSearch });
-  const knownTopicIds = new Set(allTopics.map(n => n.nodeId));
-  const orphanSelections = catalogReady ? nodes.filter(n => !knownTopicIds.has(n.nodeId)) : [];
-  // What the library already shows would block deletion (the server checks everything else too).
-  const deleteBlockers = deletingTopic ? {
-    relations: (catalog.data?.edges ?? []).filter(e => e.sourceNodeId === deletingTopic.nodeId || e.targetNodeId === deletingTopic.nodeId),
-    children: allTopics.filter(n => n.parentNodeId === deletingTopic.nodeId),
-  } : null;
-  const topicName = (id: string) => allTopics.find(n => n.nodeId === id)?.nodeName ?? `#${id}`;
-  const canEditTopics = hasPermission(permissions.nodesUpdate);
-  const canDeleteTopics = hasPermission(permissions.nodesDelete);
-  const catalogEdges = catalog.data?.edges ?? [];
-  const invalidEdges = invalidDraftEdges(edges, nodes, catalogReady ? catalog.data.edges : null, catalog.isFetching) ?? [];
-  return <details id="kg-version-panel" className="th-surface rounded-xl p-4 my-4 scroll-mt-24" open={!!versionId}>
-    <summary className="font-semibold cursor-pointer">Phiên bản khung tri thức {gradeLevel ? `· Khối ${gradeLevel}` : "· Chọn khối để quản lý"}</summary>
-    {gradeLevel && <div className="space-y-3 mt-3">
-      <p className="text-sm">Mỗi khối có cấu trúc được duyệt riêng. Giáo trình đã xuất bản giữ phiên bản đã chọn; thay cấu trúc bằng bản nháp mới.</p>
-      {versions.isError && <p role="alert">Không tải được phiên bản. <button onClick={() => versions.refetch()}>Tải lại</button></p>}
-      <label className="block text-sm">Phiên bản
-        <select className="th-select block mt-1" value={versionId ?? ""} disabled={dirty || busy} onChange={e => onSelect(e.target.value, gradeLevel)}>
-          <option value="">Phiên bản hiện hành đã duyệt</option>
-          {versions.data?.map(v => <option key={v.graphVersionId} value={v.graphVersionId}>{v.title || `Khối ${v.gradeLevel}`} · {v.isLegacy ? "Dữ liệu chuyển tiếp — cần rà soát" : v.status === "Draft" ? "Bản nháp" : v.status === "Published" ? "Đã duyệt" : "Lưu trữ"}{v.isCurrent ? " · Hiện hành" : ""}</option>)}
-        </select>
-      </label>
-      {canCreateVersion && <div className="flex flex-wrap gap-2 items-end">
-        <label className="text-sm">Tên bản nháp<input className="th-input block mt-1" maxLength={200} value={title} onChange={e => setTitle(e.target.value)} placeholder={`Khung tri thức Khối ${gradeLevel}`} /></label>
-        <button className="th-secondary-button" disabled={busy || dirty} onClick={() => create.mutate(undefined)}>Tạo khung trống</button>
-        <button className="th-secondary-button" disabled={busy || dirty || !selected} onClick={() => selected && create.mutate(selected.graphVersionId)}>Sao chép thành bản nháp</button>
+  const [removingNode, setRemovingNode] = useState<string | null>(null);
+  const [discarding, setDiscarding] = useState(false);
+  const [review, setReview] = useState(false);
+  const [showParents, setShowParents] = useState(false);
+  const [hideInactive, setHideInactive] = useState(false);
+  const [listSearch, setListSearch] = useState("");
+  const [listLimit, setListLimit] = useState(40);
+  const [reveal, setReveal] = useState<{ nodeIds: string[]; edgeIds: string[]; nonce: number }>();
+  const [activeIssue, setActiveIssue] = useState<DraftIssue | null>(null);
+  const [edgeForm, setEdgeForm] = useState<{ source: string; target: string } | null>(null);
+  const [parentField, setParentField] = useState(false);
+  const [screenWidth, setScreenWidth] = useState(() => window.innerWidth);
+  const inspectorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { const resize = () => setScreenWidth(window.innerWidth); window.addEventListener("resize", resize); return () => window.removeEventListener("resize", resize); }, []);
+  const topics = e.catalog.data?.nodes ?? props.readGraph?.nodes ?? [];
+  const catalogEdges = e.catalog.data?.edges ?? props.readGraph?.edges ?? [];
+  const ids = useMemo(() => new Set(e.nodes.map(n => n.nodeId)), [e.nodes]);
+  const sourceVersions = useMemo(() => (e.sourceVersions.data ?? e.versions.data ?? []).map(v => v.graphVersionId === e.selected?.graphVersionId ? { ...v, nodeMappings: e.nodes, edgeMappings: e.edges } : v), [e.sourceVersions.data, e.versions.data, e.selected?.graphVersionId, e.nodes, e.edges]);
+  const preview = useMemo(() => e.editable ? draftPreview(e.catalog.data, e.nodes, e.edges, props.gradeLevel) : { nodes: props.readGraph?.nodes ?? [], edges: props.readGraph?.edges ?? [] }, [e.editable, e.catalog.data, e.nodes, e.edges, props.gradeLevel, props.readGraph]);
+  const relations = effectiveDraftEdges(e.edges, catalogEdges);
+  const issues = useMemo(() => e.editable ? diagnoseDraft(e.nodes, e.edges, e.catalog.data, sourceVersions, props.gradeLevel, e.catalog.isFetching, e.sourceVersions.isSuccess) : [], [e.editable, e.nodes, e.edges, e.catalog.data, e.catalog.isFetching, sourceVersions, props.gradeLevel, e.sourceVersions.isSuccess]);
+  const issueNodes = new Set(issues.flatMap(i => i.nodeIds)), issueEdges = new Set(issues.flatMap(i => i.edgeIds));
+  useEffect(() => { setActiveIssue(previous => previous ? issues.find(i => i.id === previous.id) ?? null : null); }, [issues]);
+  const invalidEdges = invalidDraftEdges(e.edges, e.nodes, e.catalog.isSuccess ? e.catalog.data.edges : null, e.catalog.isFetching) ?? [];
+  const name = (id: string) => topics.find(n => n.nodeId === id)?.nodeName ?? `#${id}`;
+  const disabled = !e.editable || e.busy || !e.catalog.isSuccess;
+  const select = (next: NonNullable<DraftSelection>, focus = false) => {
+    setSelection(next); setParentField(false); setActiveIssue(null);
+    if (focus) { setHideInactive(false); setReveal({ nodeIds: next.kind === "node" ? [next.id] : [], edgeIds: next.kind === "edge" ? [next.id] : [], nonce: Date.now() }); }
+    if (smallScreen()) setDrawer("inspector");
+  };
+  useEffect(() => { if (!e.lastIncluded) return; setSelection({ kind: "node", id: e.lastIncluded }); setReveal({ nodeIds: [e.lastIncluded], edgeIds: [], nonce: Date.now() }); }, [e.lastIncluded]);
+  const locateIssue = (issue: DraftIssue, id?: string) => {
+    setActiveIssue(issue); setHideInactive(false); if (issue.kind === "parent") setShowParents(true);
+    setSelection(issue.kind === "edge" && issue.edgeIds[0] ? { kind: "edge", id: issue.edgeIds[0] } : { kind: "node", id: id ?? issue.nodeIds[0] });
+    setReveal({ nodeIds: issue.nodeIds, edgeIds: issue.edgeIds, nonce: Date.now() }); setParentField(issue.kind === "parent");
+    if (smallScreen()) setDrawer("inspector");
+    requestAnimationFrame(() => inspectorRef.current?.querySelector<HTMLElement>(issue.kind === "parent" ? "[data-parent-action]" : "[data-detail-heading]")?.focus());
+  };
+  const startLink = (source: string | null = null) => { setMode({ kind: "link", source }); setDrawer(null); };
+  const chooseNode = (id: string) => {
+    if (e.busy) return;
+    if (mode?.kind === "link") { if (!ids.has(id) || !topics.some(n => n.nodeId === id)) return; if (!mode.source) setMode({ kind: "link", source: id }); else if (mode.source !== id) { setEdgeForm({ source: mode.source, target: id }); setMode(null); } }
+    else if (mode?.kind === "parent") { if (mode.child === id || !ids.has(id)) return; e.setParent(mode.child, id); select({ kind: "node", id: mode.child }, true); setMode(null); setShowParents(true); }
+    else select({ kind: "node", id: preview.nodes.find(n => n.nodeId === id)?.canonicalNodeId ?? id });
+  };
+  const inspector = <DraftInspector editor={e} selection={selection} topics={topics} relations={relations} versions={sourceVersions} grade={props.gradeLevel} versionId={props.versionId} issues={issues} activeIssue={activeIssue} lockedIds={lockedTopicIds(e.sourceVersions.data, e.curricula.data)} parentField={parentField} topicActions={props.topicActions}
+    onClear={() => setSelection(null)} onSelect={s => select(s, true)} onLink={startLink} onParent={child => { setMode({ kind: "parent", child }); setParentField(true); setDrawer(null); }} onRemoveNode={setRemovingNode}
+    onEditTopic={n => { setDrawer(null); setEditingTopic(n); }} onDeleteTopic={n => { setDeleteError(null); setDrawer(null); setDeletingTopic(n); }} />;
+  const library = <TopicLibraryPanel topics={topics} versions={sourceVersions} curricula={e.curricula.data ?? []} selectedIds={ids} grade={props.gradeLevel} ready={e.catalog.isSuccess} loading={e.catalog.isPending} failed={e.catalog.isError}
+    sourceLoading={e.sourceVersions.isPending || e.curricula.isPending} sourceFailed={e.sourceVersions.isError || e.curricula.isError} disabled={disabled}
+    onRetry={() => e.catalog.refetch()} onRetrySources={() => { void e.sourceVersions.refetch(); void e.curricula.refetch(); }} onAdd={id => { e.addNode(id); setReveal({ nodeIds: [id], edgeIds: [], nonce: Date.now() }); }} onLocate={id => select({ kind: "node", id }, true)} onCreate={props.onAddTopic} />;
+  const pickerContent = <FrameworkPicker editor={e} subjectId={props.subjectId} grade={props.gradeLevel} onSelect={(id, grade) => { setPicker(false); props.onSelect(id, grade); }} />;
+  const shownNodes = useMemo(() => preview.nodes.filter(n => !hideInactive || n.isActive), [preview.nodes, hideInactive]);
+  const shownEdges = useMemo(() => { const shownIds = new Set(shownNodes.map(n => n.nodeId)); return preview.edges.filter(r => shownIds.has(r.sourceNodeId) && shownIds.has(r.targetNodeId)); }, [preview.edges, shownNodes]);
+  const saveDisabled = e.busy || !e.dirty || e.stale || !e.catalog.isSuccess || e.catalog.isFetching || invalidEdges.length > 0;
+  const q = listSearch.toLocaleLowerCase("vi");
+  const availableEdges = catalogEdges.filter(r => !e.edges.some(m => m.edgeId === r.edgeId) && ids.has(r.targetNodeId) && (ids.has(r.sourceNodeId) || r.relationType === "PrerequisiteOf"));
+  const deleteBlockers = deletingTopic && { relations: catalogEdges.filter(r => r.sourceNodeId === deletingTopic.nodeId || r.targetNodeId === deletingTopic.nodeId), children: topics.filter(n => n.parentNodeId === deletingTopic.nodeId) };
+  return <section id="kg-version-panel" className="kg-editor" data-testid="kg-draft-editor" onKeyDownCapture={event => { if (event.key === "Escape" && mode && !(event.target as Element).closest("input,textarea,select")) { event.preventDefault(); event.stopPropagation(); setMode(null); } }}>
+    <header className="kg-editor-header"><div><span className="kg-eyebrow">{props.subjectName || props.subjectCode || "KHUNG TRI THỨC"} / KHỐI {props.gradeLevel}</span><h2>{e.selected ? frameworkTitle(e.selected) : "Chọn khung tri thức"}</h2><div className="kg-badges mt-2">{e.selected && <span>{e.selected.isLegacy ? "Dữ liệu chuyển tiếp" : e.selected.status === "Draft" ? "Bản nháp" : e.selected.status === "Published" ? "Đã duyệt" : "Lưu trữ"}</span>}{e.selected?.isCurrent && <span>Hiện hành</span>}<span>{e.dirty ? "Cấu trúc chưa lưu" : "Cấu trúc đã lưu"}</span></div></div><div className="flex flex-wrap gap-2"><button type="button" className="th-secondary-button" disabled={e.dirty || e.busy} onClick={() => setPicker(true)}>Đổi khung</button><button type="button" className="th-secondary-button" onClick={() => setHelp(true)}>? Giải thích quan hệ</button>{e.editable && <button type="button" className="th-secondary-button" onClick={() => document.getElementById("kg-save-actions")?.scrollIntoView({ block: "end", behavior: "smooth" })}>Đến lưu / duyệt</button>}{props.onExit && <button type="button" className="th-secondary-button" disabled={e.dirty || e.busy} onClick={props.onExit}>Thoát chế độ soạn</button>}</div></header>
+    {(e.dirty || e.busy) && <p role="status" className="kg-hint rounded-none">{e.busy ? "Đang xử lý, vui lòng đợi…" : "Lưu hoặc hủy cấu trúc trước khi đổi môn, khối hoặc khung."}</p>}
+    {!props.versionId ? <div className="th-surface p-4">{pickerContent}</div> : <>
+      {e.versions.isError && <p role="alert" className="kg-issue" data-toast-mirror="off">Không tải được phiên bản. <button type="button" onClick={() => e.versions.refetch()}>Thử lại</button></p>}
+      {!e.editable && <p className="kg-hint rounded-none">{e.selected?.isLegacy ? "Dữ liệu chuyển tiếp cần sao chép và rà soát." : "Bạn đang xem phiên bản này. Soạn cấu trúc cần bản nháp và quyền phù hợp."} {e.selected && e.hasPermission(permissions.nodesCreate) && e.hasPermission(permissions.edgesCreate) && <button type="button" className="th-secondary-button ml-2" disabled={e.busy} onClick={() => e.create.mutate({ title: "", source: e.selected!.graphVersionId })}>Sao chép thành bản nháp</button>}</p>}
+      <div className="kg-editor-toolbar" role="toolbar" aria-label="Thao tác soạn khung tri thức" data-testid="kg-draft-toolbar">
+        {e.editable && <><button type="button" className="th-secondary-button kg-open-library" onClick={() => setDrawer("library")}>Thư viện chủ đề</button>{props.onAddTopic && <button type="button" className="th-primary-button" disabled={e.busy} onClick={props.onAddTopic}>+ Tạo chủ đề mới</button>}<button type="button" className="th-secondary-button" disabled={disabled || !e.hasPermission(permissions.edgesCreate) || e.nodes.length < 2} onClick={() => startLink()}>Tạo liên kết</button></>}
+        <button type="button" className="th-secondary-button kg-open-inspector" onClick={() => setDrawer("inspector")}>Chi tiết đang chọn</button><button type="button" className="th-secondary-button" aria-pressed={showParents} onClick={() => setShowParents(v => !v)}>{showParents ? "Ẩn" : "Hiện"} cấu trúc cha–con</button><span className="kg-muted ml-auto">{e.nodes.length} chủ đề · {e.edges.length} quan hệ trong khung</span>
+      </div>
+      {mode && <div className="kg-mode-banner" role="status"><strong>{mode.kind === "link" ? mode.source ? `Bước 2/2: Chọn đích cho ${name(mode.source)}` : "Bước 1/2: Chọn chủ đề nguồn" : `Chọn nhóm cha cho ${name(mode.child)}`}</strong><button type="button" className="th-secondary-button" onClick={() => setMode(null)}>Hủy thao tác · Esc</button></div>}
+      <div className="kg-editor-grid" data-readonly={!e.editable || undefined}>
+        {e.editable && screenWidth >= 1280 && <aside className="kg-sidebar kg-library" aria-label="Thư viện chủ đề">{library}</aside>}
+        <div className="kg-main">
+          {!e.editable && props.readLoading ? <p className="kg-empty" role="status">Đang tải đồ thị của phiên bản…</p> : !e.editable && props.readError ? <p role="alert" className="kg-issue" data-toast-mirror="off">Không tải được đồ thị của phiên bản. <button type="button" onClick={props.onRetryRead}>Thử lại</button></p> : e.editable && e.catalog.isPending ? <p className="kg-empty" role="status">Đang tải thư viện để dựng cấu trúc đang soạn…</p> : e.editable && e.catalog.isError ? <p role="alert" className="kg-issue" data-toast-mirror="off">Không tải được thư viện. <button type="button" onClick={() => e.catalog.refetch()}>Thử lại</button></p> : <KnowledgeGraphCanvas cacheScope={`${e.user?.centerId}:${e.user?.userId}:${props.subjectId}:${props.versionId}`} nodes={shownNodes} edges={shownEdges}
+            selectedNodeId={selection?.kind === "node" ? selection.id : null} selectedEdgeId={selection?.kind === "edge" ? selection.id : null} onSelectNode={chooseNode} onSelectEdge={id => { if (!mode) select({ kind: "edge", id }); }} onClear={() => { if (!mode) setSelection(null); }}
+            hideInactive={hideInactive} onHideInactive={setHideInactive} inactiveCount={preview.nodes.filter(n => !n.isActive).length} nodeColors={graphNodeColors} nodeLabels={graphNodeLabels} edgeColors={graphEdgeColors}
+            issueNodeIds={issueNodes} issueEdgeIds={issueEdges} nodeMarkers={mode?.kind === "link" && mode.source ? new Map([[mode.source, "Nguồn"]]) : undefined} reveal={reveal} showParents={showParents} compactToolbar />}
+          {!e.nodes.length && e.editable && <div className="kg-empty"><strong>Bắt đầu bằng một chủ đề</strong><p className="kg-muted">Thêm từ thư viện hoặc tạo chủ đề mới. Tạo liên kết sau khi có hai chủ đề.</p><button type="button" className="th-secondary-button" onClick={() => setDrawer("library")}>Mở thư viện chủ đề</button></div>}
+          <details className="kg-editor-list" open={!!mode || undefined}><summary>Chủ đề và quan hệ trong khung · thao tác bằng danh sách</summary><input type="search" className="th-input w-full my-3" aria-label="Tìm trong cấu trúc đang soạn" value={listSearch} onChange={event => { setListSearch(event.target.value); setListLimit(40); }} placeholder="Tìm chủ đề hoặc quan hệ…" />
+            {e.nodes.filter(n => `${name(n.nodeId)} ${topics.find(t => t.nodeId === n.nodeId)?.nodeCode ?? ""}`.toLocaleLowerCase("vi").includes(q)).slice(0, listLimit).map(n => <div className="kg-list-row" key={n.nodeId} data-error={issueNodes.has(n.nodeId) || undefined}><span>{issueNodes.has(n.nodeId) ? "⚠ " : ""}{name(n.nodeId)}<small className="block kg-muted">Nhóm cha: {n.parentNodeId ? name(n.parentNodeId) : "Cấp ngoài cùng"}</small></span><button type="button" className="th-secondary-button" disabled={mode?.kind === "parent" && mode.child === n.nodeId} onClick={() => mode ? chooseNode(n.nodeId) : select({ kind: "node", id: n.nodeId }, true)}>{mode ? "Chọn chủ đề này" : "Chi tiết"}</button></div>)}
+            {e.edges.filter(m => { const r = catalogEdges.find(r => r.edgeId === m.edgeId); return `${r ? name(r.sourceNodeId) + name(r.targetNodeId) : m.edgeId} ${relationInfo[m.relationType].label}`.toLocaleLowerCase("vi").includes(q); }).slice(0, listLimit).map(m => { const r = catalogEdges.find(r => r.edgeId === m.edgeId); return <div className="kg-list-row" key={m.edgeId} data-error={issueEdges.has(m.edgeId) || undefined}><span>{issueEdges.has(m.edgeId) ? "⚠ " : ""}{r ? `${name(r.sourceNodeId)} → ${name(r.targetNodeId)}` : `Quan hệ #${m.edgeId}`}<small className="block kg-muted">{relationInfo[m.relationType].label} · Trọng số {m.weight}</small></span><button type="button" className="th-secondary-button" onClick={() => select({ kind: "edge", id: m.edgeId }, true)}>Chi tiết quan hệ</button></div>; })}
+            {(e.nodes.length > listLimit || e.edges.length > listLimit) && <button type="button" className="th-secondary-button mt-2" onClick={() => setListLimit(n => n + 40)}>Xem thêm</button>}
+          </details>
+          {e.editable && <details className="kg-editor-list"><summary>Quan hệ có sẵn trong thư viện · thêm vào khung</summary>{availableEdges.slice(0, listLimit).map(r => <div className="kg-list-row" key={r.edgeId}><span>{name(r.sourceNodeId)} → {name(r.targetNodeId)}<small className="block kg-muted">{relationInfo[r.relationType].label}</small></span><button type="button" className="th-secondary-button" disabled={disabled} onClick={() => { e.addEdge(r); select({ kind: "edge", id: r.edgeId }, true); }}>Thêm quan hệ vào khung</button></div>)}{availableEdges.length > listLimit && <button type="button" className="th-secondary-button mt-2" onClick={() => setListLimit(n => n + 40)}>Xem thêm quan hệ</button>}</details>}
+        </div>
+        {screenWidth >= 1700 && <aside className="kg-sidebar kg-inspector" aria-label="Chi tiết đang chọn"><div ref={inspectorRef}>{inspector}</div></aside>}
+      </div>
+      {e.editable && <div className="kg-issues" data-testid="kg-draft-issues" data-has-errors={issues.length > 0 || e.stale} data-toast-mirror="off"><h3 className="font-semibold">{issues.length ? `⚠ Cần xử lý (${issues.length})` : "Kiểm tra cấu trúc"}</h3>
+        {e.catalog.isFetching && <p role="status" className="kg-muted">Đang tải dữ liệu để kiểm tra; chưa kết luận các mục còn thiếu.</p>}{e.stale && <p role="alert" className="kg-issue">Khung đã thay đổi ở phiên khác. Hủy cấu trúc đang soạn rồi tải phiên bản mới; không tự ghi đè.</p>}
+        {issues.length > 0 && <div role="alert">{issues.map(issue => <article className="kg-issue" key={issue.id}><p><strong>{issue.message}</strong></p><p>{issue.remedy}</p>{issue.fullPath && <details><summary>Toàn bộ vòng</summary><p>{issue.fullPath}</p></details>}<div className="kg-actions"><button type="button" className="th-secondary-button" onClick={() => locateIssue(issue)}>Đến vị trí lỗi</button>{issue.kind === "parent" && issue.nodeIds.slice(0, 6).map(id => <button type="button" className="th-secondary-button" key={id} onClick={() => locateIssue(issue, id)}>Đến {name(id)}</button>)}{issue.kind === "edge" && issue.nodeIds.filter(id => !ids.has(id) && topics.some(n => n.nodeId === id)).map(id => <button type="button" className="th-secondary-button" disabled={disabled} key={id} onClick={() => e.addNode(id)}>Thêm lại {name(id)}</button>)}</div></article>)}</div>}
+        {!issues.length && !e.catalog.isFetching && <p className="kg-muted">{e.catalog.isSuccess ? "Chưa phát hiện lỗi từ dữ liệu đã tải. Máy chủ kiểm tra lại khi lưu." : "Chưa đủ dữ liệu để xác định lỗi cấu trúc."}</p>}
       </div>}
-      {selected?.isLegacy && <p className="text-sm text-amber-500">Phiên bản chuyển tiếp giữ nguyên dữ liệu cũ. Sao chép thành bản nháp để xác nhận phạm vi khối trước khi dùng cho giáo trình mới.</p>}
-      {editable && <>
-        {catalog.isError && <p role="alert">Không tải được thư viện gốc. <button onClick={() => catalog.refetch()}>Tải lại</button></p>}
-        {catalog.isPending && <p role="status" className="text-sm text-[var(--th-text-muted)]">Đang tải thư viện gốc để kiểm tra chủ đề và quan hệ…</p>}
-        <p className="text-sm">Chọn những điểm tri thức thực sự áp dụng cho Khối {gradeLevel}. Một điểm có thể dùng nhiều khối; mỗi phiên bản có nút cha và trọng số riêng.</p>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h4 className="font-semibold m-0" id="kg-draft-topics-heading">Chủ đề và cây cấu trúc ({nodes.length} đang chọn)</h4>
-          {onAddTopic && <button type="button" className="th-primary-button" disabled={busy} onClick={onAddTopic}>+ Thêm chủ đề mới</button>}
-        </div>
-        <div className="flex flex-wrap items-end gap-2 text-sm">
-          <label className="flex flex-col gap-1">Hiển thị
-            <select className="th-select" aria-label="Lọc chủ đề theo khung tri thức hoặc giáo trình" value={topicFilter} onChange={e => setTopicFilter(e.target.value as DraftTopicFilter)}>
-              <option value="grade">Phù hợp Khối {gradeLevel}</option>
-              <option value="selected">Đang chọn trong bản nháp này</option>
-              <option value="unselected">Chưa chọn</option>
-              <option value="draftOnly">Chủ đề nháp (chưa thuộc khung đã duyệt/giáo trình đã xuất bản)</option>
-              <option value="all">Tất cả chủ đề của môn</option>
-              {!!sourceVersions.data?.some(v => v.graphVersionId !== versionId) && <optgroup label="Theo khung tri thức">
-                {sourceVersions.data.filter(v => v.graphVersionId !== versionId).map(v => <option key={v.graphVersionId} value={`version:${v.graphVersionId}`}>
-                  {v.title || "Khung"} · Khối {v.gradeLevel} · {v.status === "Draft" ? "Bản nháp" : v.status === "Published" ? "Đã duyệt" : "Lưu trữ"}</option>)}
-              </optgroup>}
-              {!!curricula.data?.length && <optgroup label="Theo giáo trình">
-                {curricula.data.map(c => <option key={c.curriculumId} value={`curriculum:${c.curriculumId}`}>{c.title}{c.gradeLevel ? ` · Khối ${c.gradeLevel}` : ""}</option>)}
-              </optgroup>}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 flex-1 min-w-[12rem]">Tìm chủ đề
-            <input className="th-input" type="search" value={topicSearch} onChange={e => setTopicSearch(e.target.value)} placeholder="Tên hoặc mã chủ đề" />
-          </label>
-          <span className="text-xs text-[var(--th-text-muted)]" role="status">Hiển thị {visibleTopics.length}/{allTopics.length} chủ đề</span>
-        </div>
-        {!!orphanSelections.length && <div className="rounded-lg border border-[var(--th-danger)] p-2 text-sm">
-          <p className="m-0 font-semibold">{orphanSelections.length} chủ đề đang chọn không còn trong thư viện môn (đã bị xóa). Bỏ chọn để lưu được bản nháp.</p>
-          {orphanSelections.map(o => <button key={o.nodeId} type="button" className="th-secondary-button mt-2 mr-2" onClick={() => { setDirty(true); setReviewed(false);
-            setNodes(prev => prev.filter(n => n.nodeId !== o.nodeId).map(n => n.parentNodeId === o.nodeId ? { ...n, parentNodeId: null } : n)); }}>Bỏ chọn #{o.nodeId}</button>)}
-        </div>}
-        <fieldset disabled={busy || catalog.isPending || catalog.isError} aria-labelledby="kg-draft-topics-heading" className="space-y-2 max-h-96 overflow-y-auto">
-          {catalogReady && !visibleTopics.length && <p className="text-sm text-[var(--th-text-muted)]">Không có chủ đề phù hợp bộ lọc.</p>}
-          {visibleTopics.map(node => { const mapping = nodes.find(n => n.nodeId === node.nodeId); const draftOnly = !lockedIds.has(node.nodeId);
-            return <div key={node.nodeId} id={rowId(node.nodeId)} className="flex flex-wrap items-center gap-2 border-b border-[var(--th-border)] py-2"
-              style={flashId === node.nodeId ? { background: "rgba(20, 184, 166, 0.14)", borderRadius: 8 } : undefined}>
-            <label className="flex items-center gap-2 flex-1 min-w-[12rem]"><input type="checkbox" checked={!!mapping} onChange={e => { setDirty(true); setReviewed(false);
-              setNodes(prev => e.target.checked ? [...prev, { nodeId: node.nodeId, parentNodeId: null }] : prev.filter(n => n.nodeId !== node.nodeId).map(n => n.parentNodeId === node.nodeId ? { ...n, parentNodeId: null } : n)); }} />
-              <span>{node.nodeName} <small>({node.nodeCode})</small>{!node.isActive && <small> · Đã tắt</small>}{draftOnly && <small className="text-[var(--th-text-muted)]"> · Nháp</small>}</span></label>
-            {mapping && <select aria-label={`Nút cha của ${node.nodeName}`} className="th-select" value={mapping.parentNodeId ?? ""} onChange={e => { setDirty(true); setReviewed(false); setNodes(prev => prev.map(n => n.nodeId === node.nodeId ? { ...n, parentNodeId: e.target.value || null } : n)); }}>
-              <option value="">Không có nút cha</option>{allTopics.filter(n => n.nodeId !== node.nodeId && selectedIds.has(n.nodeId)).map(n => <option key={n.nodeId} value={n.nodeId}>{n.nodeName}</option>)}
-            </select>}
-            {canEditTopics && <button type="button" className="th-secondary-button" aria-label={`Sửa chủ đề ${node.nodeName}`} onClick={() => setEditingTopic(node)}>Sửa</button>}
-            {canDeleteTopics && draftOnly && <button type="button" className="th-secondary-button" aria-label={`Xóa chủ đề ${node.nodeName}`}
-              disabled={dirty} title={dirty ? "Lưu hoặc hủy thay đổi của bản nháp trước khi xóa chủ đề." : "Xóa chủ đề nháp khỏi thư viện môn"}
-              onClick={() => setDeletingTopic(node)}>Xóa</button>}
-          </div>; })}
-        </fieldset>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h4 className="font-semibold m-0" id="kg-draft-relations-heading">Quan hệ áp dụng ({edges.length})</h4>
-          {onAddRelation && <button type="button" className="th-secondary-button" disabled={busy || nodes.length < 2} title={nodes.length < 2 ? "Chọn ít nhất hai chủ đề trong bản nháp trước." : undefined} onClick={onAddRelation}>+ Thêm liên kết</button>}
-        </div>
-        <fieldset disabled={busy || catalog.isError} aria-labelledby="kg-draft-relations-heading" className="space-y-2 max-h-60 overflow-y-auto">
-          <p className="text-sm">Chỉ các quan hệ được tích chọn mới thuộc bản nháp. Bỏ chọn rồi lưu để gỡ khỏi khung này; danh mục và các bản đã duyệt không đổi.</p>
-          {catalogEdges.filter(edge => edges.some(mapping => mapping.edgeId === edge.edgeId) ||
-            nodes.some(n => n.nodeId === edge.sourceNodeId) && nodes.some(n => n.nodeId === edge.targetNodeId))
-            .sort((left, right) => Number(edges.some(mapping => mapping.edgeId === right.edgeId)) - Number(edges.some(mapping => mapping.edgeId === left.edgeId)))
-            .map(edge => { const mapping = edges.find(e => e.edgeId === edge.edgeId); const sourceInside = nodes.some(n => n.nodeId === edge.sourceNodeId);
-            const targetInside = nodes.some(n => n.nodeId === edge.targetNodeId); return <div key={edge.edgeId} className="flex flex-wrap items-center gap-2 py-1">
-              <label className="flex items-center gap-2 flex-1"><input type="checkbox" disabled={!targetInside && !mapping} checked={!!mapping} onChange={e => { setDirty(true); setReviewed(false);
-                setEdges(prev => e.target.checked ? [...prev, { edgeId: edge.edgeId, relationType: edge.relationType, weight: edge.weight }] : prev.filter(m => m.edgeId !== edge.edgeId)); }} />{catalogNodes.find(n => n.nodeId === edge.sourceNodeId)?.nodeName} → {catalogNodes.find(n => n.nodeId === edge.targetNodeId)?.nodeName} · {edge.relationType}</label>
-              <span className="text-xs">{mapping ? "Đang áp dụng" : "Chưa áp dụng"}</span>
-              {mapping && <button type="button" className="th-secondary-button" onClick={() => { setDirty(true); setReviewed(false);
-                setEdges(previous => previous.filter(item => item.edgeId !== edge.edgeId)); }}>Bỏ khỏi bản nháp</button>}
-              {hasPermission(permissions.edgesCreate) && sourceInside && targetInside && (mapping?.relationType ?? edge.relationType) === "PrerequisiteOf" &&
-                <button type="button" className="th-secondary-button" onClick={() => reverse.mutate(edge)}>Đảo chiều trong bản nháp</button>}
-              {mapping && <><select className="th-select" aria-label="Loại quan hệ trong phiên bản" value={mapping.relationType} onChange={e => { setDirty(true); setReviewed(false); setEdges(prev => prev.map(m => m.edgeId === edge.edgeId ? { ...m, relationType: e.target.value as KnowledgeRelationType, sourceGraphVersionId: e.target.value === "PrerequisiteOf" ? m.sourceGraphVersionId : null } : m)); }}>{Object.entries(relationLabels).map(([type, label]) => <option key={type} value={type}>{label}</option>)}</select>
-                <input className="th-input w-24" aria-label="Trọng số quan hệ" type="number" min={0} max={1} step={0.05} value={mapping.weight} onChange={e => { setDirty(true); setReviewed(false); setEdges(prev => prev.map(m => m.edgeId === edge.edgeId ? { ...m, weight: Number(e.target.value) } : m)); }} />
-                {mapping.relationType === "PrerequisiteOf" && <label className="text-sm">Khung nguồn tiên quyết<select className="th-select ml-2" value={mapping.sourceGraphVersionId ?? ""} onChange={e => { setDirty(true); setReviewed(false); setEdges(prev => prev.map(m => m.edgeId === edge.edgeId ? { ...m, sourceGraphVersionId: e.target.value || null } : m)); }}><option value="">{sourceInside ? "Trong khung hiện tại" : "Chọn khung nguồn đã duyệt"}</option>{sourceVersions.data?.filter(v => v.status === "Published" && !v.isLegacy && v.gradeLevel < gradeLevel && v.graphVersionId !== versionId && v.nodeMappings?.some(n => n.nodeId === edge.sourceNodeId)).map(v => <option key={v.graphVersionId} value={v.graphVersionId}>{v.title} · Khối {v.gradeLevel}</option>)}</select></label>}</>}
-            </div>; })}
-        </fieldset>
-        {stale && <p role="alert">Phiên bản đã được thay đổi ở nơi khác. Hủy lựa chọn và tải lại trước khi lưu.</p>}
-        {!!invalidEdges.length && <p role="alert">Có {invalidEdges.length} quan hệ thiếu điểm đích trong khung hoặc thiếu khung nguồn tiên quyết. Bổ sung điểm tri thức hoặc bỏ chọn quan hệ trước khi lưu.</p>}
-        {/* Stays at the bottom of the screen while there are unsaved changes, so saving never needs a scroll. */}
-        <div className={`flex flex-wrap items-center gap-2 ${dirty ? "sticky bottom-0 z-10 rounded-lg border border-[var(--th-border)] bg-[var(--th-surface-raised)] p-2 shadow-lg" : ""}`}>
-          <button className="th-primary-button" disabled={busy || !dirty || stale || !catalogReady || catalog.isFetching || invalidEdges.length > 0} onClick={() => save.mutate()}>Lưu cấu trúc nháp</button>
-          {dirty && <button className="th-secondary-button" disabled={busy} onClick={() => { setDirty(false); setReviewed(false); }}>Hủy lựa chọn chưa lưu</button>}
-          {dirty && <span className="text-xs text-[var(--th-text-muted)]">Có thay đổi chưa lưu · {nodes.length} chủ đề, {edges.length} quan hệ</span>}
-        </div>
-        <label className="flex gap-2 text-sm"><input type="checkbox" checked={reviewed} disabled={dirty || busy} onChange={e => setReviewed(e.target.checked)} />Tôi đã rà soát chủ đề, cây và quan hệ phù hợp Khối {gradeLevel}.</label>
-        <button className="th-primary-button" disabled={busy || dirty || !reviewed || !nodes.length} onClick={() => publish.mutate()}>Duyệt và dùng làm khung hiện hành</button>
-      </>}
-      {message && (messageIsError
-        ? <p role="alert" className="text-sm font-semibold text-[var(--th-danger)]">{message}</p>
-        : <p role="status" className="text-sm">{message}</p>)}
-    </div>}
-    {editingTopic && <KnowledgeNodeEditDialog node={editingTopic} subjectId={subjectId} subjectCode={subjectCode} subjectName={subjectName} gradeLevel={gradeLevel}
-      onClose={() => setEditingTopic(null)}
-      onSaved={async saved => { setEditingTopic(null); notify(`Đã cập nhật chủ đề (mã ${saved.nodeCode}).`); setFlashId(saved.nodeId); await refresh(); }} />}
-    <TeacherConfirmDialog isOpen={!!deletingTopic} tone="danger" title="Xóa chủ đề nháp?"
-      description={deletingTopic ? `Xóa “${deletingTopic.nodeName}” (${deletingTopic.nodeCode}) khỏi thư viện môn và khỏi các bản nháp đang chọn nó.` : ""}
-      confirmLabel="Xóa chủ đề" isConfirming={removeTopic.isPending}
-      confirmDisabled={!!deleteBlockers && (deleteBlockers.relations.length > 0 || deleteBlockers.children.length > 0)}
-      error={deleteError}
-      onConfirm={() => deletingTopic && removeTopic.mutate(deletingTopic)}
-      onClose={() => { if (!removeTopic.isPending) { setDeletingTopic(null); setDeleteError(null); } }}>
-      {deleteBlockers && (deleteBlockers.relations.length > 0 || deleteBlockers.children.length > 0) ? <div role="status" className="space-y-2 text-sm" data-testid="topic-delete-blockers">
-        <p className="m-0 font-semibold text-[var(--th-danger)]">Chưa xóa được: chủ đề còn dữ liệu phụ thuộc trong thư viện môn.</p>
-        {deleteBlockers.relations.length > 0 && <div>
-          <p className="m-0">{deleteBlockers.relations.length} liên kết tri thức:</p>
-          <ul className="my-1 pl-5">{deleteBlockers.relations.map(e => <li key={e.edgeId}>{topicName(e.sourceNodeId)} → {topicName(e.targetNodeId)} · {relationLabels[e.relationType]}</li>)}</ul>
-        </div>}
-        {deleteBlockers.children.length > 0 && <p className="m-0">{deleteBlockers.children.length} nút con: {deleteBlockers.children.map(n => n.nodeName).join(", ")}.</p>}
-        <p className="m-0 text-[var(--th-text-secondary)]">Xóa các liên kết trên đồ thị (bấm vào liên kết → Xóa) và đổi nút cha của các nút con, rồi thử lại. Chỉ bỏ chọn trong bản nháp là chưa đủ vì liên kết vẫn còn trong thư viện môn.</p>
-      </div> : <p className="text-sm text-[var(--th-text-secondary)]">Hệ thống vẫn kiểm tra câu hỏi, giáo trình và dữ liệu học tập trước khi xóa và sẽ nêu lý do nếu bị chặn.</p>}
+      {e.message && !review && <div className={e.message.error ? "kg-issue" : "kg-hint rounded-none"} role={e.message.error ? "alert" : "status"} data-toast-mirror="off"><p>{e.message.text}</p>{e.message.error && !issues.length && <p className="kg-muted">Chưa xác định được vị trí từ dữ liệu hiện có.</p>}{e.message.traceId && <details className="kg-muted"><summary>Chi tiết hỗ trợ</summary>Mã hỗ trợ: {e.message.traceId}</details>}</div>}
+      {e.editable && <footer id="kg-save-actions" className="kg-actionbar"><span className="kg-save-status">{e.dirty ? "● Cấu trúc chưa lưu" : "✓ Cấu trúc đã lưu"}<small className="block kg-muted">{e.libraryWritten ? "Có nội dung thư viện đã được ghi riêng." : `${e.nodes.length} chủ đề · ${e.edges.length} quan hệ`}</small></span>{e.dirty && <button type="button" className="th-secondary-button" disabled={e.busy} onClick={() => setDiscarding(true)}>Hủy thay đổi cấu trúc</button>}<button type="button" className="th-primary-button" disabled={saveDisabled} onClick={() => e.save.mutate()}>{e.save.isPending ? "Đang lưu…" : "Lưu bản nháp"}</button><button type="button" className="th-secondary-button" disabled={e.busy || e.dirty || !e.nodes.length} onClick={() => setReview(true)}>Rà soát & duyệt</button>{e.dirty && saveDisabled && <p className="kg-muted w-full">{e.stale ? "Khung vừa thay đổi ở phiên khác." : invalidEdges.length ? "Xử lý các quan hệ thiếu đầu nối/khung nguồn phía trên trước khi lưu." : "Chờ dữ liệu tải xong hoặc thao tác đang chạy để lưu."}</p>}</footer>}
+    </>}
+    <TeacherModal isOpen={picker && !!props.versionId} title="Chọn khung tri thức" size="lg" onClose={() => setPicker(false)}>{pickerContent}</TeacherModal>
+    <TeacherDrawer isOpen={drawer === "library"} title="Thư viện chủ đề" onClose={() => setDrawer(null)}><div className="kg-editor">{drawer === "library" && library}</div></TeacherDrawer>
+    <TeacherDrawer isOpen={drawer === "inspector" && screenWidth < 1700} title="Chi tiết đang chọn" onClose={() => setDrawer(null)}><div ref={screenWidth < 1700 ? inspectorRef : undefined} className="kg-editor kg-mobile-inspector">{drawer === "inspector" && inspector}</div></TeacherDrawer>
+    <RelationHelpDialog open={help} onClose={() => setHelp(false)} />
+    {edgeForm && <DraftRelationDialog suspended={help} editor={e} {...edgeForm} subjectId={props.subjectId} versionId={props.versionId} name={name} onClose={() => setEdgeForm(null)} onSelect={id => select({ kind: "edge", id }, true)} onHelp={() => setHelp(true)} />}
+    <TeacherConfirmDialog isOpen={!!removingNode} title="Gỡ chủ đề khỏi khung?" description={`Gỡ ${removingNode ? name(removingNode) : ""} khỏi cấu trúc đang soạn. Chủ đề vẫn còn trong thư viện.`} confirmLabel="Gỡ khỏi khung" onClose={() => setRemovingNode(null)} onConfirm={() => { if (removingNode) e.removeNode(removingNode); setRemovingNode(null); setSelection(null); }}><p className="kg-muted">{e.nodes.filter(n => n.parentNodeId === removingNode).length} chủ đề con sẽ về cấp ngoài cùng. {relations.filter(r => r.sourceNodeId === removingNode || r.targetNodeId === removingNode).length} quan hệ còn tham chiếu cần bạn xử lý trước khi lưu. Không tự xóa quan hệ.</p></TeacherConfirmDialog>
+    <TeacherConfirmDialog isOpen={discarding} title="Hủy thay đổi cấu trúc chưa lưu?" description="Khôi phục chủ đề, nhóm cha và quan hệ trong khung về lần lưu gần nhất." confirmLabel="Hủy thay đổi cấu trúc" onClose={() => setDiscarding(false)} onConfirm={() => { e.discard(); setDiscarding(false); setMode(null); setSelection(null); setActiveIssue(null); }}><p className="kg-muted">Nội dung/chủ đề/quan hệ đã tạo hoặc sửa trong thư viện sẽ không bị hủy hay xóa bởi thao tác này.</p></TeacherConfirmDialog>
+    <TeacherModal isOpen={review} title={`Rà soát khung Khối ${props.gradeLevel}`} onClose={() => !e.busy && setReview(false)}><div className="kg-hint">{e.nodes.length} chủ đề · {e.edges.length} quan hệ. Duyệt sẽ dùng bản này làm khung hiện hành của khối.</div><p className="kg-muted my-3">{issues.length ? `Có ${issues.length} vấn đề trong bảng Cần xử lý. Máy chủ kiểm tra lại khi duyệt.` : "Rà soát chủ đề, nhóm cha và chiều quan hệ trước khi duyệt."}</p><label className="flex gap-2 text-sm"><input type="checkbox" checked={e.reviewed} disabled={e.busy || e.dirty} onChange={event => e.setReviewed(event.target.checked)} />Tôi đã rà soát chủ đề, cây và quan hệ phù hợp Khối {props.gradeLevel}.</label>{e.message?.error && <p role="alert" className="kg-issue" data-toast-mirror="off">{e.message.text}</p>}<div className="kg-actions"><button type="button" className="th-primary-button" disabled={e.busy || e.dirty || !e.reviewed || !e.nodes.length} onClick={() => e.publish.mutate(undefined, { onSuccess: () => setReview(false) })}>Duyệt và dùng làm khung hiện hành</button></div></TeacherModal>
+    {editingTopic && <KnowledgeNodeEditDialog node={editingTopic} subjectId={props.subjectId} subjectCode={props.subjectCode} subjectName={props.subjectName} gradeLevel={props.gradeLevel} onClose={() => setEditingTopic(null)} onSaved={async () => { setEditingTopic(null); e.setLibraryWritten(true); e.notify("Đã lưu nội dung chủ đề trong thư viện. Hủy cấu trúc không hủy thay đổi thư viện này."); await e.refresh(); }} />}
+    <TeacherConfirmDialog isOpen={!!deletingTopic} tone="danger" title="Xóa chủ đề khỏi thư viện?" description={deletingTopic ? `Xóa mềm “${deletingTopic.nodeName}” khỏi thư viện môn và các bản nháp sử dụng nó. Máy chủ kiểm tra phụ thuộc trước khi xóa.` : ""} confirmLabel="Xóa khỏi thư viện" isConfirming={e.removeTopic.isPending} confirmDisabled={!!deleteBlockers && (deleteBlockers.relations.length > 0 || deleteBlockers.children.length > 0)} error={deleteError} onConfirm={() => deletingTopic && e.removeTopic.mutate(deletingTopic.nodeId, { onSuccess: () => { setDeletingTopic(null); setSelection(null); }, onError: err => setDeleteError(academicLifecycleError(err, "Chưa xóa được chủ đề. Kiểm tra kết nối và quyền truy cập rồi thử lại.")) })} onClose={() => !e.removeTopic.isPending && setDeletingTopic(null)}>
+      {deleteBlockers && <div data-testid="topic-delete-blockers"><p className="kg-muted">{deleteBlockers.children.length} chủ đề con và {deleteBlockers.relations.length} quan hệ trong thư viện còn tham chiếu.</p>{deleteBlockers.relations.map(r => <p className="kg-muted" key={r.edgeId}>{name(r.sourceNodeId)} → {name(r.targetNodeId)} · {relationInfo[r.relationType].label}</p>)}<p className="kg-muted">Gỡ khỏi bản nháp chưa đủ để xóa khỏi thư viện. Không tự gỡ phụ thuộc để vượt khóa.</p></div>}
     </TeacherConfirmDialog>
-  </details>;
+  </section>;
 }

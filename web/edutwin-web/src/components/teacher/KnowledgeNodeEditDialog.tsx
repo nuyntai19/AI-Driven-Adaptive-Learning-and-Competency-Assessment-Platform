@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { knowledgeGraphApi } from "../../api/knowledgeGraphApi";
 import { useAuthStore } from "../../stores/authStore";
@@ -38,6 +38,9 @@ export function KnowledgeNodeEditDialog({ node, subjectId, subjectCode, subjectN
   const [mode, setMode] = useState<EditCodeMode>("follow");
   const [manualCode, setManualCode] = useState(node.nodeCode);
   const [error, setError] = useState("");
+  const [invalidField, setInvalidField] = useState<"name" | "importance" | "minutes" | "code" | null>(null);
+  const fieldError = (field: NonNullable<typeof invalidField>, message: string) => { setInvalidField(field); setError(message); };
+  useEffect(() => { if (invalidField) document.getElementById(`edit-node-${invalidField}`)?.focus(); }, [invalidField, error]);
 
   const nameOrTypeChanged = name.trim() !== node.nodeName || type !== node.nodeType;
   const prefix = useMemo(() => subjectCode
@@ -67,6 +70,7 @@ export function KnowledgeNodeEditDialog({ node, subjectId, subjectCode, subjectN
     onError: async err => {
       const details = extractProblemDetails(err);
       if (details.errorCode === "DUPLICATE_RESOURCE" && resolved.reason === "suggested") {
+        setInvalidField("code");
         const next = await suggestion.refetch();
         setError(`Mã ${code} vừa được dùng.${next.data?.code ? ` Đã cập nhật mã mới ${next.data.code}, bấm Lưu lần nữa.` : ""}`);
       } else if (details.errorCode === "CONCURRENCY_CONFLICT") {
@@ -78,12 +82,13 @@ export function KnowledgeNodeEditDialog({ node, subjectId, subjectCode, subjectN
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!name.trim()) return setError("Vui lòng nhập tên chủ đề.");
-    if (importance < 0 || importance > 100) return setError("Trọng số thi phải nằm trong khoảng 0–100%.");
-    if (minutes <= 0) return setError("Thời lượng học phải lớn hơn 0 phút.");
-    if (!code) return setError(suggestion.isError ? "Không lấy được số thứ tự cho mã mới. Thử lại hoặc giữ mã cũ." : "Đang lấy số thứ tự cho mã mới, vui lòng đợi.");
+    setInvalidField(null);
+    if (!name.trim()) return fieldError("name", "Vui lòng nhập tên chủ đề.");
+    if (importance < 0 || importance > 100) return fieldError("importance", "Trọng số thi phải nằm trong khoảng 0–100%.");
+    if (minutes <= 0) return fieldError("minutes", "Thời lượng học phải lớn hơn 0 phút.");
+    if (!code) return fieldError("code", suggestion.isError ? "Không lấy được số thứ tự cho mã mới. Thử lại hoặc giữ mã cũ." : "Đang lấy số thứ tự cho mã mới, vui lòng đợi.");
     if (codeChanged && (code.length > maxNodeCodeLength || !isStandardNodeCode(code)))
-      return setError(`Mã mới phải theo cú pháp ${nodeCodeSyntax}, ví dụ MATH12_T_GTTP_01.`);
+      return fieldError("code", `Mã mới phải theo cú pháp ${nodeCodeSyntax}, ví dụ MATH12_T_GTTP_01.`);
     save.mutate();
   };
 
@@ -98,7 +103,7 @@ export function KnowledgeNodeEditDialog({ node, subjectId, subjectCode, subjectN
     <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div>
         <label htmlFor="edit-node-name" style={label}>Tên chủ đề / Khái niệm *</label>
-        <input id="edit-node-name" className="th-input" style={{ width: "100%" }} maxLength={200} value={name} onChange={e => setName(e.target.value)} />
+        <input id="edit-node-name" className="th-input" style={{ width: "100%" }} maxLength={200} value={name} aria-invalid={invalidField === "name" || undefined} aria-describedby={invalidField === "name" ? "kg-edit-node-error" : undefined} onChange={e => { setName(e.target.value); if (invalidField === "name") { setInvalidField(null); setError(""); } }} />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
         <div>
@@ -109,11 +114,11 @@ export function KnowledgeNodeEditDialog({ node, subjectId, subjectCode, subjectN
         </div>
         <div>
           <label htmlFor="edit-node-importance" style={label}>Trọng số thi (%)</label>
-          <input id="edit-node-importance" className="th-input" style={{ width: "100%" }} type="number" min={0} max={100} value={importance} onChange={e => setImportance(Number(e.target.value))} />
+          <input id="edit-node-importance" className="th-input" style={{ width: "100%" }} type="number" min={0} max={100} value={importance} aria-invalid={invalidField === "importance" || undefined} aria-describedby={invalidField === "importance" ? "kg-edit-node-error" : undefined} onChange={e => setImportance(Number(e.target.value))} />
         </div>
         <div>
           <label htmlFor="edit-node-minutes" style={label}>Thời lượng (phút)</label>
-          <input id="edit-node-minutes" className="th-input" style={{ width: "100%" }} type="number" min={5} max={300} value={minutes} onChange={e => setMinutes(Number(e.target.value))} />
+          <input id="edit-node-minutes" className="th-input" style={{ width: "100%" }} type="number" min={5} max={300} value={minutes} aria-invalid={invalidField === "minutes" || undefined} aria-describedby={invalidField === "minutes" ? "kg-edit-node-error" : undefined} onChange={e => setMinutes(Number(e.target.value))} />
         </div>
       </div>
       <div>
@@ -123,7 +128,7 @@ export function KnowledgeNodeEditDialog({ node, subjectId, subjectCode, subjectN
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input id="edit-node-code" className="th-input" style={{ flex: "1 1 220px", minWidth: 0, fontFamily: "monospace" }} maxLength={maxNodeCodeLength} spellCheck={false}
-            aria-describedby="edit-node-code-hint" placeholder={`Cú pháp tự sinh: ${nodeCodeSyntax}`}
+            aria-invalid={invalidField === "code" || undefined} aria-describedby={`edit-node-code-hint${invalidField === "code" ? " kg-edit-node-error" : ""}`} placeholder={`Cú pháp tự sinh: ${nodeCodeSyntax}`}
             value={mode === "manual" ? manualCode : code ?? ""} onChange={e => { setMode("manual"); setManualCode(e.target.value.toUpperCase()); }} />
           {mode === "manual" || mode === "keep"
             ? <button type="button" className="th-secondary-button" onClick={() => setMode("follow")}>Dùng mã tự sinh</button>
@@ -142,7 +147,7 @@ export function KnowledgeNodeEditDialog({ node, subjectId, subjectCode, subjectN
       <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: "0.85rem" }}>
         <input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} />Đang hoạt động
       </label>
-      {error && <p role="alert" style={{ margin: 0, color: "var(--th-danger)", fontSize: "0.85rem", fontWeight: 600 }}>{error}</p>}
+      {error && <p id="kg-edit-node-error" role="alert" data-toast-mirror="off" style={{ margin: 0, color: "var(--th-danger)", fontSize: "0.85rem", fontWeight: 600 }}>{error}</p>}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
         <button type="button" className="th-secondary-button" disabled={save.isPending} onClick={onClose}>Hủy</button>
         <button type="submit" className="th-primary-button" disabled={save.isPending}>{save.isPending ? "Đang lưu…" : "Lưu chủ đề"}</button>
