@@ -138,6 +138,19 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
             int minimum;
             if (plan.IsPlacement)
             {
+                var earlier = await db.LearningPathSessions.AsNoTracking().Where(s =>
+                    s.CenterId == centerId && s.LearningPathId == session.LearningPathId && s.ClassId == session.ClassId &&
+                    s.SessionOrder < session.SessionOrder && s.Status != LearningPathSessionStatus.Completed && s.Status != LearningPathSessionStatus.Skipped)
+                    .OrderBy(s => s.SessionOrder).ToListAsync(cancellationToken);
+                if (earlier.Count > 0)
+                {
+                    var earlierPool = await LearningPathV4Data.QuestionsAsync(db, centerId, studentId, session.LearningPath.SubjectId,
+                        earlier.Select(s => s.TopicNodeId).Distinct().ToArray(), session.ClassId, cancellationToken);
+                    var seen = answered.Concat(exposed).Concat(reserved).ToHashSet();
+                    var availableSkills = earlierPool.Where(q => !seen.Contains(q.QuestionId)).Select(q => q.PrimaryTopicNodeId).ToHashSet();
+                    var blocked = earlier.FirstOrDefault(s => s.Status != LearningPathSessionStatus.NotStarted || availableSkills.Contains(s.TopicNodeId));
+                    if (blocked != null) throw new InvalidOperationException($"Hãy hoàn thành phần kiểm tra «{blocked.Title}» trước. Các phần mở theo thứ tự.");
+                }
                 if (capability.PrerequisiteSkillIds.Count > 0)
                 {
                     var pendingSections = await db.LearningPathSessions.AsNoTracking().Where(s =>
@@ -329,7 +342,7 @@ public sealed class LearningActivityExecutionService(EduTwinDbContext db, TimePr
             throw new InvalidOperationException("Đã hết giờ làm bài. Hãy xem kết quả; các câu đã nộp vẫn được giữ.");
         if (activity.SessionRun.Status != SessionRunStatus.InProgress || activity.Status == "Completed")
             throw new InvalidOperationException("Hoạt động đã nộp hoặc đang chờ đánh giá; không thể sửa.");
-        if (await db.ActivityRuns.AnyAsync(a => a.CenterId == activity.CenterId && a.SessionRunId == activity.SessionRunId &&
+        if (!LearningPathV4Evaluator.RequiresSubmissionConfirmation(activity.SessionRun) && await db.ActivityRuns.AnyAsync(a => a.CenterId == activity.CenterId && a.SessionRunId == activity.SessionRunId &&
             a.ActivityOrder < activity.ActivityOrder && a.Status != "Completed" && a.Status != "Submitted", ct))
             throw new InvalidOperationException("Hãy hoàn thành hoạt động trước đó.");
     }

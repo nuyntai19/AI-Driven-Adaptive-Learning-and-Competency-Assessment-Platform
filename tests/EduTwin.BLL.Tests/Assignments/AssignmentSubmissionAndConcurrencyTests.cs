@@ -88,6 +88,14 @@ public sealed class AssignmentSubmissionAndConcurrencyTests
         actor.SetupGet(t => t.Role).Returns(nameof(UserRole.Teacher));
         var clock = new MutableTimeProvider { UtcNow = now };
         var publish = new PublishExamResultsUseCase(db, actor.Object, clock);
+        assignment.DueAt = now.AddHours(2);
+        await db.SaveChangesAsync();
+        var early = await publish.ExecuteAsync(assignmentId, "test", default);
+        Assert.Equal(409, early.Status);
+        Assert.Contains("18:00 18/11/2026", early.Error);
+        Assert.Null(assignment.ResultsPublishedAt);
+        assignment.DueAt = now.AddHours(-1);
+        await db.SaveChangesAsync();
         actor.SetupGet(t => t.UserId).Returns(Guid.NewGuid());
         Assert.Equal(404, (await publish.ExecuteAsync(assignmentId, "test", default)).Status);
         actor.SetupGet(t => t.UserId).Returns(teacher);

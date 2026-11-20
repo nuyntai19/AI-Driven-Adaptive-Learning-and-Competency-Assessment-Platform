@@ -981,7 +981,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
             {canGrade && (selectedAssignment.kind === "Midterm" || selectedAssignment.kind === "Final") && (
               <div className="max-w-sm space-y-2 text-sm">
                 {selectedAssignment.resultsPublishedAt || publishResultsMutation.variables === selectedAssignmentId && publishResultsMutation.isSuccess
-                  ? <p role="status" className="font-semibold">Đã công bố kết quả cả đợt.</p>
+                  ? <p role="status" className="font-semibold">Đã công bố kết quả cả đợt.{selectedAssignment.resultsPublishedAt && ` Ngày công bố: ${new Date(selectedAssignment.resultsPublishedAt).toLocaleString("vi-VN")}.`}</p>
                   : confirmExamId === selectedAssignmentId ? <>
                     <p>Học sinh đã nộp sẽ thấy kết quả ngay sau khi công bố.</p>
                     <div className="flex flex-wrap gap-2">
@@ -992,7 +992,7 @@ export const AssignmentGradingWorkspace: React.FC<AssignmentGradingWorkspaceProp
                     </div>
                   </> : <button type="button" className="rounded-lg bg-indigo-600 px-3 py-2 font-semibold text-white" disabled={publishResultsMutation.isPending}
                     onClick={() => { publishResultsMutation.reset(); setConfirmExamId(selectedAssignmentId); }}>Công bố kết quả cả đợt</button>}
-                {publishResultsMutation.isError && publishResultsMutation.variables === selectedAssignmentId && <p role="alert" className="text-rose-700 dark:text-rose-300">{extractProblemDetails(publishResultsMutation.error).message}</p>}
+                {publishResultsMutation.isError && publishResultsMutation.variables === selectedAssignmentId && <p role="alert" className="text-rose-700 dark:text-rose-300">{extractProblemDetails(publishResultsMutation.error).detail || extractProblemDetails(publishResultsMutation.error).title || "Chưa thể công bố kết quả. Vui lòng thử lại."}</p>}
               </div>
             )}
 

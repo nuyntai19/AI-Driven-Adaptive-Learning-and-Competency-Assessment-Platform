@@ -523,7 +523,8 @@ html.student-theme.dark select optgroup {
   letter-spacing:-.05em;
 }
 .st-explore-intro em {
-  font-family:Georgia,serif;
+  font-family:var(--font-sans, Arial),sans-serif;
+  letter-spacing:normal;
   font-weight:500;
   color:var(--student-brand);
 }

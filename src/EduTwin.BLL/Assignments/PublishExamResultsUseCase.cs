@@ -32,7 +32,13 @@ public sealed class PublishExamResultsUseCase(EduTwinDbContext db, ITenantContex
         var now = clock.GetUtcNow().UtcDateTime;
         if (assignment.ExamAt > now || assignment.Status != AssignmentStatus.Closed &&
             (assignment.DueAt == null || assignment.DueAt > now))
-            return (409, "Kỳ thi phải kết thúc trước khi công bố.", null);
+        {
+            var releaseAt = assignment.DueAt is { } due && (assignment.ExamAt == null || due > assignment.ExamAt) ? due : assignment.ExamAt;
+            var releaseText = releaseAt.HasValue
+                ? $" Có thể công bố từ {TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(releaseAt.Value, DateTimeKind.Utc), TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh")):HH:mm dd/MM/yyyy} (giờ Việt Nam)."
+                : " Hãy đặt hạn kết thúc hoặc đóng kỳ thi trước khi công bố.";
+            return (409, "Kỳ thi phải kết thúc trước khi công bố." + releaseText, null);
+        }
 
         var progress = db.StudentAssignmentProgresses.Where(p => p.CenterId == center && p.AssignmentId == assignmentId && !p.IsDeleted);
         if (assignment.Status != AssignmentStatus.Closed && await progress.AnyAsync(p =>

@@ -797,6 +797,14 @@ public sealed partial class LearningPathV4Planner(EduTwinDbContext db, TimeProvi
                 item.RetryLabel = null;
                 item.RetryBlockedReason = null;
                 if (latest?.Status == SessionRunStatus.Completed) item.Status = "Completed";
+                var earlierSection = path.Sessions.Where(s => s.ClassId == classId && s.SessionOrder < session.SessionOrder &&
+                        pendingPlacementSkills.Contains(s.TopicNodeId.ToString()))
+                    .OrderBy(s => s.SessionOrder).FirstOrDefault();
+                if (active == null && item.CanStart && earlierSection != null)
+                {
+                    item.CanStart = false;
+                    item.RecommendationReason = $"Hãy hoàn thành phần kiểm tra «{earlierSection.Title}» trước. Các phần mở theo thứ tự.";
+                }
                 if (active == null && item.CanStart && LearningGoalScope.PlacementBlockReason(skill, map, pendingPlacementSkills) is { } placementBlock)
                 {
                     item.CanStart = false;

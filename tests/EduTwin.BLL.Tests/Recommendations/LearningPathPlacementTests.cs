@@ -36,6 +36,41 @@ public sealed class LearningPathPlacementTests
     }
 
     [Fact]
+    public async Task IndependentPlacementSections_OpenInOrder_InAgendaAndExecution()
+    {
+        using var f = new LearningPathV4Fixture();
+        var proposal = await Placement(f, "101", "102");
+        await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId);
+        var first = proposal.Milestones[0].Missions.Single();
+        var second = proposal.Milestones[1].Missions.Single();
+        var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
+        Assert.True(agenda.Missions.Single(m => m.MissionId == first.MissionId).CanStart);
+        Assert.False(agenda.Missions.Single(m => m.MissionId == second.MissionId).CanStart);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(second.MissionId)));
+        await Complete(f, first, 5);
+        agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
+        Assert.True(agenda.Missions.Single(m => m.MissionId == second.MissionId).CanStart);
+    }
+
+    [Fact]
+    public async Task PlacementDrafts_CanNavigateAndReviseBeforeSubmitting_WithoutCreatingAttempts()
+    {
+        using var f = new LearningPathV4Fixture();
+        var proposal = await Placement(f, "101");
+        await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId);
+        var run = await f.Execution.StartMissionAsync(f.Center, f.Student, Guid.Parse(proposal.Milestones[0].Missions.Single().MissionId));
+        var second = run.Activities[1];
+        var saved = await f.Execution.SaveDraftAsync(f.Center, f.Student, second.ActivityRunId,
+            new SaveActivityDraftRequest { ExpectedRevision = second.DraftRevision, DraftPayload = "{\"finalAnswer\":\"first answer\"}" });
+        var changed = await f.Execution.SaveDraftAsync(f.Center, f.Student, second.ActivityRunId,
+            new SaveActivityDraftRequest { ExpectedRevision = saved.DraftRevision, DraftPayload = "{\"finalAnswer\":\"revised answer\"}" });
+        Assert.False(changed.HasConflict);
+        var reopened = await f.Execution.GetActivityRunAsync(f.Center, f.Student, second.ActivityRunId);
+        Assert.Contains("revised answer", reopened.DraftPayload);
+        Assert.Empty(await f.Db.Attempts.Where(a => a.SessionRunId == run.SessionRunId).ToListAsync());
+    }
+
+    [Fact]
     public async Task TopicPrerequisites_ExpandToLeaves_AndPlacementCanAssessWithoutPriorMastery()
     {
         using var f = new LearningPathV4Fixture();
@@ -124,7 +159,7 @@ public sealed class LearningPathPlacementTests
     }
 
     [Fact]
-    public async Task ShortQuestionBank_DoesNotScoreUntestedSkillAsZero_OrLockTheOtherSections()
+    public async Task ShortQuestionBank_DoesNotScoreUntestedSkillAsZero_AndUnlocksNextSection()
     {
         using var f = new LearningPathV4Fixture();
         f.Db.Questions.RemoveRange(await f.Db.Questions.Where(q => q.PrimaryTopicNodeId == 101 && q.QuestionId > 10103).ToListAsync());
@@ -133,13 +168,14 @@ public sealed class LearningPathPlacementTests
         Assert.True(proposal.Milestones.First().Missions.Single().CanStart);
         Assert.Equal(3u, proposal.Milestones.First().Missions.Single().QuestionCount);
         await f.Planner.AcceptPathProposalAsync(f.Center, f.Student, proposal.ProposalId);
-        await Complete(f, proposal.Milestones.Last().Missions.Single(), 5);
+        await Complete(f, proposal.Milestones.First().Missions.Single(), 3);
         var agenda = await f.Planner.GetLearningAgendaAsync(f.Center, f.Student, f.English);
-        var missing = agenda.PlacementReport!.Skills.Single(s => s.SkillId == "101");
+        var missing = agenda.PlacementReport!.Skills.Single(s => s.SkillId == "102");
         Assert.Equal("NotStarted", missing.Status);
         Assert.Null(missing.ScoreOutOfTen);
         Assert.Equal(10m, agenda.PlacementReport.ScoreOutOfTen);
         Assert.False(agenda.PlacementReport.IsComplete);
+        Assert.True(agenda.Missions.Single(m => m.SkillId == "102").CanStart);
     }
 
     [Fact]
