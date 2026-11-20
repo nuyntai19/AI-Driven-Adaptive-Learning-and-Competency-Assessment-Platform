@@ -70,6 +70,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
   const needsAcknowledgement = !placement && missing.length > 0 && (acknowledgedScope !== scopeKey || !prerequisiteChoice);
   const [proposal, setProposal] = useState<PathProposalDto | null>(null);
   const [sourceProposal, setSourceProposal] = useState<PathProposalDto | null>(null);
+  const [placementAddedIds, setPlacementAddedIds] = useState<string[] | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [customizing, setCustomizing] = useState(false);
   const [editing, setEditing] = useState(!fromPlacement && (!!entryMode || !automatic));
@@ -157,24 +158,31 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
     : null;
 
   const generate = useMutation({ mutationFn: async () => {
+    const selectedIds = new Set(targets);
     const goal = await createOrUpdateLearningGoal(goalRequest(deadline));
     const value = await generatePathProposal({ subjectId, classId, goalId: goal.goalId });
-    // Placement starts right away: the chosen parts open as one test, section after section.
-    const accepted = value.isPlacement ? await acceptPathProposal(value.proposalId) : undefined;
-    return { value, accepted };
-  }, onSuccess: async ({ value, accepted }) => {
+    // Check the actual server proposal, including prerequisites absent from the local map.
+    const addedIds = value.isPlacement
+      ? [...new Set(value.milestones.flatMap(m => m.skillIds))].filter(id => !selectedIds.has(id)) : [];
+    const accepted = value.isPlacement && !addedIds.length ? await acceptPathProposal(value.proposalId) : undefined;
+    return { value, accepted, addedIds };
+  }, onSuccess: async ({ value, accepted, addedIds }) => {
     if (accepted) {
       await Promise.all([cache.invalidateQueries({ queryKey: ["learning-agenda"] }), cache.invalidateQueries({ queryKey: ["learning-paths"] })]);
       onAccepted(accepted); onPlacementStarted?.(); onClose(); return;
     }
-    setProposal(value); setSourceProposal(value); setEditing(false); contentRef.current?.scrollTo({ top: 0 }); } });
+    setProposal(value); setSourceProposal(value); setEditing(false);
+    setPlacementAddedIds(addedIds.length ? addedIds : null);
+    contentRef.current?.scrollTo({ top: 0 }); } });
   const generateProposal = generate.mutate;
   useEffect(() => {
     if ((fromPlacement || (automatic && !entryMode)) && isOpen && !started.current) { started.current = true; generateProposal(); }
   }, [automatic, entryMode, fromPlacement, isOpen, generateProposal]);
   const accept = useMutation({ mutationFn: () => acceptPathProposal(proposal!.proposalId), onSuccess: async res => {
     await Promise.all([cache.invalidateQueries({ queryKey: ["learning-agenda"] }), cache.invalidateQueries({ queryKey: ["learning-paths"] })]);
-    onAccepted(res); onClose();
+    onAccepted(res);
+    if (proposal?.isPlacement) onPlacementStarted?.();
+    onClose();
   } });
   const customize = useMutation({ mutationFn: (request: CustomizePathProposalRequest) => customizePathProposal(sourceProposal!.proposalId, request),
     onSuccess: value => {
@@ -187,12 +195,17 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
   const blockers = pathChangeBlockersFromError(accept.error);
   const infeasibleWithTarget = !!proposal && proposal.feasibilityStatus === "InsufficientTime" && proposal.targetScore != null;
   const input = "mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 dark:bg-slate-900";
+  const cancelPlacementAddition = () => {
+    if (accept.isPending) return;
+    setPlacementAddedIds(null); setProposal(null); setSourceProposal(null); setEditing(true); accept.reset();
+    contentRef.current?.scrollTo({ top: 0 });
+  };
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
     <section role="dialog" aria-modal="true" aria-labelledby="goal-title" className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100">
-      <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 pb-4"><div><h2 id="goal-title" className="text-2xl font-semibold">{customizing ? "Tùy chỉnh tuyến học" : placement ? "Kiểm tra đầu vào" : editing ? "Mục tiêu học" : fromPlacement ? "Lộ trình đề xuất từ kết quả kiểm tra ·" : "Tuyến học đề xuất"} {subjectName}</h2>
-        <p className="mt-2 text-sm text-slate-500">{placement ? "Chọn phần muốn kiểm tra. Bấm bắt đầu là làm ngay; các phần nối tiếp nhau trong một bài." : fromPlacement && !editing ? "Lộ trình lập từ kết quả kiểm tra đầu vào. Em có thể tùy chỉnh phần học, số câu và lịch học trước khi chọn." : entryMode === "Update" ? "Giữ phạm vi đã chọn và lập tuyến mới từ bài làm hiện có. Em có thể điều chỉnh trước khi xác nhận." : automatic ? "Mục tiêu, nội dung và lịch học đã được đề xuất sẵn. Xem lại hoặc chỉnh sửa, rồi chọn tuyến khi phù hợp." : "Chọn phạm vi của bạn. Xem trước chưa thay tuyến đang học; chỉ kích hoạt khi bạn xác nhận."}</p></div>
+      <header inert={placementAddedIds ? true : undefined} className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 pb-4"><div><h2 id="goal-title" className="text-2xl font-semibold">{customizing ? "Tùy chỉnh tuyến học" : placement ? "Kiểm tra đầu vào" : editing ? "Mục tiêu học" : fromPlacement ? "Lộ trình đề xuất từ kết quả kiểm tra ·" : "Tuyến học đề xuất"} {subjectName}</h2>
+        <p className="mt-2 text-sm text-slate-500">{placement ? "Chọn phần muốn kiểm tra. Nếu cần thêm phần nền tảng, hệ thống sẽ yêu cầu em xác nhận trước khi mở bài. Các phần nối tiếp nhau trong một bài." : fromPlacement && !editing ? "Lộ trình lập từ kết quả kiểm tra đầu vào. Em có thể tùy chỉnh phần học, số câu và lịch học trước khi chọn." : entryMode === "Update" ? "Giữ phạm vi đã chọn và lập tuyến mới từ bài làm hiện có. Em có thể điều chỉnh trước khi xác nhận." : automatic ? "Mục tiêu, nội dung và lịch học đã được đề xuất sẵn. Xem lại hoặc chỉnh sửa, rồi chọn tuyến khi phù hợp." : "Chọn phạm vi của bạn. Xem trước chưa thay tuyến đang học; chỉ kích hoạt khi bạn xác nhận."}</p></div>
         <button onClick={onClose} aria-label="Đóng" className="rounded-lg border px-3 py-1">×</button></header>
-      <div ref={contentRef} className="min-h-0 overflow-y-auto pr-1">
+      <div ref={contentRef} inert={placementAddedIds ? true : undefined} className="min-h-0 overflow-y-auto pr-1">
       {generate.error && <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-3 text-sm text-rose-800">{extractProblemDetails(generate.error).message}</p>}
       {automatic && !entryMode && !customizing && <div className="mt-5 grid gap-3 sm:grid-cols-3">{[["Bài làm cho thấy", recommendation.observation], ["Đề xuất cải thiện", recommendation.improvement], ["Phần nên học", recommendation.focus]].map(([label, value]) => <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 text-indigo-950" key={label}><h3 className="text-sm font-semibold">{label}</h3><p className="mt-2 text-sm leading-relaxed">{value}</p></div>)}</div>}
       {!automatic && recommendationSummary && <p className="mt-4 rounded-xl bg-indigo-50 p-4 text-sm text-indigo-900">{recommendationSummary}</p>}
@@ -270,7 +283,7 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
           <ul className="mt-3 space-y-2 text-sm">{m.missions.map(a => <li key={a.missionId}>{a.title} · {a.questionCount > 0 ? `${a.questionCount} câu · ` : ""}khoảng {a.estimatedMinutes} phút<p className="mt-1 text-xs text-slate-500">{a.selectionReason}</p>{a.canStart === false && <span className="ml-2 text-amber-700">Cần bổ sung nội dung</span>}</li>)}</ul></article>)}
       </div>}
       </div>
-      {!editing && !customizing && proposal && <footer className="mt-4 max-h-[45vh] shrink-0 space-y-3 overflow-y-auto border-t border-slate-200 pt-4">
+      {!editing && !customizing && !placementAddedIds && proposal && <footer className="mt-4 max-h-[45vh] shrink-0 space-y-3 overflow-y-auto border-t border-slate-200 pt-4">
         {accept.error && <div role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">
           <p className="font-semibold">Chưa chọn được tuyến mới</p>
           <p className="mt-1">{blockers.length ? "Cần xử lý các buổi dưới đây trước. Tuyến hiện tại và bài làm của bạn vẫn được giữ." : extractProblemDetails(accept.error).message}</p>
@@ -285,6 +298,21 @@ export function GoalAndProposalModal({ isOpen, onClose, subjectId, classId, onAc
         <div className="flex flex-wrap gap-3">{!proposal.isPlacement && <button disabled={accept.isPending} className="rounded-xl border px-4 py-3 disabled:opacity-50" onClick={() => { accept.reset(); customize.reset(); setCustomizing(true); contentRef.current?.scrollTo({ top: 0 }); }}>Tùy chỉnh tuyến học</button>}
           <button disabled={accept.isPending || infeasibleWithTarget} className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white disabled:opacity-50" onClick={() => accept.mutate()}>{accept.isPending ? "Đang kích hoạt…" : accept.error ? "Thử lại" : proposal.isPlacement ? "Bắt đầu kiểm tra đầu vào" : "Chọn tuyến học này"}</button></div>
       </footer>}
+      {placementAddedIds && proposal && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
+        <section role="alertdialog" aria-modal="true" aria-labelledby="placement-addition-title" aria-describedby="placement-addition-description"
+          onKeyDown={e => { if (e.key === "Escape") cancelPlacementAddition(); }}
+          className="max-h-[85vh] w-full max-w-xl space-y-4 overflow-y-auto rounded-2xl border border-amber-200 bg-white p-6 text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100">
+          <h3 id="placement-addition-title" className="text-lg font-semibold">Cần thêm phần nền tảng vào bài kiểm tra</h3>
+          <p id="placement-addition-description" className="text-sm">Em chưa chọn các phần dưới đây. Đây là nền tảng của nội dung em đã chọn nên cần kiểm tra thêm để xác định đúng điểm xuất phát.</p>
+          <ul className="list-disc space-y-2 pl-5 text-sm font-semibold">{placementAddedIds.map(id => <li key={id}>{skills.find(s => s.skillId === id)?.skillName ?? proposal.milestones.find(m => m.skillIds.includes(id))?.title ?? id}</li>)}</ul>
+          <p className="text-sm">Nếu đồng ý, các phần nền tảng sẽ được kiểm tra trước phần phụ thuộc. Em có thể quay lại thay đổi các phần đã chọn.</p>
+          {accept.error && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{extractProblemDetails(accept.error).message}</p>}
+          <div className="flex flex-wrap justify-end gap-3">
+            <button type="button" autoFocus disabled={accept.isPending} className="rounded-xl border px-4 py-2.5 disabled:opacity-50" onClick={cancelPlacementAddition}>Quay lại chọn phần</button>
+            <button type="button" disabled={accept.isPending} className="rounded-xl bg-indigo-600 px-4 py-2.5 font-semibold text-white disabled:opacity-50" onClick={() => accept.mutate()}>{accept.isPending ? "Đang mở bài…" : "Đồng ý thêm và bắt đầu"}</button>
+          </div>
+        </section>
+      </div>}
       {warningOpen && editing && estimateCurrent && infeasibleDeadline && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4">
         <section role="alertdialog" aria-modal="true" aria-labelledby="deadline-warning-title" onKeyDown={e => { if (e.key === "Escape") pickAnotherDeadline(); }}
           className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-rose-200 bg-white p-6 text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100">

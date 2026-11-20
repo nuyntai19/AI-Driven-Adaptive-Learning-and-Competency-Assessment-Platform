@@ -111,8 +111,9 @@ test("empty scope, invalid count and saving state cannot submit a customized pre
   tree = form.render({ ...props, pending: true }); assert.equal(button(tree, "Hủy tùy chỉnh").props.disabled, true);
 });
 
-function modal() {
+function modal(options: any = {}) {
   let index = 0; const mutations: any[] = []; const accepted: string[] = []; const customized: any[] = [];
+  const opened: string[] = [];
   const component = load("GoalAndProposalModal", {
     "@tanstack/react-query": { useQueryClient: () => ({ invalidateQueries: async () => {} }),
       useQuery: () => ({ data: undefined, error: null, isError: false, isPlaceholderData: false }), keepPreviousData: undefined, useMutation: (config: any) => {
@@ -122,9 +123,9 @@ function modal() {
           catch (error) { entry.error = error; } finally { entry.isPending = false; } } };
       entry.config = config; return entry;
     } },
-    "learningPathApi": { createOrUpdateLearningGoal: async () => ({ goalId: "goal" }), generatePathProposal: async () => proposal,
+    "learningPathApi": { createOrUpdateLearningGoal: async () => ({ goalId: "goal" }), generatePathProposal: async () => options.proposal ?? proposal,
       customizePathProposal: async (id: string, request: any) => { customized.push({ id, request }); return { ...proposal, ...request, proposalId: "customized", milestones: proposal.milestones.filter(m => m.skillIds.some(id => request.targetSkillIds.includes(id))) }; },
-      acceptPathProposal: async (id: string) => { accepted.push(id); return {}; } },
+      acceptPathProposal: async (id: string) => { if (options.failAcceptance) throw new Error("Không lưu được"); accepted.push(id); return {}; } },
     "learningPathRecommendation": recommendation, "learningMission": { pathChangeBlockersFromError: () => [] },
     "problemDetails": { extractProblemDetails: () => ({ message: "Không lưu được" }) },
     "studyTime": { formatStudyMinutes: (value: number) => `${value} phút` },
@@ -132,10 +133,57 @@ function modal() {
     "SkillScopeSelector": { SkillScopeSelector: () => null },
     "ProposalCustomizationForm": { ProposalCustomizationForm: CustomForm },
   });
-  const props = { isOpen: true, onClose() {}, onAccepted() {}, subjectId: "english", subjectName: "Tiếng Anh", skills: [] };
+  const props = { isOpen: true, onClose() { opened.push("closed"); }, onAccepted() { opened.push("accepted"); },
+    onPlacementStarted() { opened.push("started"); }, subjectId: "english", subjectName: "Tiếng Anh", skills: [], ...options.props };
   const render = () => { index = 0; return component.render(props); };
-  return { render, mutations, accepted, customized };
+  return { render, mutations, accepted, customized, opened };
 }
+
+const placementProposal = { ...proposal, isPlacement: true, requestedSkillIds: ["103"],
+  milestones: proposal.milestones.map((m, i) => ({ ...m, title: i === 0 ? "Hàm số" : "Hàm số và phương trình bậc hai" })) };
+
+test("placement shows server-added unselected foundations before acceptance; cancel keeps the selection", async () => {
+  // No local prerequisite graph: the server proposal must still trigger the warning.
+  const h = modal({ proposal: placementProposal, props: { entryMode: "Placement", suggestedSkillIds: ["103"] } });
+  h.render(); await h.mutations[0].mutate();
+  assert.equal(h.accepted.length, 0);
+  assert.equal(h.opened.length, 0);
+  const dialog = nodes(h.render()).find(node => node.props.role === "alertdialog");
+  assert.ok(dialog);
+  assert.match(renderToStaticMarkup(dialog), /Hàm số/);
+  assert.match(renderToStaticMarkup(dialog), /Em chưa chọn/);
+  button(dialog, "Quay lại chọn phần").props.onClick();
+  const tree = h.render();
+  assert.equal(nodes(tree).some(node => node.props.role === "alertdialog"), false);
+  assert.equal(h.accepted.length, 0);
+  assert.equal(h.opened.length, 0);
+  const scope = nodes(tree).find(node => node.props.selected);
+  assert.deepEqual(Array.from(scope.props.selected), ["103"]);
+});
+
+test("confirming extra placement foundations accepts the reviewed proposal and starts the test", async () => {
+  const h = modal({ proposal: placementProposal, props: { entryMode: "Placement", suggestedSkillIds: ["103"] } });
+  h.render(); await h.mutations[0].mutate();
+  await button(h.render(), "Đồng ý thêm và bắt đầu").props.onClick();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.deepEqual(h.accepted, ["original"]);
+  assert.deepEqual(h.opened, ["accepted", "started", "closed"]);
+});
+
+test("placement with no added sections starts directly, but failed confirmation never opens a test", async () => {
+  const direct = modal({ proposal: placementProposal, props: { entryMode: "Placement", suggestedSkillIds: ["101", "103"] } });
+  direct.render(); await direct.mutations[0].mutate();
+  assert.deepEqual(direct.accepted, ["original"]);
+  assert.deepEqual(direct.opened, ["accepted", "started", "closed"]);
+
+  const failed = modal({ proposal: placementProposal, failAcceptance: true, props: { entryMode: "Placement", suggestedSkillIds: ["103"] } });
+  failed.render(); await failed.mutations[0].mutate();
+  await button(failed.render(), "Đồng ý thêm và bắt đầu").props.onClick();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(failed.opened.length, 0);
+  assert.ok(nodes(failed.render()).find(node => node.props.role === "alertdialog"));
+  assert.match(renderToStaticMarkup(failed.render()), /Không lưu được/);
+});
 
 test("customizing the existing preview never opens goal editing, and acceptance uses the updated proposal", async () => {
   const h = modal(); h.render(); await h.mutations[0].mutate();
