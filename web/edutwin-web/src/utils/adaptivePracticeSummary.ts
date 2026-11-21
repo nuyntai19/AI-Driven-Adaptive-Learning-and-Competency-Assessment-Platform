@@ -23,3 +23,22 @@ const END_LABELS: Record<string, string> = {
 export function practiceEndLabel(closeReason?: string | null): string {
   return (closeReason && END_LABELS[closeReason]) || "Đã kết thúc";
 }
+
+export function practiceGoalLabel(status: string, requiresIntervention = false): string {
+  if (requiresIntervention || status === "RemediationRecommended") return "Cần bổ trợ";
+  switch (status) {
+    case "Achieved": return "Đạt mục tiêu";
+    case "PartiallyAchieved": return "Đạt một phần";
+    case "NotAchieved": return "Chưa đạt";
+    default: return "Chưa xác định";
+  }
+}
+
+export function teacherPracticeEndLabel(reason?: string | null): string {
+  if (reason === "StudentStopped") return "Học sinh dừng";
+  if (reason === "GoalAchievedWithEvidence") return "Đủ bằng chứng";
+  if (reason === "RemediationNeeded") return "Khó khăn lặp lại";
+  if (reason === "Expired") return "Phiên hết hiệu lực";
+  if (reason === "EvaluationFailed") return "Không hoàn tất đánh giá";
+  return practiceEndLabel(reason);
+}

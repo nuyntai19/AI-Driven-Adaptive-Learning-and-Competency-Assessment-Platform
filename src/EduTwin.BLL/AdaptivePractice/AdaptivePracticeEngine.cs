@@ -1119,12 +1119,15 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
     {
         var summary = await _dbContext.AdaptivePracticeSessionSummaries
             .Include(s => s.RecommendedNextTopic)
+            .Include(s => s.Session)
             // Only the student who owns the session may read its summary (A03): another student of the same
             // center gets "not found", exactly as for a session that does not exist.
             .SingleOrDefaultAsync(s => s.CenterId == centerId && s.StudentId == studentId && s.SessionId == sessionId && !s.IsDeleted, ct);
 
         if (summary == null) return null;
 
+        var outcome = summary.Session is null ? summary.GoalAchievementStatus
+            : PracticeGoalOutcome.Classify(summary.Session.CloseReason, summary.TotalQuestions, summary.StartingMastery, summary.EndingMastery);
         return new AdaptivePracticeSummaryDto
         {
             SessionId = summary.SessionId,
@@ -1136,11 +1139,13 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             TimeSpentSeconds = summary.TimeSpentSeconds,
             StartingMastery = summary.StartingMastery,
             EndingMastery = summary.EndingMastery,
-            GoalAchievementStatus = summary.GoalAchievementStatus,
+            GoalAchievementStatus = outcome,
             StrongSkills = DeserializeStringList(summary.StrongSkillIds),
             WeakSkills = DeserializeStringList(summary.WeakSkillIds),
             RemediationSkills = DeserializeStringList(summary.RemediationSkillIds),
-            SummaryConclusion = summary.SummaryConclusion,
+            SummaryConclusion = summary.GoalAchievementStatus == "Achieved" && outcome != "Achieved"
+                ? "Phiên luyện tập đã kết thúc; chưa đủ bằng chứng xác nhận đạt mục tiêu năng lực."
+                : summary.SummaryConclusion,
             RecommendedNextAction = summary.RecommendedNextAction,
             RecommendedNextTopicId = summary.RecommendedNextTopicId,
             RecommendedNextTopicName = summary.RecommendedNextTopic?.Name
@@ -1256,7 +1261,11 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
                 TopicName = x.Session.TopicNode.Name,
                 TotalQuestions = x.Session.Summary?.TotalQuestions ?? x.Session.QuestionCount,
                 CorrectCount = x.Session.Summary?.CorrectCount ?? 0,
-                GoalAchievementStatus = x.Session.Summary?.GoalAchievementStatus ?? (x.Session.CloseReason == AdaptivePracticeCloseReason.GoalAchievedWithEvidence ? "Achieved" : "NotAchieved"),
+                // Re-evaluate legacy summaries too; no historical answer/mastery data is rewritten.
+                GoalAchievementStatus = PracticeGoalOutcome.Classify(x.Session.CloseReason,
+                    x.Session.Summary?.TotalQuestions ?? x.Session.QuestionCount,
+                    x.Session.Summary?.StartingMastery ?? x.Session.StartingMastery,
+                    x.Session.Summary?.EndingMastery ?? x.Session.CurrentMastery),
                 CloseReason = x.Session.CloseReason,
                 CompletedAt = x.Session.CompletedAt,
                 RequiresIntervention = x.Session.CloseReason == AdaptivePracticeCloseReason.RemediationNeeded,
@@ -1558,13 +1567,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             }
         }
 
-        string goalStatus = session.CloseReason switch
-        {
-            AdaptivePracticeCloseReason.GoalAchievedWithEvidence => "Achieved",
-            AdaptivePracticeCloseReason.RemediationNeeded => "RemediationRecommended",
-            AdaptivePracticeCloseReason.QuestionLimitReached => session.CurrentMastery >= session.TargetMastery ? "Achieved" : "PartiallyAchieved",
-            _ => "PartiallyAchieved"
-        };
+        var goalStatus = PracticeGoalOutcome.Classify(session.CloseReason, total, session.StartingMastery, session.CurrentMastery);
 
         var strongSkills = new List<string>();
         var weakSkills = new List<string>();

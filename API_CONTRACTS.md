@@ -3292,3 +3292,9 @@ Proposal counts, session limits and next-question selection share question eligi
 Weakness picks the lowest-mastery available topic and explains a weaker unavailable topic when applicable. The mastered boundary matches the profile at 75%; practice above it is described as maintenance and improvement. LearningPath follows its current item or explicitly explains the missing/unavailable item and offers a weakness-based alternative. SpacedReview prioritizes due available topics and labels early review; an unavailable higher-priority topic is explained. CustomTopic exposes the full catalogue and each topic's availability.
 
 Regression checks: `dotnet test tests/EduTwin.BLL.Tests/EduTwin.BLL.Tests.csproj --filter FullyQualifiedName~AdaptivePractice`; frontend `npm test`, `npm run build`, and `npm run test:practice-browser`. The browser check uses isolated local fixtures, covers blocked choices, successful starts, an entirely unavailable catalogue and mobile layout, and never accesses live account data.
+
+### 93.3. Practice goal outcomes — 21/11/2026
+
+Session closure and learning-goal achievement are separate. `GoalAchievedWithEvidence` yields `Achieved`; `RemediationNeeded` yields `RemediationRecommended`. Other endings yield `PartiallyAchieved` only if at least one answer was submitted and ending mastery exceeds starting mastery; otherwise they yield `NotAchieved`. A question or time limit alone never certifies achievement. No new mandatory question quota is introduced.
+
+Teacher log labels are respectively “Đạt mục tiêu”, “Cần bổ trợ”, “Đạt một phần” and “Chưa đạt”; an unknown outcome is “Chưa xác định”. The ending reason is shown independently, including student stop, time budget, question stock exhaustion, expiry and evaluation failure. Existing summaries are normalized using the same policy when read by teacher/student endpoints without rewriting historical answers or mastery.

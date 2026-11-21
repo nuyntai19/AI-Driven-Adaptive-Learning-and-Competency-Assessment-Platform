@@ -1,6 +1,7 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { adaptivePracticeApi } from "../../api/adaptivePracticeApi";
+import { practiceGoalLabel, teacherPracticeEndLabel } from "../../utils/adaptivePracticeSummary";
 
 interface Props {
   classId?: string;
@@ -108,21 +109,11 @@ export const TeacherAdaptivePracticeSection: React.FC<Props> = ({ classId, subje
                             : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
                         }`}
                       >
-                        {s.goalAchievementStatus === "Achieved"
-                          ? "Đạt mục tiêu"
-                          : s.requiresIntervention
-                          ? "Cần bổ trợ"
-                          : "Hoàn thành"}
+                        {practiceGoalLabel(s.goalAchievementStatus, s.requiresIntervention)}
                       </span>
                     </td>
                     <td className="py-2.5 px-3 text-slate-500 text-[11px]">
-                      {s.closeReason === "GoalAchievedWithEvidence"
-                        ? "Đủ bằng chứng"
-                        : s.closeReason === "RemediationNeeded"
-                        ? "Khó khăn lặp lại"
-                        : s.closeReason === "QuestionLimitReached"
-                        ? "Hết số câu"
-                        : "Học sinh dừng"}
+                      {teacherPracticeEndLabel(s.closeReason)}
                     </td>
                     <td className="py-2.5 px-3 text-slate-400 text-[11px]">
                       {s.completedAt ? new Date(s.completedAt).toLocaleDateString("vi-VN") : "—"}
