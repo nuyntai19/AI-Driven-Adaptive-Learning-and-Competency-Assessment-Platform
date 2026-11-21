@@ -10,6 +10,7 @@
     "test:bundle": "npm run build && node --test tests/bundle/bundleBudget.test.ts",
     "test:subject-lifecycle-browser": "node tests/smoke/chrome_subject_lifecycle_smoke.cjs",
     "test:teacher-subject-browser": "node tests/smoke/chrome_teacher_subject_smoke.cjs",
+    "test:twin-remediation-browser": "node tests/smoke/chrome_twin_remediation_smoke.cjs",
     "test:math-browser": "node tests/smoke/chrome_math_input_smoke.cjs",
     "test:knowledge-draft-browser": "node tests/smoke/chrome_knowledge_draft_smoke.cjs",
     "test:practice-browser": "node tests/smoke/chrome_adaptive_practice_smoke.cjs",

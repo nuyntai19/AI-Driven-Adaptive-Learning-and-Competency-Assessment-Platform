@@ -116,20 +116,8 @@ public sealed class GetStudentTwinUseCase : IGetStudentTwinUseCase
             };
         }).ToList();
 
-        // 2. BehaviorTwin
-        var behavior = await _dbContext.BehaviorTwins.AsNoTracking()
-            .Where(b => b.CenterId == centerId && b.StudentId == studentId && b.SubjectId == subjectId && !b.IsDeleted)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        var behaviorDto = new BehaviorTwinSummaryDto
-        {
-            AvgTimeSpentSeconds = behavior?.AvgTimeSpentSeconds ?? 0m,
-            SkipRate = behavior?.SkipRate ?? 0m,
-            ChangeAnswerRate = behavior?.ChangeAnswerRate ?? 0m,
-            AvgConfidence = behavior?.AvgConfidence ?? 0m,
-            ConfidenceCalibration = behavior?.ConfidenceCalibration ?? 0m,
-            AttemptCount = behavior?.AttemptCount ?? 0u
-        };
+        var behaviorDto = await BehaviorTwinSummaryReader.ReadAsync(
+            _dbContext, centerId, studentId, subjectId, cancellationToken);
 
         var resultDto = new StudentTwinDataDto
         {

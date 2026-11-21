@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { organizationApi } from "../../api/organizationApi";
@@ -77,6 +77,7 @@ export function TeacherAssignmentEditorView() {
   const canUpdate = hasPermission(permissions.assignmentsUpdate);
   const canPublish = hasPermission(permissions.assignmentsPublish);
   const canReadClasses = hasPermission(permissions.classesRead);
+  const canReadStudents = hasPermission(permissions.studentsRead);
   const canReadQuestions = hasPermission(permissions.questionsRead);
   const canReadNodes = hasPermission(permissions.nodesRead);
   const canReadSubjects = hasPermission(permissions.subjectsRead);
@@ -95,9 +96,8 @@ export function TeacherAssignmentEditorView() {
 
   // Gap group URL params
   const paramClassId = searchParams.get("classId") || "";
-  const hasQuickActionContext = searchParams.has("topicNodeId") && searchParams.has("subjectId");
-  // Paired KG links carry a filter, never a recipient selection. Keep legacy gap-group links working.
-  const paramStudentIds = !isEditing && !hasQuickActionContext && searchParams.get("studentIds")
+  // Topic filters and explicit recipients are independent URL context.
+  const paramStudentIds = !isEditing && searchParams.get("studentIds")
     ? searchParams.get("studentIds")!.split(",").map((s) => s.trim()).filter(Boolean)
     : [];
 
@@ -179,6 +179,20 @@ export function TeacherAssignmentEditorView() {
     enabled: hasScope && canReadClasses,
     staleTime: 30_000,
   });
+
+  const recipientClassInitialized = useRef(false);
+  const recipientDetailQuery = useQuery({
+    queryKey: ["assignment-recipient-detail", user?.centerId, user?.userId, paramStudentIds[0]],
+    queryFn: () => organizationApi.getStudent(paramStudentIds[0]),
+    enabled: hasScope && canReadClasses && canReadStudents && !isEditing && !paramClassId && paramStudentIds.length === 1,
+  });
+  useEffect(() => {
+    if (recipientClassInitialized.current || !recipientDetailQuery.data) return;
+    recipientClassInitialized.current = true;
+    const matches = recipientDetailQuery.data.classes.filter(c => c.status === "Active" &&
+      (!searchParams.get("subjectId") || sameSubject(c.subject.subjectId, searchParams.get("subjectId")!)));
+    if (matches.length === 1) setClassId(matches[0].classId);
+  }, [recipientDetailQuery.data, searchParams]);
 
   // Specific class details query
   const classDetailQuery = useQuery({
@@ -450,12 +464,13 @@ export function TeacherAssignmentEditorView() {
 
   const handleClassChange = (nextClassId: string) => {
     if (isReadOnly) return;
+    recipientClassInitialized.current = true;
     setClassId(nextClassId);
     const nextSubjectId = classesData?.data.find(c => c.classId === nextClassId)?.subject?.subjectId;
     if (topicContext.kind === "none" && !sameSubject(selectedSubjectId, nextSubjectId)) setQuestionTopicId("");
     setQuestionIds([]);
-    setStudentIds([]);
-    setTargetMode("WholeClass");
+    setStudentIds(paramStudentIds);
+    setTargetMode(paramStudentIds.length > 0 ? "SelectedStudents" : "WholeClass");
     setQuestionGradeFilter("");
     setAllowGradeMismatch(false);
     setGradeMismatchReason("");
@@ -814,6 +829,13 @@ export function TeacherAssignmentEditorView() {
           error={formError.message}
           title="Không thể lưu cấu hình bài tập"
         />
+      )}
+
+      {!isEditing && targetMode === "SelectedStudents" && paramStudentIds.length > 0 && (
+        <p role="status" className="th-surface p-3 text-sm">
+          Đang soạn bài giao riêng cho {studentIds.length} học sinh.
+          {!classId && " Vui lòng chọn lớp phù hợp để tiếp tục; chế độ giao riêng và học sinh đã chọn được giữ nguyên."}
+        </p>
       )}
 
       {/* Wizard Step Progress Bar */}

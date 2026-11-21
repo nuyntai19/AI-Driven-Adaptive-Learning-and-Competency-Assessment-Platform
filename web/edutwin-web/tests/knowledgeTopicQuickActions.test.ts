@@ -133,6 +133,8 @@ test("assignment retains topic across same-subject classes, clears confirmed mis
   const changeClass = editor.slice(editor.indexOf("const handleClassChange"), editor.indexOf("const handleDueAtChange"));
   assert.match(changeClass, /topicContext\.kind === "none" && !sameSubject\(selectedSubjectId, nextSubjectId\)/);
   assert.doesNotMatch(changeClass, /setSearchParams/);
+  assert.match(changeClass, /setStudentIds\(paramStudentIds\)/);
+  assert.match(changeClass, /setTargetMode\(paramStudentIds\.length > 0 \? "SelectedStudents" : "WholeClass"\)/);
   assert.match(editor, /topicId: questionTopicId \|\| undefined/);
   assert.match(editor, /enabled: questionsReady/);
   assert.match(editor, /!classDetailQuery\.isError && !subjectMismatch/);
@@ -141,8 +143,7 @@ test("assignment retains topic across same-subject classes, clears confirmed mis
   assert.match(editor, /const isReadOnly = isEditing \?[^\n]*: !canCreate/);
   assert.match(editor, /canPublish && \(isEditing \|\| canCreate\)/);
   assert.match(editor, /Bạn vẫn cần tự chọn câu hỏi và đối tượng giao bài/);
-  assert.match(editor, /const hasQuickActionContext = searchParams\.has\("topicNodeId"\) && searchParams\.has\("subjectId"\)/);
-  assert.match(editor, /const paramStudentIds = !isEditing && !hasQuickActionContext && searchParams\.get\("studentIds"\)/);
+  assert.match(editor, /const paramStudentIds = !isEditing && searchParams\.get\("studentIds"\)/);
   const contextEffects = editor.slice(editor.indexOf("const topicContext ="), editor.indexOf("// Questions query for the subject"));
   assert.doesNotMatch(contextEffects, /setStudentIds|setTargetMode|setQuestionIds|\.mutate\(/);
 });

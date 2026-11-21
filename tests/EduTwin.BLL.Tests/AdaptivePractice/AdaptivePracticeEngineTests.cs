@@ -754,6 +754,10 @@ public sealed partial class AdaptivePracticeEngineTests : IDisposable
         var sessionDb = await _dbContext.AdaptivePracticeSessions.FindAsync(session.SessionId);
         Assert.Equal(1, sessionDb!.QuestionCount);
         Assert.Equal(first.UpdatedEstimatedMastery, newId.UpdatedEstimatedMastery);
+        var behavior = Assert.Single(await _dbContext.BehaviorTwins.ToListAsync());
+        Assert.Equal(1u, behavior.AttemptCount);
+        Assert.Equal(10m, behavior.AvgTimeSpentSeconds);
+        Assert.Single(await _dbContext.TwinUpdateHistories.ToListAsync());
     }
 
     [Fact]

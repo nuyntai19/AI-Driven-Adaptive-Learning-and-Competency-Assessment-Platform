@@ -4,7 +4,6 @@ import { useParams, useNavigate, useSearchParams, Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query";
 import {
   getTeacherStudentTwin,
-  getStudentTwinHistory,
 } from "../../api/digitalTwinApi";
 import { organizationApi } from "../../api/organizationApi";
 import {
@@ -54,13 +53,8 @@ export const TeacherStudentTwinView: React.FC = () => {
     enabled: Boolean(studentId && activeSubjectId),
   });
 
-  // Query Digital Twin History
-  const { data: twinHistory, isLoading: isHistoryLoading } = useQuery({
-    queryKey: ["teacherStudentTwinHistory", activeSubjectId],
-    queryFn: () =>
-      activeSubjectId ? getStudentTwinHistory(activeSubjectId) : [],
-    enabled: Boolean(activeSubjectId),
-  });
+  const twinHistory = twinData?.history ?? [];
+  const isHistoryLoading = isTwinLoading;
 
   // Computed metrics
   const topics = twinData?.topics ?? [];
@@ -129,8 +123,12 @@ export const TeacherStudentTwinView: React.FC = () => {
               className="th-primary-button"
               onClick={() => {
                 const weakNodeIds = weakTopics.map((t) => t.topicNodeId).join(",");
+                const matchingClasses = (studentDetail?.classes ?? []).filter(c =>
+                  c.status === "Active" && c.subject.subjectId === activeSubjectId);
+                const originClass = matchingClasses.find(c => c.classId === searchParams.get("classId"));
+                const recipientClass = originClass ?? (matchingClasses.length === 1 ? matchingClasses[0] : undefined);
                 navigate(
-                  `/giao-vien/bai-tap/tao-moi?studentIds=${studentId}&subjectId=${activeSubjectId}${
+                  `/giao-vien/bai-tap/tao-moi?studentIds=${studentId}&subjectId=${activeSubjectId}${recipientClass ? `&classId=${recipientClass.classId}` : ""}${
                     weakNodeIds ? `&topicNodeId=${weakTopics[0].topicNodeId}` : ""
                   }`
                 );

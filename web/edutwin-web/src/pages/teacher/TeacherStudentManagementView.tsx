@@ -820,7 +820,7 @@ export function TeacherStudentManagementView({ reports = false }: { reports?: bo
                             Hồ sơ →
                           </button>
                           <Link
-                            to={`/giao-vien/hoc-sinh/${student.studentId}/twin?subjectId=${selectedClass?.subject?.subjectId || ""}`}
+                            to={`/giao-vien/hoc-sinh/${student.studentId}/twin?classId=${selectedClassId}&subjectId=${selectedClass?.subject?.subjectId || ""}`}
                             className="th-secondary-button text-xs py-1 px-2.5 rounded-lg text-slate-700 dark:text-slate-200 hover:text-teal-600"
                             title="Xem bản sao số năng lực (Digital Twin)"
                           >

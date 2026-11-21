@@ -123,20 +123,42 @@ public sealed class GetTeacherStudentTwinUseCase : IGetTeacherStudentTwinUseCase
             };
         }).ToList();
 
-        // 2. BehaviorTwin
-        var behavior = await _dbContext.BehaviorTwins.AsNoTracking()
-            .Where(b => b.CenterId == centerId && b.StudentId == studentId && b.SubjectId == subjectId && !b.IsDeleted)
-            .FirstOrDefaultAsync(cancellationToken);
+        var behaviorDto = await BehaviorTwinSummaryReader.ReadAsync(
+            _dbContext, centerId, studentId, subjectId, cancellationToken);
 
-        var behaviorDto = new BehaviorTwinSummaryDto
-        {
-            AvgTimeSpentSeconds = behavior?.AvgTimeSpentSeconds ?? 0m,
-            SkipRate = behavior?.SkipRate ?? 0m,
-            ChangeAnswerRate = behavior?.ChangeAnswerRate ?? 0m,
-            AvgConfidence = behavior?.AvgConfidence ?? 0m,
-            ConfidenceCalibration = behavior?.ConfidenceCalibration ?? 0m,
-            AttemptCount = behavior?.AttemptCount ?? 0u
-        };
+        // The same ownership check and topic scope protect history and current mastery.
+        var query = _dbContext.TwinUpdateHistories.AsNoTracking()
+            .Where(h => h.CenterId == centerId && h.StudentId == studentId &&
+                h.SubjectId == subjectId && activeTopicIds.Contains(h.TopicNodeId));
+        var history = await query
+            .OrderByDescending(h => h.CreatedAt)
+            .ThenByDescending(h => h.HistoryId)
+            .Select(h => new TwinHistoryItemDto
+            {
+                HistoryId = h.HistoryId.ToString(CultureInfo.InvariantCulture),
+                TopicNodeId = h.TopicNodeId.ToString(CultureInfo.InvariantCulture),
+                TopicName = h.TopicNode.NodeName,
+                EventSource = h.EventSource.ToString(),
+                LearningContext = h.Attempt == null
+                    ? "Unknown"
+                    : h.Attempt.AssignmentId.HasValue ? "Assignment" : "AdaptivePractice",
+                ContextLabel = h.Attempt == null
+                    ? "Không xác định"
+                    : h.Attempt.AssignmentId.HasValue
+                        ? (h.Attempt.Assignment != null ? h.Attempt.Assignment.Title : "Bài tập")
+                        : "Luyện tập thích ứng",
+                QuestionText = h.Attempt != null ? h.Attempt.Question.QuestionText : null,
+                PreviousMastery = h.PreviousMastery,
+                NewMastery = h.NewMastery,
+                Delta = h.MasteryDelta,
+                ReasoningQuality = h.Analysis != null && h.Analysis.IsFallback && !h.Analysis.OverrideReasoningQuality.HasValue
+                    ? null : h.EffectiveReasoningQuality,
+                Explanation = h.Analysis != null && h.Analysis.IsFallback && !h.Analysis.OverrideReasoningQuality.HasValue
+                    ? "Bản ghi lịch sử chưa có phân tích lập luận hợp lệ. Chỉ số lập luận không khả dụng; hãy xem kết quả chấm đáp án hoặc xác nhận của giáo viên."
+                    : h.Explanation,
+                RecordedAt = h.CreatedAt
+            })
+            .ToListAsync(cancellationToken);
 
         var resultDto = new StudentTwinDataDto
         {
@@ -144,6 +166,7 @@ public sealed class GetTeacherStudentTwinUseCase : IGetTeacherStudentTwinUseCase
             SubjectId = subjectId,
             Topics = topicDtos,
             Behavior = behaviorDto,
+            History = history,
             ScopeMessage = topicDtos.Count == 0 ? scope.Reason : null
         };
 

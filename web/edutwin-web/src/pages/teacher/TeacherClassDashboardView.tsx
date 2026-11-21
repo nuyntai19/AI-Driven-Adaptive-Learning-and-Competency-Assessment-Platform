@@ -289,7 +289,7 @@ export function TeacherClassDashboardView() {
                           </td>
                           <td className="py-3 text-right">
                             <Link
-                              to={`/giao-vien/hoc-sinh/${s.studentId}/twin?subjectId=${dashboard.class.subjectId}`}
+                              to={`/giao-vien/hoc-sinh/${s.studentId}/twin?classId=${selectedClassId}&subjectId=${dashboard.class.subjectId}`}
                               className="th-secondary-button text-xs py-1 px-2.5"
                             >
                               Xem Twin →

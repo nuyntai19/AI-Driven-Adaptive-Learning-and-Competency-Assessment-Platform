@@ -918,6 +918,10 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             return await SubmitAnswerCoreAsync(centerId, studentId, sessionId, request, utcNow, ct);
         }
 
+        // Observed telemetry counts once, after the idempotency checks above.
+        await new EduTwin.BLL.DigitalTwin.BehaviorTwinUpdater(_dbContext)
+            .UpdateAsync(attempt, session.SubjectId, utcNow, ct);
+
         // Update SessionItem
         item.AnsweredAt = utcNow;
         item.Status = AdaptiveSessionItemStatus.Answered;

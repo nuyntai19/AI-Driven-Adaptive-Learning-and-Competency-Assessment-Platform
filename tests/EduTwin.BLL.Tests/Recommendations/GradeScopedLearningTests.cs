@@ -171,6 +171,35 @@ public sealed class GradeScopedLearningTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(result.Data.ScopeMessage));
     }
 
+    [Fact]
+    public async Task TeacherTwin_IncludesHistoricalAdaptiveTelemetryAndCorrectStudentHistory()
+    {
+        GraphScopeFixture.Approve(db, center, subject, 12, 1);
+        db.Questions.Add(Question(10, 1, 12));
+        for (ulong id = 1; id <= 11; id++)
+        {
+            db.Attempts.Add(new EduTwin.DAL.AssessmentAndReasoning.Attempt {
+                CenterId = center, StudentId = student, AttemptId = id, QuestionId = 10,
+                FinalAnswer = "A", ReasoningLanguage = "vi", TimeSpentSeconds = 30,
+                Status = EduTwin.Contracts.AssessmentAndReasoning.AttemptStatus.Completed,
+                ClientSubmissionId = Guid.NewGuid(), CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+            db.TwinUpdateHistories.Add(new TwinUpdateHistory { CenterId = center, StudentId = student,
+                SubjectId = subject, TopicNodeId = 1, AttemptId = id, HistoryId = id,
+                CalculationVersion = "adaptive-v1", CalculationBreakdown = System.Text.Json.JsonDocument.Parse("{}"), Explanation = "Adaptive answer", CreatedAt = DateTime.UtcNow });
+        }
+        // Another student's observations must never appear in this student's Twin.
+        db.TwinUpdateHistories.Add(new TwinUpdateHistory { CenterId = center, StudentId = Guid.NewGuid(),
+            SubjectId = subject, TopicNodeId = 1, HistoryId = 12,
+            CalculationVersion = "adaptive-v1", CalculationBreakdown = System.Text.Json.JsonDocument.Parse("{}"), Explanation = "Other student", CreatedAt = DateTime.UtcNow });
+        await db.SaveChangesAsync();
+        var result = await TeacherTwin().ExecuteAsync(student, subject, default);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(11u, result.Data!.Behavior.AttemptCount);
+        Assert.Equal(30m, result.Data.Behavior.AvgTimeSpentSeconds);
+        Assert.Equal(11, result.Data.History.Count);
+        Assert.All(result.Data.History, h => Assert.Equal("AdaptivePractice", h.LearningContext));
+    }
+
     private GetTeacherStudentTwinUseCase TeacherTwin()
     {
         var tenant = new TenantContext(); tenant.Initialize(center, teacher, "Teacher", 1);
