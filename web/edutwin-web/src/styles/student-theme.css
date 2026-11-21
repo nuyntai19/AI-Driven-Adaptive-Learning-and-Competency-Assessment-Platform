@@ -680,6 +680,7 @@ html.student-theme.dark select optgroup {
   overflow:auto;
   padding:26px;
   background:var(--student-surface);
+  color:var(--student-ink);
   border:1px solid var(--student-border);
   border-radius:30px;
   box-shadow:var(--student-shadow-lg);
@@ -738,6 +739,30 @@ html.student-theme.dark select optgroup {
   opacity:.55;
   cursor:default;
 }
+.st-focus-alarm-setting {
+  margin-top:18px;
+  padding:14px;
+  border:1px solid var(--student-border);
+  border-radius:16px;
+  background:var(--student-surface-subtle);
+}
+.st-focus-alarm-setting label { display:block; margin-bottom:8px; font-weight:650; }
+.st-focus-alarm-setting input {
+  width:100%; padding:10px 12px; border:1px solid var(--student-border);
+  border-radius:10px; color:var(--student-ink); background:var(--student-surface);
+  font:inherit;
+}
+html.student-theme.dark .st-focus-alarm-setting input { color-scheme:dark; }
+.st-focus-sound-setting { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:10px; margin-top:18px; font-size:13px; }
+.st-focus-sound-setting label { display:flex; align-items:center; gap:8px; }
+.st-focus-sound-setting button { text-decoration:underline; font-weight:650; cursor:pointer; }
+.st-focus-alert {
+  position:fixed; right:18px; bottom:100px; z-index:66;
+  width:min(360px,calc(100vw - 36px)); padding:18px;
+  border:2px solid var(--student-brand); border-radius:18px;
+  color:var(--student-ink); background:var(--student-surface); box-shadow:var(--student-shadow-lg);
+}
+.st-focus-alert p { margin-top:8px; font-size:14px; }
 @media(min-width:1280px) {
   .st-mission-title {
     font-size:36px!important;
