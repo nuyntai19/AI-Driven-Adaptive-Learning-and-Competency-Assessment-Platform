@@ -8,6 +8,7 @@ import { useAuthStore } from "../stores/authStore";
 import { practiceEndLabel } from "../utils/adaptivePracticeSummary";
 import { BookmarkedQuestions } from "../components/student/BookmarkedQuestions";
 import type { AdaptivePracticeMode } from "../types/adaptivePractice";
+import { transitionPracticeSession } from "../api/practiceSessionTransitions";
 
 const CARD = "st-card st-spot p-5 sm:p-6";
 const PRIMARY = "st-btn-primary group inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-bold whitespace-nowrap [font-family:var(--student-font-display)]";
@@ -131,11 +132,13 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["adaptive-practice"] }),
   });
 
-  const handleResumeSession = () => {
-    if (activeSession && canSubmitPractice) {
-      navigate(`/hoc-tap/luyen-tap/phien/${activeSession.sessionId}`);
-    }
-  };
+  const resumeSessionMutation = useMutation({
+    mutationFn: () => {
+      if (!activeSession || !canSubmitPractice) throw new Error("Chưa có quyền tiếp tục phiên luyện tập.");
+      return transitionPracticeSession(queryClient, activeSession.sessionId, "resume");
+    },
+    onSuccess: (session) => navigate(`/hoc-tap/luyen-tap/phien/${session.sessionId}`),
+  });
 
   const recentQuestions = history.reduce((sum, item) => sum + item.totalQuestions, 0);
   const recentCorrect = history.reduce((sum, item) => sum + item.correctCount, 0);
@@ -159,6 +162,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
       {activeSessionQuery.isError && <div role="alert" className={CARD}><p>Chưa kiểm tra được phiên đang học. Tải lại trước khi mở phiên mới.</p><button type="button" className={`${OUTLINE} mt-3`} onClick={() => void activeSessionQuery.refetch()}>Kiểm tra lại phiên</button></div>}
       {createSessionMutation.isError && <div role="alert" className={CARD}><p>Chưa bắt đầu được phiên luyện tập. Lựa chọn của bạn vẫn được giữ; thử lại hoặc kiểm tra kết nối.</p></div>}
       {stopActiveSessionMutation.isError && <div role="alert" className={CARD}><p>Chưa dừng được phiên. Bạn có thể thử lại; bài làm đã gửi vẫn được giữ.</p></div>}
+      {resumeSessionMutation.isError && <div role="alert" className={CARD}>Chưa tiếp tục được phiên. Bài làm đã lưu vẫn được giữ; hãy thử lại.</div>}
 
       {/* Active session banner */}
       {activeSession && (
@@ -175,14 +179,14 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <button type="button" onClick={handleResumeSession} disabled={!canSubmitPractice} className={`${PRIMARY} !px-5 !py-2.5`}>
+            <button type="button" onClick={() => resumeSessionMutation.mutate()} disabled={!canSubmitPractice || resumeSessionMutation.isPending || stopActiveSessionMutation.isPending} className={`${PRIMARY} !px-5 !py-2.5`}>
               <span>Tiếp tục luyện tập</span>
               <span className="st-arrow"><Icon d={ICON_ARROW} className="h-4 w-4" /></span>
             </button>
             <button
               type="button"
               onClick={() => stopActiveSessionMutation.mutate()}
-              disabled={stopActiveSessionMutation.isPending || !canManagePractice}
+              disabled={stopActiveSessionMutation.isPending || resumeSessionMutation.isPending || !canManagePractice}
               className={OUTLINE}
             >
               {stopActiveSessionMutation.isPending ? "Đang dừng..." : "Dừng phiên này"}

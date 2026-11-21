@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-module.exports = async ({ page, evaluate, waitFor, port }) => {
+module.exports = async ({ page, evaluate, waitFor, delay, port }) => {
   const selectTopic = async value => {
     await evaluate(`(() => { const e = document.querySelector('#topic-dropdown'); e.value = ${JSON.stringify(value)}; e.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   };
@@ -43,4 +43,5 @@ module.exports = async ({ page, evaluate, waitFor, port }) => {
   assert.equal(await evaluate("document.querySelector('#topic-dropdown').options.length"), 3);
   assert.equal(await evaluate("Array.from(document.querySelectorAll('button')).some(b => !b.disabled && b.textContent.includes('Bắt đầu'))"), false);
   console.log('PASS: full topic catalogue, blocked choice reason, start guard, available choice starts, all-blocked catalogue, mobile layout.');
+  await require('./practice-session-checks.cjs')({ page, evaluate, waitFor, delay, port });
 };

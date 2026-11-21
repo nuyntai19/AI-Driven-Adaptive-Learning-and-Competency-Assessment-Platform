@@ -21,6 +21,8 @@ import type {
   AdaptivePracticeHint,
   AdaptivePracticeAnswerFeedback,
 } from "../types/adaptivePractice";
+import { transitionPracticeSession } from "../api/practiceSessionTransitions";
+import { studentScopeUrl } from "../utils/studentAcademicNavigation";
 
 const PANEL = "rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 dark:border-slate-800 dark:bg-[#0f172a]";
 const PRESS = "transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97] motion-reduce:transform-none";
@@ -63,6 +65,8 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   const [isHintOpen, setIsHintOpen] = useState<boolean>(false);
   const [feedback, setFeedback] = useState<AdaptivePracticeAnswerFeedback | null>(null);
   const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [sessionTransition, setSessionTransition] = useState<"pause" | "resume" | null>(null);
+  const [sessionActionError, setSessionActionError] = useState<string | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState<boolean>(false);
   const [isStopping, setIsStopping] = useState<boolean>(false);
   const [stopError, setStopError] = useState<string | null>(null);
@@ -97,7 +101,9 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
   const questionQuery = useQuery({
     queryKey: ["adaptive-practice", "question", sessionId],
     queryFn: () => adaptivePracticeApi.getNextQuestion(sessionId!),
-    enabled: !!sessionId && session?.status === "InProgress" && !feedback,
+    // On return, cached InProgress may describe a session that is now paused.
+    // Verify the session first; never request a question using that stale status.
+    enabled: !!sessionId && sessionQuery.isFetchedAfterMount && session?.status === "InProgress" && !isPaused && !sessionTransition && !feedback,
     refetchOnWindowFocus: false,
   });
   const question = questionQuery.data;
@@ -121,7 +127,8 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
 
   // The server closes the session when no question is left, so the cached
   // status is stale; refresh it to show the ended state instead of nothing.
-  const questionAnsweredEmpty = questionQuery.isSuccess && !questionQuery.data && !feedback;
+  const questionAnsweredEmpty = questionQuery.isSuccess && !questionQuery.isFetching && !questionQuery.data && !feedback
+    && session?.status === "InProgress" && !isPaused && !sessionTransition;
   const refetchSession = sessionQuery.refetch;
   useEffect(() => {
     if (questionAnsweredEmpty) void refetchSession();
@@ -268,23 +275,38 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
 
   // Pause Session
   const handlePause = async () => {
-    if (!sessionId) return;
-    await adaptivePracticeApi.pauseSession(sessionId);
-    pausedAtRef.current = Date.now();
-    setIsPaused(true);
+    if (!sessionId || sessionTransition) return;
+    setSessionTransition("pause");
+    setSessionActionError(null);
+    try {
+      await transitionPracticeSession(queryClient, sessionId, "pause");
+      pausedAtRef.current = Date.now();
+      setIsPaused(true);
+    } catch {
+      setSessionActionError("Chưa tạm dừng được phiên. Bài làm của bạn vẫn được giữ; hãy thử lại.");
+    } finally {
+      setSessionTransition(null);
+    }
   };
 
   // Resume Session
   const handleResume = async () => {
-    if (!sessionId) return;
-    await adaptivePracticeApi.resumeSession(sessionId);
-    if (pausedAtRef.current !== null && question) {
-      startTimeRef.current += Date.now() - pausedAtRef.current;
-      rememberQuestionStart(String(question.sessionItemId), startTimeRef.current);
-      pausedAtRef.current = null;
+    if (!sessionId || sessionTransition) return;
+    setSessionTransition("resume");
+    setSessionActionError(null);
+    try {
+      await transitionPracticeSession(queryClient, sessionId, "resume");
+      if (pausedAtRef.current !== null && question) {
+        startTimeRef.current += Date.now() - pausedAtRef.current;
+        rememberQuestionStart(String(question.sessionItemId), startTimeRef.current);
+        pausedAtRef.current = null;
+      }
+      setIsPaused(false);
+    } catch {
+      setSessionActionError("Chưa tiếp tục được phiên. Bài làm của bạn vẫn được giữ; hãy thử lại.");
+    } finally {
+      setSessionTransition(null);
     }
-    setIsPaused(false);
-    queryClient.invalidateQueries({ queryKey: ["adaptive-practice", "session", sessionId] });
   };
 
   // Close Session voluntarily
@@ -413,12 +435,12 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
           <div className="min-w-0 basis-full sm:basis-auto">
             <div className="truncate text-sm font-bold text-slate-900 dark:text-white">{session?.topicName}</div>
             <div className="text-xs tabular-nums text-slate-500 dark:text-slate-400">
-              Câu {question?.sequenceNumber || session?.questionCount || 1} · dự kiến {session?.minimumQuestions}–{session?.maximumQuestions} câu · mục tiêu {session?.targetMastery.toFixed(0)}%
+              Câu {question?.sequenceNumber || (session?.questionCount ?? 0) + 1} · dự kiến {session?.minimumQuestions}–{session?.maximumQuestions} câu · mục tiêu {session?.targetMastery.toFixed(0)}%
             </div>
           </div>
           <div className="flex w-full items-center gap-2 sm:w-auto sm:shrink-0">
             <span className="mr-auto px-0 sm:mr-0 sm:px-2 text-sm font-semibold tabular-nums text-slate-700 dark:text-slate-300" aria-label="Thời gian đã làm trên thời gian dự kiến">{formatTime(elapsedSeconds)} / {session?.timeBudgetMinutes}:00</span>
-            <button type="button" onClick={handlePause} disabled={isPaused || session?.status !== "InProgress"} className={SECONDARY}>Tạm dừng</button>
+            <button type="button" onClick={handlePause} disabled={isPaused || !!sessionTransition || submitMutation.isPending || session?.status !== "InProgress"} className={SECONDARY}>Tạm dừng</button>
             <button type="button" onClick={() => setShowExitConfirm(true)} className={`rounded-lg px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 cursor-pointer dark:text-rose-400 dark:hover:bg-rose-950/40 ${PRESS}`}>
               Dừng phiên
             </button>
@@ -427,17 +449,27 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
       </header>
 
       <main className="flex-1 w-full max-w-[1700px] mx-auto px-4 sm:px-6 py-3 space-y-3">
-        {!question && !feedback && (questionQuery.isError || session?.status === "Paused") && (
+        {sessionActionError && !isPaused && <p role="alert" className={`${PANEL} text-sm text-rose-700`}>{sessionActionError}</p>}
+        {!question && !feedback && (
           <div role={questionQuery.isError ? "alert" : "status"} className={`${PANEL} text-sm`}>
             <p className="font-semibold text-slate-900 dark:text-white">
-              {questionQuery.isError ? "Không tải được câu hỏi tiếp theo." : "Phiên luyện tập đang tạm dừng."}
+              {session?.status === "Paused" ? "Phiên luyện tập đang tạm dừng."
+                : questionQuery.isFetching || sessionQuery.isFetching || sessionTransition ? "Đang tải câu hỏi hiện tại..."
+                : "Chưa tải được câu hỏi hiện tại. Bài làm đã lưu vẫn được giữ."}
             </p>
             <button
               type="button"
-              onClick={() => (questionQuery.isError ? void questionQuery.refetch() : void handleResume())}
+              onClick={() => {
+                if (session?.status === "Paused") void handleResume();
+                else {
+                  void sessionQuery.refetch();
+                  void questionQuery.refetch();
+                }
+              }}
+              disabled={!!sessionTransition || questionQuery.isFetching || sessionQuery.isFetching}
               className={`mt-3 ${PRIMARY}`}
             >
-              {questionQuery.isError ? "Thử lại" : "Tiếp tục luyện tập"}
+              {session?.status === "Paused" ? "Tiếp tục luyện tập" : "Thử lại"}
             </button>
           </div>
         )}
@@ -640,18 +672,23 @@ export const AdaptivePracticeSessionPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleResume}
+                disabled={!!sessionTransition}
                 className="px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-xs shadow-md cursor-pointer"
               >
                 Tiếp tục ngay
               </button>
               <button
                 type="button"
-                onClick={() => navigate("/hoc-tap/luyen-tap")}
+                onClick={() => navigate(studentScopeUrl("/hoc-tap/luyen-tap", new URLSearchParams({
+                  subjectId: session?.subjectId ?? "", classId: session?.classId ?? "",
+                })))}
+                disabled={!!sessionTransition}
                 className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 Rời khỏi trang
               </button>
             </div>
+            {sessionActionError && <p role="alert" className="text-sm text-rose-700">{sessionActionError}</p>}
           </div>
         </div>
       )}
