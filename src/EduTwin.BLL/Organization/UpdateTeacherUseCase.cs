@@ -106,7 +106,7 @@ public class UpdateTeacherUseCase : IUpdateTeacherUseCase
         if (teacher.SubjectId != subject.SubjectId && await _dbContext.Classes.AnyAsync(c =>
                 c.CenterId == centerId && c.TeacherId == teacherId && !c.IsDeleted &&
                 c.Status == ClassStatus.Active && c.SubjectId != subject.SubjectId, cancellationToken))
-            return UpdateTeacherResult.Failure(ErrorCodes.ValidationFailed);
+            return UpdateTeacherResult.Failure(ErrorCodes.TeacherSubjectChangeBlocked);
 
         // Set original value for EF optimistic concurrency
         _dbContext.Entry(teacher).Property(t => t.RowVersion).OriginalValue = parsedRowVersion;

@@ -250,6 +250,22 @@ public class TeachersController : ControllerBase
             return Ok(result.Data);
         }
 
+        if (result.ErrorCode == ErrorCodes.TeacherSubjectChangeBlocked)
+        {
+            return UnprocessableEntity(new ProblemDetails
+            {
+                Title = "Chưa thể đổi bộ môn của giáo viên",
+                Status = 422,
+                Detail = "Không thể đổi bộ môn vì giáo viên còn phụ trách lớp đang hoạt động thuộc môn khác. Vui lòng chuyển giao các lớp này cho giáo viên phù hợp trước khi đổi môn.",
+                Instance = HttpContext.Request.Path,
+                Extensions =
+                {
+                    ["traceId"] = Activity.Current?.Id ?? HttpContext.TraceIdentifier,
+                    ["errorCode"] = ErrorCodes.TeacherSubjectChangeBlocked
+                }
+            });
+        }
+
         if (result.ErrorCode == ErrorCodes.ValidationFailed)
         {
             return BadRequest(new ProblemDetails

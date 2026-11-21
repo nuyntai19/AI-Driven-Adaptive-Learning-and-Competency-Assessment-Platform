@@ -167,7 +167,7 @@ const CenterManagerTeacherListView: React.FC = () => {
         showFeedback("conflict", "Dữ liệu giáo viên đã bị thay đổi bởi một phiên làm việc khác. Vui lòng nạp lại dữ liệu.");
       } else {
         const details = extractProblemDetails(error);
-        showFeedback("error", mapSafeOperationalError(error, "Không thể cập nhật thông tin giáo viên."), details.traceId);
+        showFeedback("error", mapSafeOperationalError({ status: details.status, errorCode: details.errorCode }, "Không thể cập nhật thông tin giáo viên."), details.traceId);
       }
     },
   });

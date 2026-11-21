@@ -23,6 +23,7 @@ const teacher = (id: string, subjectId: string, name: string) => ({ teacherId: i
 const math = teacher("teacher.math", "math", "Giáo viên Toán");
 const math2 = teacher("teacher.math2", "math", "Giáo viên Toán 2");
 const eng = teacher("teacher.english", "eng", "Giáo viên Tiếng Anh");
+eng.classCount = 3;
 const meta = { traceId: "smoke", timestamp: new Date().toISOString() };
 const classDto = { classId: "math-class", className: "Lớp Toán", academicYear: "2026-2027", gradeLevel: 10,
   subject: { subjectId: "math", subjectName: "Toán" }, teacher: { teacherId: math.teacherId, displayName: math.displayName }, studentCount: 0, status: "Active" as const, rowVersion: "1" };
@@ -33,6 +34,10 @@ organizationApi.listTeachers = async (params) => {
   return { data, meta: { ...meta, page: params.page, pageSize: params.pageSize, totalItems: params.subjectId === "math" ? 2 : data.length, totalPages: params.subjectId === "math" ? 2 : data.length ? 1 : 0 } };
 };
 organizationApi.createTeacher = async (request) => { state.capturedTeachers.push({ ...request }); return teacher("new.teacher", request.subjectId, request.displayName); };
+organizationApi.updateTeacher = async () => { throw { response: { status: 422, data: {
+  errorCode: "TEACHER_SUBJECT_CHANGE_BLOCKED", traceId: "subject-change-support",
+  detail: "Không thể đổi bộ môn vì giáo viên còn phụ trách lớp đang hoạt động thuộc môn khác.",
+} } }; };
 organizationApi.listClasses = async () => ({ data: [classDto], meta: { ...meta, page: 1, pageSize: 10, totalItems: 1, totalPages: 1 } });
 organizationApi.createClass = async (request) => { state.capturedClasses.push({ ...request }); return classDto; };
 useAuthStore.setState({ accessToken: "smoke", sessionStatus: "authenticated", user: { userId: "manager", centerId: "center", centerName: "Center", username: "manager", displayName: "Manager", accountType: "CenterManager", role: "CenterManager", roles: [], authorizationVersion: 1, permissions: Object.values(permissions) } });

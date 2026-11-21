@@ -449,7 +449,7 @@ Request:
 
 Response 200: Teacher DTO với rowVersion mới.
 
-`subjectId` bắt buộc. Không được đổi bộ môn nếu còn lớp đang hoạt động thuộc môn khác; trả 400 `VALIDATION_FAILED`. Có thể giữ môn đã ngừng hoạt động khi cập nhật thông tin khác. Hồ sơ cũ chưa xác định được môn trả `subjectId: null` và cần chọn bộ môn khi chỉnh sửa.
+`subjectId` bắt buộc. Không được đổi bộ môn nếu còn lớp đang hoạt động thuộc môn khác; trả 422 `TEACHER_SUBJECT_CHANGE_BLOCKED` cùng lý do và hướng dẫn chuyển giao các lớp cho giáo viên phù hợp trước khi đổi môn. Lỗi này được phân biệt với dữ liệu nhập sai (400 `VALIDATION_FAILED`) và xung đột phiên bản (409 `CONCURRENCY_CONFLICT`). Có thể giữ môn đã ngừng hoạt động khi cập nhật thông tin khác. Hồ sơ cũ chưa xác định được môn trả `subjectId: null` và cần chọn bộ môn khi chỉnh sửa.
 
 ## 20. DELETE /teachers/{teacherId}
 

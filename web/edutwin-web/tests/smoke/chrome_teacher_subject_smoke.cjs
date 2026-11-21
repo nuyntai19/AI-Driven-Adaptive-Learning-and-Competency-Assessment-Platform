@@ -108,6 +108,18 @@ async function run() {
     await waitFor('window.smokeState.capturedTeachers.length === 1');
     const created=await evaluate('window.smokeState.capturedTeachers[0]');assert.equal(created.subjectId,'math');assert.equal(created.department,undefined);
     console.log('PASS teacher create: required subject combobox, all required fields, whitespace validation, subject ID payload');
+    await click('[id="btn-edit-teacher-teacher.english"]');
+    await waitFor("!!document.querySelector('#edit-department')");
+    await set('#edit-department','math');
+    await click('#btn-save-edit-teacher');
+    await waitFor("document.body.textContent.includes('chuyển giao các lớp này cho giáo viên phù hợp')");
+    assert.equal(await evaluate("document.querySelector('#edit-department').value"),'math');
+    assert.equal(await evaluate("document.querySelector('#edit-display-name').value"),'Giáo viên Tiếng Anh');
+    assert.equal(await evaluate("document.body.textContent.includes('Dữ liệu nhập vào chưa hợp lệ')"),false);
+    assert.equal(await evaluate("document.body.textContent.split('subject-change-support').length - 1"),1);
+    await screenshot('teacher-subject-change-blocked');
+    await evaluate("Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'Hủy').click()");
+    console.log('PASS teacher subject change: explains active classes, offers transfer action, keeps form values, trace shown once');
     await click('#switch-classes');await waitFor("!!document.querySelector('#btn-open-create-class')");await click('#btn-open-create-class');
     assert.equal(await evaluate("document.querySelector('#select-teacher').disabled"),true);
     await set('#select-subject','math');await waitFor("document.querySelector('#select-teacher')?.options.length === 3");
@@ -148,7 +160,7 @@ async function run() {
       }
       if (alive(chrome.pid)) failure ||= new Error('Smoke Chrome process leaked.');
     }
-    if (profile) {
+    if (profile && path.dirname(path.resolve(profile)) === path.resolve(os.tmpdir()) && path.basename(profile).startsWith('edutwin_math_smoke_')) {
       for (let i = 0; i < 10 && fs.existsSync(profile); i++) {
         try { fs.rmSync(profile, { recursive: true, force: true }); } catch { await delay(150); }
       }

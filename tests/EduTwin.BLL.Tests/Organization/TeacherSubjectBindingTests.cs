@@ -115,9 +115,21 @@ public sealed class TeacherSubjectBindingTests : IDisposable
         await _db.SaveChangesAsync();
         var result = await new UpdateTeacherUseCase(_db, _tenant, TimeProvider.System).ExecuteAsync(teacher.TeacherId,
             new UpdateTeacherRequest { DisplayName = "Changed", SubjectId = _englishId, Status = UserStatus.Active, RowVersion = teacher.RowVersion.ToString() });
-        Assert.Equal(ErrorCodes.ValidationFailed, result.ErrorCode);
+        Assert.Equal(ErrorCodes.TeacherSubjectChangeBlocked, result.ErrorCode);
         Assert.Equal(_mathId, (await _db.Teachers.SingleAsync()).SubjectId);
         Assert.Equal("Teacher", teacher.User.DisplayName);
+    }
+
+    [Fact]
+    public async Task UpdateTeacher_AllowsSubjectChangeAfterClassIsArchived()
+    {
+        var teacher = AddTeacher(_mathId);
+        AddClass(teacher).Status = ClassStatus.Archived;
+        await _db.SaveChangesAsync();
+        var result = await new UpdateTeacherUseCase(_db, _tenant, TimeProvider.System).ExecuteAsync(teacher.TeacherId,
+            new UpdateTeacherRequest { DisplayName = "Changed", SubjectId = _englishId, Status = UserStatus.Active, RowVersion = teacher.RowVersion.ToString() });
+        Assert.True(result.IsSuccess);
+        Assert.Equal(_englishId, result.Data!.SubjectId);
     }
 
     [Fact]

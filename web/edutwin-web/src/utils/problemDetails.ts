@@ -139,6 +139,7 @@ export function mapSafeOperationalError(
   const details = extractProblemDetails(error);
   const messages: Record<string, string> = {
     VALIDATION_FAILED: "Dữ liệu nhập vào chưa hợp lệ. Vui lòng kiểm tra lại các trường bắt buộc.",
+    TEACHER_SUBJECT_CHANGE_BLOCKED: "Không thể đổi bộ môn vì giáo viên còn phụ trách lớp đang hoạt động thuộc môn khác. Vui lòng chuyển giao các lớp này cho giáo viên phù hợp trước khi đổi môn.",
     RESOURCE_NOT_FOUND: "Không tìm thấy dữ liệu trong phạm vi được phép truy cập.",
     FORBIDDEN_RESOURCE: "Bạn không có quyền thực hiện thao tác này.",
     AUTH_PERMISSION_REQUIRED: "Bạn không có quyền thực hiện thao tác này.",
