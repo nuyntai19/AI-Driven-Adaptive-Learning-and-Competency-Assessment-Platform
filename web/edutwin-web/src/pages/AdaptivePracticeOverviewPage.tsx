@@ -100,7 +100,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
   const history = historyQuery.data || [];
   const canStartSession = canStartPractice({ classResolved: classResolved && canManagePractice && canSubmitPractice,
     proposalReady: proposalQuery.isSuccess && !!proposal,
-    proposalUnavailable: !!proposal?.unavailableReason,
+    proposalUnavailable: !!proposal?.unavailableReason || !proposal?.availableQuestionCount,
     activeSessionChecked: activeSessionQuery.isSuccess,
     hasActiveSession: !!activeSession });
 
@@ -111,7 +111,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
       return adaptivePracticeApi.createSession({
         subjectId: effectiveSubjectId,
         classId: classId || undefined,
-        topicNodeId: selectedTopicId || proposal?.topicNodeId || "",
+        topicNodeId: proposal?.topicNodeId || "",
         practiceMode: selectedMode,
         timeBudgetMinutes: timeBudget,
         customTargetMastery: proposal?.targetMastery,
@@ -229,16 +229,22 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
                 </label>
                 <select
                   id="topic-dropdown"
+                  aria-describedby="topic-availability"
                   value={selectedTopicId || proposal.topicNodeId}
                   onChange={(e) => setSelectedTopicId(e.target.value)}
                   className="w-full rounded-xl border border-[var(--student-border)] bg-[var(--student-surface)] px-3 py-2.5 text-sm text-[var(--student-ink)] focus:border-[var(--student-brand)] focus:outline-none focus:ring-4 focus:ring-[var(--student-brand-soft)]"
                 >
                   {proposal.availableTopics.map((top) => (
                     <option key={top.topicNodeId} value={top.topicNodeId}>
-                      {top.topicName} ({top.currentMastery.toFixed(0)}%)
+                      {top.topicName} ({top.currentMastery.toFixed(0)}%) · {top.canPractice ? `Có thể luyện · ${top.availableQuestionCount} câu` : `Tạm chưa luyện được — ${top.unavailableReason}`}
                     </option>
                   ))}
                 </select>
+                <p id="topic-availability" className="text-xs leading-relaxed text-[var(--student-muted)]">
+                  {proposal.availableTopics.find(top => top.topicNodeId === (selectedTopicId || proposal.topicNodeId))?.canPractice
+                    ? "Bạn có thể bắt đầu luyện chủ đề đã chọn."
+                    : proposal.unavailableReason || "Chọn chủ đề để xem số câu có thể luyện và lý do nếu tạm chưa luyện được."}
+                </p>
               </div>
             )}
           </section>
@@ -253,7 +259,7 @@ export const AdaptivePracticeOverviewPage: React.FC = () => {
           ) : proposal?.unavailableReason ? (
             <div role="status" className={CARD}>
               <p className="st-eyebrow">02 / Đích đến của phiên</p>
-              <h2 className="mt-1 text-lg font-bold">Chưa có nội dung để luyện tập</h2>
+              <h2 className="mt-1 text-lg font-bold">{proposal.topicName ? `${proposal.topicName} · Tạm chưa luyện được` : "Chưa có nội dung để luyện tập"}</h2>
               <p className="mt-1 text-sm leading-relaxed text-[var(--student-ink-secondary)]">{proposal.unavailableReason}</p>
               {selectedMode !== "Weakness" && (
                 <button type="button" onClick={() => setSelectedMode("Weakness")} className={`${PRIMARY} mt-4 !py-2.5`}>

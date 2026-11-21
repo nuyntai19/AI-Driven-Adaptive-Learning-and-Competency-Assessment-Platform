@@ -14,6 +14,9 @@ public sealed class AdaptivePracticeTopicOptionDto
     public string TopicName { get; set; } = null!;
     public decimal CurrentMastery { get; set; }
     public bool HasPrerequisites { get; set; }
+    public int AvailableQuestionCount { get; set; }
+    public bool CanPractice => AvailableQuestionCount > 0;
+    public string? UnavailableReason { get; set; }
 }
 
 public sealed class AdaptivePracticeProposalDto
@@ -32,12 +35,13 @@ public sealed class AdaptivePracticeProposalDto
     public int RecommendedTimeMinutes { get; set; } = 15;
     public bool IsDiagnosticRecommended { get; set; }
     public AdaptivePracticeMode DefaultMode { get; set; } = AdaptivePracticeMode.Weakness;
+    /// <summary>All topics in the current curriculum, including unavailable topics with their reason.</summary>
     public IReadOnlyList<AdaptivePracticeTopicOptionDto> AvailableTopics { get; set; } = [];
 
     /// <summary>Questions this student can currently be asked on the proposed topic.</summary>
     public int AvailableQuestionCount { get; set; }
 
-    /// <summary>Set when the class in view has nothing to practice; the topic fields are then empty.</summary>
+    /// <summary>Set when no session can start for this proposal, including an unavailable custom choice.</summary>
     public string? UnavailableReason { get; set; }
 }
 

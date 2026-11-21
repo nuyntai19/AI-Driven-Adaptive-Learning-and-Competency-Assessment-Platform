@@ -58,12 +58,13 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
 
         // Practice follows the class in view: only what its curriculum teaches.
         var scope = await StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, subjectId, classId, false, ct);
-        AdaptivePracticeProposalDto Unavailable(string reason) => new()
+        AdaptivePracticeProposalDto Unavailable(string reason, IReadOnlyList<AdaptivePracticeTopicOptionDto>? topics = null) => new()
         {
             SubjectId = subjectId,
             SubjectName = subject.Name,
             SubjectCode = subject.SubjectCode,
-            AvailableTopics = [],
+            AvailableTopics = topics ?? [],
+            DefaultMode = mode,
             UnavailableReason = reason
         };
         if (!scope.Allowed)
@@ -81,78 +82,117 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             .Where(kt => kt.CenterId == centerId && kt.StudentId == studentId && kt.SubjectId == subjectId && !kt.IsDeleted)
             .ToDictionaryAsync(kt => kt.TopicNodeId, ct);
 
-        // Offering a topic with nothing to ask would end the session at question zero.
-        var (protectedSet, closedAssignmentQuestionIds) = await LoadProtectedQuestionsAsync(centerId, DateTime.UtcNow, ct);
-        var practiceQuestions = await _dbContext.Questions
-            .AsNoTracking()
-            .Where(q => q.CenterId == centerId && q.SubjectId == subjectId
-                && q.Status == QuestionStatus.Active
-                && q.QuestionType != QuestionType.Essay
-                && q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual
-                && !q.IsDeleted
-                // A multiple-choice question without its options cannot be answered (no choice to pick).
-                && (q.QuestionType != QuestionType.MultipleChoice
-                    || _dbContext.QuestionOptions.Count(o => o.CenterId == q.CenterId && o.QuestionId == q.QuestionId && !o.IsDeleted) >= 2))
+        var utcNow = DateTime.UtcNow;
+        var protectedSet = await LoadProtectedQuestionsAsync(centerId, utcNow, ct);
+        var practiceQuestions = await PracticeQuestions(centerId, subjectId)
             .Select(q => new { q.QuestionId, q.PrimaryTopicNodeId, q.GradeLevel })
             .ToListAsync(ct);
 
         int CountPractice(ulong topicId)
         {
-            var isDiagnostic = !twins.TryGetValue(topicId, out var topicTwin) || topicTwin.EvidenceCount == 0;
             return practiceQuestions.Count(q => q.PrimaryTopicNodeId == topicId
                 && scope.IncludesQuestion(topicId, q.GradeLevel)
-                && (!protectedSet.Contains(q.QuestionId) || (isDiagnostic && closedAssignmentQuestionIds.Contains(q.QuestionId))));
+                && !protectedSet.Contains(q.QuestionId));
         }
 
         var allTopics = scopedTopics
-            .Where(t => scope.Includes(t.NodeId) && CountPractice(t.NodeId) > 0)
+            .Where(t => scope.Includes(t.NodeId))
             .OrderBy(t => scope.OrderByNodeId.GetValueOrDefault(t.NodeId, uint.MaxValue))
             .ThenBy(t => t.NodeId)
             .ToList();
 
-        if (allTopics.Count == 0)
-        {
-            return Unavailable("Các chuyên đề của lớp đang xem tạm chưa có câu hỏi luyện tập. Câu hỏi đang nằm trong bài tập chưa hết hạn sẽ được mở sau khi bài tập đóng.");
-        }
-
+        string? TopicUnavailableReason(ulong topicId) => CountPractice(topicId) > 0 ? null
+            : practiceQuestions.Any(q => q.PrimaryTopicNodeId == topicId && scope.IncludesQuestion(topicId, q.GradeLevel))
+                ? "Câu hỏi đang dùng trong bài tập chưa đóng hoặc chưa hết hạn."
+                : "Chưa có câu hỏi luyện tập hợp lệ cho chủ đề này trong khối đang học.";
         var topicOptions = allTopics.Select(t => new AdaptivePracticeTopicOptionDto
         {
             TopicNodeId = t.NodeId,
             TopicName = t.Name,
             CurrentMastery = twins.TryGetValue(t.NodeId, out var tw) ? tw.MasteryPercentage : 0m,
-            HasPrerequisites = false
+            HasPrerequisites = false,
+            AvailableQuestionCount = CountPractice(t.NodeId),
+            UnavailableReason = TopicUnavailableReason(t.NodeId)
         }).ToList();
+
+        // Keep unavailable topics visible, but never silently replace an explicit choice.
+        if (mode == AdaptivePracticeMode.CustomTopic && customTopicId.HasValue)
+        {
+            var option = topicOptions.FirstOrDefault(t => t.TopicNodeId == customTopicId.Value);
+            if (option is null) return Unavailable("Chủ đề đã chọn không thuộc giáo trình lớp đang học.", topicOptions);
+            if (!option.CanPractice)
+            {
+                var unavailable = Unavailable(option.UnavailableReason!, topicOptions);
+                unavailable.TopicNodeId = option.TopicNodeId;
+                unavailable.TopicName = option.TopicName;
+                return unavailable;
+            }
+        }
+
+        var practiceableTopics = allTopics.Where(t => CountPractice(t.NodeId) > 0).ToList();
+        if (practiceableTopics.Count == 0)
+            return Unavailable("Các chuyên đề của lớp đang xem tạm chưa có câu hỏi để luyện tập. Xem trạng thái từng chủ đề trong phần Tự chọn chủ đề.", topicOptions);
+
+        decimal Mastery(ulong id) => twins.TryGetValue(id, out var twin) ? twin.MasteryPercentage : 0m;
+        uint Evidence(ulong id) => twins.TryGetValue(id, out var twin) ? twin.EvidenceCount : 0u;
+        KnowledgeNode WeakestTopic() => practiceableTopics.OrderBy(t => Mastery(t.NodeId))
+            .ThenBy(t => Evidence(t.NodeId)).ThenBy(t => t.NodeId).First();
+        string WeaknessReason(KnowledgeNode topic)
+        {
+            var blocked = topicOptions.Where(t => !t.CanPractice && t.CurrentMastery < Mastery(topic.NodeId))
+                .OrderBy(t => t.CurrentMastery).ThenBy(t => t.TopicNodeId).FirstOrDefault();
+            var explanation = blocked is null ? "" :
+                $"Chủ đề '{blocked.TopicName}' có mức năng lực thấp hơn ({blocked.CurrentMastery:F0}%) nhưng tạm chưa luyện được: {blocked.UnavailableReason} Vì vậy, hệ thống chọn '{topic.Name}' để luyện thay thế. ";
+            return explanation + (Evidence(topic.NodeId) == 0
+                ? $"Chưa có đủ bằng chứng đánh giá năng lực về '{topic.Name}'. Hệ thống đề xuất phiên chẩn đoán ban đầu để xác định trình độ."
+                : Mastery(topic.NodeId) < 75m
+                    ? $"Chủ đề '{topic.Name}' có năng lực {Mastery(topic.NodeId):F0}%, thấp nhất trong các chủ đề có thể luyện. Cần củng cố để đạt mốc Đã vững 75%."
+                    : $"Các chủ đề có thể luyện đều đã đạt mốc Đã vững 75%. Đề xuất '{topic.Name}' ({Mastery(topic.NodeId):F0}%) để duy trì và nâng cao năng lực.");
+        }
 
         // 1. Determine target topic
         KnowledgeNode selectedTopic;
         string selectionReason;
-        bool isDiagnostic = false;
 
-        if (customTopicId.HasValue && allTopics.Any(t => t.NodeId == customTopicId.Value))
+        if (mode == AdaptivePracticeMode.CustomTopic)
         {
-            selectedTopic = allTopics.First(t => t.NodeId == customTopicId.Value);
+            selectedTopic = customTopicId.HasValue
+                ? practiceableTopics.First(t => t.NodeId == customTopicId.Value) : WeakestTopic();
             var m = twins.TryGetValue(selectedTopic.NodeId, out var tw) ? tw.MasteryPercentage : 0m;
-            selectionReason = $"Học sinh chủ động chọn luyện tập chủ đề '{selectedTopic.Name}' (năng lực hiện tại: {m:F0}%).";
-            isDiagnostic = !twins.ContainsKey(selectedTopic.NodeId) || twins[selectedTopic.NodeId].EvidenceCount == 0;
+            selectionReason = customTopicId.HasValue
+                ? $"Bạn đã chọn luyện tập chủ đề '{selectedTopic.Name}' (năng lực hiện tại: {m:F0}%)."
+                : $"Đang xem trước chủ đề '{selectedTopic.Name}' (năng lực hiện tại: {m:F0}%). Bạn có thể chọn chủ đề khác trong danh sách cùng trạng thái và số câu có thể luyện.";
         }
         else if (mode == AdaptivePracticeMode.SpacedReview)
         {
             var review = SpacedReviewPolicy.Choose(
-                allTopics
+                practiceableTopics
                     .Select(t => twins.TryGetValue(t.NodeId, out var studied) ? studied : null)
                     .Where(studied => studied is { EvidenceCount: > 0, LastEvidenceAt: not null })
                     .Select(studied => new SpacedReviewPolicy.Candidate(studied!.TopicNodeId, studied.MasteryPercentage, studied.LastEvidenceAt!.Value)),
-                DateTime.UtcNow);
+                utcNow);
             if (review is null)
             {
-                return Unavailable("Bạn chưa học chủ đề nào trong lớp này nên chưa có gì để ôn. Hãy luyện theo điểm yếu trước, chủ đề đã học sẽ được đưa vào lịch ôn.");
+                var hasStudiedTopics = allTopics.Any(t => twins.TryGetValue(t.NodeId, out var studied) && studied.EvidenceCount > 0 && studied.LastEvidenceAt.HasValue);
+                return Unavailable(hasStudiedTopics
+                    ? "Các chủ đề đã học tạm chưa có câu hỏi hợp lệ để ôn. Xem lý do trong phần Tự chọn chủ đề hoặc luyện theo điểm yếu."
+                    : "Bạn chưa học chủ đề nào trong lớp này nên chưa có gì để ôn. Hãy luyện theo điểm yếu trước, chủ đề đã học sẽ được đưa vào lịch ôn.", topicOptions);
             }
 
             selectedTopic = allTopics.First(t => t.NodeId == review.TopicId);
             var studiedWhen = review.DaysSinceEvidence == 0 ? "hôm nay" : $"cách đây {review.DaysSinceEvidence} ngày";
             selectionReason = review.IsDue
                 ? $"Bạn học '{selectedTopic.Name}' lần cuối {studiedWhen}. Với mức năng lực này, chủ đề cần được ôn sau {review.IntervalDays} ngày nên đã đến hạn."
-                : $"Chưa có chủ đề nào đến hạn ôn. '{selectedTopic.Name}' là chủ đề sắp đến hạn nhất (còn {review.DaysUntilDue} ngày), bạn vẫn có thể ôn sớm.";
+                : $"Ôn sớm: trong các chủ đề có thể luyện, chưa có chủ đề nào đến hạn ôn. '{selectedTopic.Name}' sắp đến hạn nhất (còn {review.DaysUntilDue} ngày).";
+            var preferredReview = SpacedReviewPolicy.Choose(allTopics
+                .Select(t => twins.GetValueOrDefault(t.NodeId))
+                .Where(t => t is { EvidenceCount: > 0, LastEvidenceAt: not null })
+                .Select(t => new SpacedReviewPolicy.Candidate(t!.TopicNodeId, t.MasteryPercentage, t.LastEvidenceAt!.Value)), utcNow);
+            if (preferredReview is not null && CountPractice(preferredReview.TopicId) == 0)
+            {
+                var blocked = topicOptions.First(t => t.TopicNodeId == preferredReview.TopicId);
+                selectionReason = $"Chủ đề ưu tiên ôn '{blocked.TopicName}' tạm chưa luyện được: {blocked.UnavailableReason} Đề xuất ôn '{selectedTopic.Name}' thay thế. " + selectionReason;
+            }
         }
         else if (mode == AdaptivePracticeMode.LearningPath)
         {
@@ -162,45 +202,30 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
                 .SingleOrDefaultAsync(lp => lp.CenterId == centerId && lp.StudentId == studentId && lp.SubjectId == subjectId && lp.Status == LearningPathStatus.Active && !lp.IsDeleted, ct);
 
             var currentItem = activePath?.Items.FirstOrDefault(i => i.Status == LearningPathItemStatus.Current && !i.IsDeleted);
-            if (currentItem != null && allTopics.Any(t => t.NodeId == currentItem.TopicNodeId))
+            if (currentItem != null && practiceableTopics.Any(t => t.NodeId == currentItem.TopicNodeId))
             {
                 selectedTopic = allTopics.First(t => t.NodeId == currentItem.TopicNodeId);
                 selectionReason = $"Đề xuất từ Lộ trình học tập (Learning Path): {currentItem.Reason}";
             }
             else
             {
-                selectedTopic = allTopics[0];
-                selectionReason = $"Đề xuất theo nội dung cơ bản của môn học {subject.Name}.";
+                selectedTopic = WeakestTopic();
+                var blocked = topicOptions.FirstOrDefault(t => t.TopicNodeId == currentItem?.TopicNodeId);
+                selectionReason = (currentItem is null
+                    ? "Lộ trình chưa có mục đang học. "
+                    : blocked is not null
+                        ? $"Mục đang học '{blocked.TopicName}' tạm chưa luyện được: {blocked.UnavailableReason} "
+                        : "Mục đang học của lộ trình không thuộc giáo trình lớp đang xem. ")
+                    + "Đề xuất luyện thay thế theo năng lực hiện tại. " + WeaknessReason(selectedTopic);
             }
         }
         else
         {
-            // Weakness mode (P0 Default): find topic with lowest mastery (<80%) or lowest evidence count
-            var candidates = allTopics
-                .Select(t => new
-                {
-                    Topic = t,
-                    Mastery = twins.TryGetValue(t.NodeId, out var tw) ? tw.MasteryPercentage : 0m,
-                    EvidenceCount = twins.TryGetValue(t.NodeId, out var tw2) ? tw2.EvidenceCount : 0
-                })
-                .OrderBy(x => x.Mastery)
-                .ThenBy(x => x.EvidenceCount)
-                .ToList();
-
-            var picked = candidates.FirstOrDefault(c => c.Mastery < 80m) ?? candidates[0];
-            selectedTopic = picked.Topic;
-
-            if (picked.EvidenceCount == 0)
-            {
-                isDiagnostic = true;
-                selectionReason = $"Chưa có đủ bằng chứng đánh giá năng lực về '{selectedTopic.Name}'. Hệ thống đề xuất phiên chẩn đoán ban đầu để xác định chính xác trình độ.";
-            }
-            else
-            {
-                selectionReason = $"Dựa trên hồ sơ Digital Twin, chủ đề '{selectedTopic.Name}' hiện có mức độ thành thạo ước lượng {picked.Mastery:F0}%. Cần củng cố để đạt mốc vững vàng.";
-            }
+            selectedTopic = WeakestTopic();
+            selectionReason = WeaknessReason(selectedTopic);
         }
 
+        var isDiagnostic = Evidence(selectedTopic.NodeId) == 0;
         var currentMastery = twins.TryGetValue(selectedTopic.NodeId, out var selectedTwin) ? selectedTwin.MasteryPercentage : 0m;
         // Review consolidates what is already known: a small step from where the
         // student is, without the 60% floor of a session that teaches the topic.
@@ -298,27 +323,17 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         };
 
         // Never promise more questions than the bank can serve this student.
-        var (heldQuestions, closedQuestions) = await LoadProtectedQuestionsAsync(centerId, utcNow, ct);
-        var availableQuestions = (await _dbContext.Questions
-                .AsNoTracking()
-                .Where(q => q.CenterId == centerId && q.SubjectId == request.SubjectId
-                    && q.PrimaryTopicNodeId == request.TopicNodeId
-                    && q.Status == QuestionStatus.Active
-                && q.QuestionType != QuestionType.Essay
-                    && q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual
-                    && !q.IsDeleted
-                    // A multiple-choice question without its options cannot be answered (no choice to pick).
-                    && (q.QuestionType != QuestionType.MultipleChoice
-                        || _dbContext.QuestionOptions.Count(o => o.CenterId == q.CenterId && o.QuestionId == q.QuestionId && !o.IsDeleted) >= 2))
+        var heldQuestions = await LoadProtectedQuestionsAsync(centerId, utcNow, ct);
+        var availableQuestions = (await PracticeQuestions(centerId, request.SubjectId)
+                .Where(q => q.PrimaryTopicNodeId == request.TopicNodeId)
                 .Select(q => new { q.QuestionId, q.GradeLevel })
                 .ToListAsync(ct))
             .Count(q => scope.IncludesQuestion(request.TopicNodeId, q.GradeLevel)
-                && (!heldQuestions.Contains(q.QuestionId) || (isDiagnostic && closedQuestions.Contains(q.QuestionId))));
-        if (availableQuestions > 0)
-        {
-            maxQuestions = Math.Min(maxQuestions, availableQuestions);
-            minQuestions = Math.Min(minQuestions, availableQuestions);
-        }
+                && !heldQuestions.Contains(q.QuestionId));
+        if (availableQuestions == 0)
+            throw new InvalidOperationException("Chủ đề này hiện chưa có câu hỏi luyện tập hợp lệ. Hãy tải lại đề xuất để xem trạng thái mới nhất.");
+        maxQuestions = Math.Min(maxQuestions, availableQuestions);
+        minQuestions = Math.Min(minQuestions, availableQuestions);
 
         byte initialDifficulty = isDiagnostic ? (byte)3 : (byte)Math.Clamp((int)(startMastery / 20m) + 1, 1, 5);
 
@@ -595,7 +610,7 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
 
         // Multi-Stage Question Selector (UC-04)
         // Stage 1: Filter eligible questions (active, not deleted, same center & subject)
-        var (protectedSet, closedAssignmentQuestionIds) = await LoadProtectedQuestionsAsync(centerId, utcNow, ct);
+        var protectedSet = await LoadProtectedQuestionsAsync(centerId, utcNow, ct);
         var sessionPresentedQuestionIds = new HashSet<ulong>(session.Items.Select(i => i.QuestionId));
 
         ulong targetNodeId = session.PrerequisiteTestedNodeId ?? session.TopicNodeId;
@@ -645,17 +660,9 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         // Fetch candidate questions for the node. Adaptation needs an immediate
         // right/wrong result, so questions that need a teacher are left out.
         var questionScope = await StudentLearningScope.ResolveAsync(_dbContext, centerId, studentId, session.SubjectId, session.ClassId, false, ct);
-        async Task<List<Question>> LoadCandidatesAsync(ulong nodeId) => (await _dbContext.Questions
-            .Where(q => q.CenterId == centerId
-                && q.SubjectId == session.SubjectId
-                && q.PrimaryTopicNodeId == nodeId
-                && q.Status == QuestionStatus.Active
-                && q.QuestionType != QuestionType.Essay
-                && q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual
-                && !q.IsDeleted
-                // A multiple-choice question without its options cannot be answered (no choice to pick).
-                && (q.QuestionType != QuestionType.MultipleChoice
-                    || _dbContext.QuestionOptions.Count(o => o.CenterId == q.CenterId && o.QuestionId == q.QuestionId && !o.IsDeleted) >= 2))
+        async Task<List<Question>> LoadCandidatesAsync(ulong nodeId) => (await PracticeQuestions(centerId, session.SubjectId)
+            .AsTracking()
+            .Where(q => q.PrimaryTopicNodeId == nodeId)
             .ToListAsync(ct))
             .Where(q => questionScope.IncludesQuestion(nodeId, q.GradeLevel))
             .ToList();
@@ -676,17 +683,6 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
             candidateQuestions = await LoadCandidatesAsync(targetNodeId);
             availablePool = candidateQuestions
                 .Where(q => !protectedSet.Contains(q.QuestionId) && !sessionPresentedQuestionIds.Contains(q.QuestionId))
-                .ToList();
-        }
-
-        // A diagnostic session (student with no evidence yet) must not die at
-        // zero questions only because every question of the topic sits in an
-        // assignment: fall back to questions of assignments that have closed.
-        // The feedback reveals the answer, so open assignments stay protected.
-        if (availablePool.Count == 0 && session.IsDiagnosticMode)
-        {
-            availablePool = candidateQuestions
-                .Where(q => q.PrimaryTopicNodeId == targetNodeId && closedAssignmentQuestionIds.Contains(q.QuestionId) && !sessionPresentedQuestionIds.Contains(q.QuestionId))
                 .ToList();
         }
 
@@ -1353,26 +1349,31 @@ public sealed class AdaptivePracticeEngine : IAdaptivePracticeEngine
         : mode == AdaptivePracticeMode.SpacedReview ? Math.Min(100m, currentMastery + 5m)
         : Math.Min(100m, Math.Max(60m, currentMastery + 15m));
 
-    // Questions in an open assignment must not appear in practice, whose feedback
-    // reveals the answer. A question is reusable only when every assignment
-    // holding it is published and past due; draft and undated ones stay protected.
-    private async Task<(HashSet<ulong> Protected, HashSet<ulong> Closed)> LoadProtectedQuestionsAsync(
+    // One eligibility query for proposals, session limits and question delivery.
+    private IQueryable<Question> PracticeQuestions(Guid centerId, Guid subjectId) => _dbContext.Questions.AsNoTracking()
+        .Where(q => q.CenterId == centerId && q.SubjectId == subjectId
+            && q.Status == QuestionStatus.Active && !q.IsDeleted
+            && q.QuestionType != QuestionType.Essay && q.AnswerEvaluationMode != QuestionAnswerEvaluationMode.Manual
+            && (q.QuestionType != QuestionType.MultipleChoice
+                || _dbContext.QuestionOptions.Count(o => o.CenterId == centerId && o.QuestionId == q.QuestionId && !o.IsDeleted) >= 2));
+
+    // Any draft or still-open published assignment protects its questions. Closed,
+    // archived and expired assignments release them for every student, including
+    // students with existing evidence. Another open assignment always keeps the block.
+    private async Task<HashSet<ulong>> LoadProtectedQuestionsAsync(
         Guid centerId, DateTime utcNow, CancellationToken ct)
     {
-        var held = await _dbContext.AssignmentQuestions
-            .Where(aq => aq.Assignment != null && aq.Assignment.CenterId == centerId
-                && (aq.Assignment.Status == AssignmentStatus.Published || aq.Assignment.Status == AssignmentStatus.Draft)
+        var held = await _dbContext.AssignmentQuestions.AsNoTracking()
+            .Where(aq => aq.CenterId == centerId && aq.Assignment != null && aq.Assignment.CenterId == centerId
+                && (aq.Assignment.Status == AssignmentStatus.Draft
+                    || (aq.Assignment.Status == AssignmentStatus.Published
+                        && (!aq.Assignment.DueAt.HasValue || aq.Assignment.DueAt.Value >= utcNow)))
                 && !aq.Assignment.IsDeleted)
-            .Select(aq => new { aq.QuestionId, aq.Assignment!.Status, aq.Assignment.DueAt })
+            .Select(aq => aq.QuestionId)
             .Distinct()
             .ToListAsync(ct);
 
-        var closed = held
-            .GroupBy(x => x.QuestionId)
-            .Where(g => g.All(x => x.Status == AssignmentStatus.Published && x.DueAt.HasValue && x.DueAt.Value < utcNow))
-            .Select(g => g.Key)
-            .ToHashSet();
-        return (held.Select(x => x.QuestionId).ToHashSet(), closed);
+        return held.ToHashSet();
     }
 
     // Moving the start forward by the pause keeps elapsed time equal to working time.

@@ -27,6 +27,9 @@ export interface AdaptivePracticeTopicOption {
   topicName: string;
   currentMastery: number;
   hasPrerequisites: boolean;
+  availableQuestionCount: number;
+  canPractice: boolean;
+  unavailableReason?: string | null;
 }
 
 export interface AdaptivePracticeProposal {

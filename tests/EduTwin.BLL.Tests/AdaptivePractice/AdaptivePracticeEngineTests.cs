@@ -22,7 +22,7 @@ using EduTwin.DAL.Persistence;
 
 namespace EduTwin.BLL.Tests.AdaptivePractice;
 
-public sealed class AdaptivePracticeEngineTests : IDisposable
+public sealed partial class AdaptivePracticeEngineTests : IDisposable
 {
     private readonly EduTwinDbContext _dbContext;
     private readonly TenantContext _tenantContext;
@@ -211,7 +211,13 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
         var proposal = await _engine.GetProposalAsync(_centerId, _studentId, _subjectId, null, AdaptivePracticeMode.Weakness, null, CancellationToken.None);
 
         Assert.NotNull(proposal.UnavailableReason);
-        Assert.Empty(proposal.AvailableTopics);
+        Assert.Equal(2, proposal.AvailableTopics.Count);
+        Assert.All(proposal.AvailableTopics, t =>
+        {
+            Assert.False(t.CanPractice);
+            Assert.Equal(0, t.AvailableQuestionCount);
+            Assert.NotNull(t.UnavailableReason);
+        });
     }
 
     [Fact]
@@ -677,14 +683,14 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
         new CreateAdaptivePracticeSessionRequest { SubjectId = _subjectId, TopicNodeId = _mainTopicId, TimeBudgetMinutes = 15 },
         _utcNow, CancellationToken.None);
 
-    private void AddAllMainTopicQuestionsToPublishedAssignment(DateTime? dueAt)
+    private void AddAllMainTopicQuestionsToPublishedAssignment(DateTime? dueAt, AssignmentStatus status = AssignmentStatus.Published)
     {
         var assignment = new Assignment
         {
             AssignmentId = Guid.NewGuid(),
             CenterId = _centerId,
             Title = "Bài kiểm tra",
-            Status = AssignmentStatus.Published,
+            Status = status,
             DueAt = dueAt,
             CreatedAt = _utcNow,
             UpdatedAt = _utcNow
@@ -797,11 +803,10 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
     [Fact]
     public async Task EssayQuestions_AreNotSelected()
     {
+        var session = await StartSessionAsync();
         foreach (var question in _dbContext.Questions.Where(q => q.PrimaryTopicNodeId == _mainTopicId))
             question.QuestionType = QuestionType.Essay;
         await _dbContext.SaveChangesAsync();
-
-        var session = await StartSessionAsync();
 
         Assert.Null(await _engine.GetNextQuestionAsync(_centerId, _studentId, session.SessionId, _utcNow, CancellationToken.None));
     }
@@ -809,8 +814,8 @@ public sealed class AdaptivePracticeEngineTests : IDisposable
     [Fact]
     public async Task DiagnosticFallback_DoesNotUseOpenAssignmentQuestions()
     {
-        AddAllMainTopicQuestionsToPublishedAssignment(_utcNow.AddDays(1));
         var session = await StartSessionAsync();
+        AddAllMainTopicQuestionsToPublishedAssignment(_utcNow.AddDays(1));
 
         Assert.Null(await _engine.GetNextQuestionAsync(_centerId, _studentId, session.SessionId, _utcNow, CancellationToken.None));
     }
