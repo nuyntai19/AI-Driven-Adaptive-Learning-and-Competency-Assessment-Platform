@@ -33,6 +33,7 @@ import {
   filterReportPeriod,
   maxRegularGrades,
   simulateSubjectGrade,
+  classSubmissionProgress,
   type StudentAcademicSummary,
 } from "./teacherReportsHelpers";
 
@@ -243,9 +244,9 @@ export function TeacherStudentManagementView({ reports = false }: { reports?: bo
   // Summary Metrics
   const classMetrics = useMemo(() => {
     const total = studentsList.length;
-    if (total === 0) return { total: 0, avgComp: 0, avgScore: null, highRisk: 0 };
+    const submissions = classSubmissionProgress(studentsList, studentSummaries);
+    if (total === 0) return { total: 0, avgComp: 0, avgScore: null, highRisk: 0, submissions };
 
-    let totalComp = 0;
     let totalScore = 0;
     let scoredCount = 0;
     let highRiskCount = 0;
@@ -253,7 +254,6 @@ export function TeacherStudentManagementView({ reports = false }: { reports?: bo
     studentsList.forEach((s) => {
       const sum = studentSummaries.get(s.studentId);
       if (sum) {
-        totalComp += sum.completionRate;
         if (sum.averageScore !== null) {
           totalScore += sum.averageScore;
           scoredCount++;
@@ -266,9 +266,10 @@ export function TeacherStudentManagementView({ reports = false }: { reports?: bo
 
     return {
       total,
-      avgComp: Math.round(totalComp / total),
+      avgComp: Math.round(submissions.rate),
       avgScore: scoredCount > 0 ? (totalScore / scoredCount).toFixed(1) : "-",
       highRisk: highRiskCount,
+      submissions,
     };
   }, [studentsList, studentSummaries]);
 
@@ -475,10 +476,10 @@ export function TeacherStudentManagementView({ reports = false }: { reports?: bo
         <TeacherMetricCard
           label="Tỷ lệ nộp bài tập"
           value={`${classMetrics.avgComp}%`}
-          supportingText={`Tổng ${reportData?.totalAssignments ?? 0} bài tập đã giao`}
+          supportingText={`${classMetrics.submissions.submittedCount}/${classMetrics.submissions.totalAssigned} lượt giao bài đã nộp`}
           icon="📑"
           trend={{
-            label: !reportData?.totalAssignments ? "Chưa giao bài" : "Tiến độ nộp, không phải điểm",
+            label: !classMetrics.submissions.totalAssigned ? "Chưa giao bài" : "Tiến độ nộp, không phải điểm",
             tone: "neutral",
           }}
         />

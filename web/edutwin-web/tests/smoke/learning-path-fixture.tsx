@@ -19,6 +19,7 @@ import { TeacherThemeScope } from '../../src/components/teacher/TeacherThemeScop
 import '../../src/index.css';
 
 const scenario = new URLSearchParams(location.search).get('scenario') ?? 'goal';
+const submissionCase = new URLSearchParams(location.search).get('submissions');
 const teacher = scenario.startsWith('teacher');
 useAuthStore.getState().setSession('fixture-only-not-a-real-token', {
   userId: 'fixture-user', centerId: 'fixture-center', centerName: 'Fixture', username: 'fixture', displayName: 'Fixture',
@@ -121,6 +122,16 @@ httpClient.defaults.adapter = async config => {
   else if (url === '/classes/class') data = envelope(cls);
   else if (url === '/classes/class/history' || url === '/teacher-student-notes/my-notes') data = envelope([]);
   else if (url === '/students/report-student') data = envelope({ ...reportStudent, subjectGoals: [] });
+  else if (url === '/classes/class/academic-report' && submissionCase) {
+    const empty = { totalAssigned: 0, completedCount: 0, inProgressCount: 0, notStartedCount: 0, overdueCount: 0,
+      completionRate: 0, averageScore: null, minScore: null, maxScore: null, records: [] };
+    const submitted = submissionCase === 'none' ? empty : { ...empty, totalAssigned: 1, completedCount: 1, completionRate: 100 };
+    const other = submissionCase === 'weighted' ? { ...empty, totalAssigned: 3, notStartedCount: 3 }
+      : submissionCase === 'pending' ? { ...empty, totalAssigned: 1, inProgressCount: 1 } : empty;
+    data = envelope({ totalAssignments: submissionCase === 'none' ? 0 : submissionCase === 'weighted' ? 3 : 1,
+      students: [{ student: reportStudent, summary: submitted },
+        { student: { ...reportStudent, studentId: 'unassigned-student', fullName: 'Học sinh chưa được giao', username: 'unassigned' }, summary: other }] });
+  }
   else if (url === '/classes/class/academic-report') data = envelope({
     students: [{ student: reportStudent, summary: { totalAssigned: 0, completedCount: 0, inProgressCount: 0, notStartedCount: 0, overdueCount: 0, completionRate: 0, records: [] } }],
     totalAssignments: 0,

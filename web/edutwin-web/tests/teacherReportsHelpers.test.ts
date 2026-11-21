@@ -7,6 +7,8 @@ import {
 } from "../src/pages/teacher/teacherExcelReports.ts";
 import {
   buildClassReportCsv,
+  buildClassReportExcelHtml,
+  classSubmissionProgress,
   filterReportPeriod,
   simulateSubjectGrade,
   type StudentAcademicSummary,
@@ -113,6 +115,56 @@ const mockGoals: StudentSubjectGoalDto[] = [
 ];
 
 const mockSubjectsMap = new Map<string, string>([["toan-12", "Toán Học"]]);
+
+const unassigned: StudentAcademicSummary = {
+  totalAssigned: 0, completedCount: 0, inProgressCount: 0, notStartedCount: 0, overdueCount: 0,
+  completionRate: 0, averageScore: null, minScore: null, maxScore: null, records: [],
+};
+
+test("one targeted student submits: class submission rate is 1/1, not 1/2 of the roster", () => {
+  const summaries = new Map([
+    ["hs-01", { ...unassigned, totalAssigned: 1, completedCount: 1, completionRate: 100 }],
+    ["hs-02", unassigned],
+  ]);
+  assert.deepEqual(classSubmissionProgress(mockStudents, summaries), { totalAssigned: 1, submittedCount: 1, rate: 100 });
+  summaries.delete("hs-02");
+  assert.equal(classSubmissionProgress(mockStudents, summaries).rate, 100);
+});
+
+test("submission rate uses actual target counts when students receive different numbers of assignments", () => {
+  const summaries = new Map([
+    ["hs-01", { ...unassigned, totalAssigned: 1, completedCount: 1, completionRate: 100 }],
+    ["hs-02", { ...unassigned, totalAssigned: 3, completedCount: 0, completionRate: 0 }],
+    ["outside-roster", { ...unassigned, totalAssigned: 20, completedCount: 20, completionRate: 100 }],
+  ]);
+  assert.deepEqual(classSubmissionProgress(mockStudents, summaries), { totalAssigned: 4, submittedCount: 1, rate: 25 });
+  assert.equal(classSubmissionProgress([mockStudents[0]], summaries).rate, 100);
+});
+
+test("unsubmitted targets stay in the denominator and empty assignments never divide by zero", () => {
+  const summaries = new Map([
+    ["hs-01", { ...unassigned, totalAssigned: 1, completedCount: 1, completionRate: 100 }],
+    ["hs-02", { ...unassigned, totalAssigned: 1, completedCount: 0, inProgressCount: 1 }],
+  ]);
+  assert.equal(classSubmissionProgress(mockStudents, summaries).rate, 50);
+  assert.equal(classSubmissionProgress([mockStudents[1]], summaries).rate, 0);
+  assert.equal(classSubmissionProgress(mockStudents, new Map([["hs-01", unassigned], ["hs-02", unassigned]])).rate, 0);
+  assert.equal(classSubmissionProgress([], summaries).rate, 0);
+});
+
+test("class CSV, HTML and XLSX overview share the targeted submission rate", () => {
+  const summaries = new Map([
+    ["hs-01", { ...unassigned, totalAssigned: 1, completedCount: 1, completionRate: 100 }],
+    ["hs-02", unassigned],
+  ]);
+  const csv = buildClassReportCsv(mockClass, mockStudents, summaries, new Map());
+  assert.equal(csv.find(row => row[0] === "Tỷ lệ hoàn thành bài tập chung:")?.[1], "100.0%");
+  const html = buildClassReportExcelHtml(mockClass, mockStudents, summaries, new Map());
+  assert.match(html, /Tỷ lệ nộp bài tập chung<\/td>\s*<td[^>]*>100\.0%<\/td>/);
+  const workbook = buildClassReportWorkbook(mockClass, mockStudents, summaries);
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Tong_Quan_Lop, { header: 1 });
+  assert.equal(rows.find(row => row[0] === "Tỷ lệ nộp bài tập chung")?.[1], 100);
+});
 
 test("buildClassReportWorkbook creates structured Excel workbook with dedicated columns and sheet", () => {
   const wb = buildClassReportWorkbook(mockClass, mockStudents, mockStudentSummaries);

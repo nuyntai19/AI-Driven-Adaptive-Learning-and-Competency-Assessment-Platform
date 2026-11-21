@@ -57,6 +57,23 @@ export interface ClassAcademicSummary {
   safeCount: number;
 }
 
+/** Each student-assignment target is one submission opportunity; roster size is not the denominator. */
+export function classSubmissionProgress(
+  students: ReadonlyArray<Pick<StudentDto, "studentId">>,
+  summaries: ReadonlyMap<string, Pick<StudentAcademicSummary, "totalAssigned" | "completedCount">>,
+) {
+  let totalAssigned = 0;
+  let submittedCount = 0;
+  for (const student of students) {
+    const summary = summaries.get(student.studentId);
+    if (summary && summary.totalAssigned > 0) {
+      totalAssigned += summary.totalAssigned;
+      submittedCount += summary.completedCount;
+    }
+  }
+  return { totalAssigned, submittedCount, rate: totalAssigned > 0 ? 100 * submittedCount / totalAssigned : 0 };
+}
+
 /**
  * Downloads an Excel file (.xls) with native HTML table structure, custom column widths,
  * borders, and colors so Microsoft Excel opens it with dedicated, clear rows and columns.
@@ -462,7 +479,6 @@ export function buildClassReportExcelHtml(
 ): string {
   const exportTime = new Date().toLocaleString("vi-VN");
 
-  let totalCompRate = 0;
   let totalScoreSum = 0;
   let scoredStudentCount = 0;
   let highRiskCount = 0;
@@ -470,7 +486,6 @@ export function buildClassReportExcelHtml(
   students.forEach((s) => {
     const sum = studentSummaries.get(s.studentId);
     if (sum) {
-      totalCompRate += sum.completionRate;
       if (sum.averageScore !== null) {
         totalScoreSum += sum.averageScore;
         scoredStudentCount++;
@@ -481,7 +496,7 @@ export function buildClassReportExcelHtml(
     }
   });
 
-  const avgClassCompRate = students.length > 0 ? (totalCompRate / students.length).toFixed(1) : "0";
+  const avgClassCompRate = classSubmissionProgress(students, studentSummaries).rate.toFixed(1);
   const avgClassScore = scoredStudentCount > 0 ? (totalScoreSum / scoredStudentCount).toFixed(1) : "-";
 
   return `
@@ -719,14 +734,12 @@ export function buildClassReportCsv(
   rows.push(["", "", "", "", "", "", "", "", "", "", "", ""]);
 
   // Summary Metrics
-  let totalCompRate = 0;
   let totalScoreSum = 0;
   let scoredStudentCount = 0;
 
   students.forEach((s) => {
     const sum = studentSummaries.get(s.studentId);
     if (sum) {
-      totalCompRate += sum.completionRate;
       if (sum.averageScore !== null) {
         totalScoreSum += sum.averageScore;
         scoredStudentCount++;
@@ -734,7 +747,7 @@ export function buildClassReportCsv(
     }
   });
 
-  const avgClassCompRate = students.length > 0 ? (totalCompRate / students.length).toFixed(1) : "0";
+  const avgClassCompRate = classSubmissionProgress(students, studentSummaries).rate.toFixed(1);
   const avgClassScore = scoredStudentCount > 0 ? (totalScoreSum / scoredStudentCount).toFixed(1) : "-";
 
   rows.push(["TỔNG QUAN CHỈ SỐ LỚP HỌC", "", "", "", "", "", "", "", "", "", "", ""]);

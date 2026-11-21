@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { ClassDto, StudentDto, StudentSubjectGoalDto } from "../../types/organization";
-import { assessmentLabel, filterReportPeriod, isAcademicHighRisk, simulateSubjectGrade } from "./teacherReportsHelpers.ts";
+import { assessmentLabel, classSubmissionProgress, filterReportPeriod, isAcademicHighRisk, simulateSubjectGrade } from "./teacherReportsHelpers.ts";
 import type { ClassReportExcelOptions, StudentAcademicSummary, StudentAssignmentRecord } from "./teacherReportsHelpers";
 
 export function downloadXlsx(wb: XLSX.WorkBook, filename: string) {
@@ -59,7 +59,6 @@ export function buildClassReportWorkbook(
   const exportTime = new Date().toLocaleString("vi-VN");
 
   // Statistical aggregations
-  let totalCompRate = 0;
   let totalScoreSum = 0;
   let scoredStudentCount = 0;
   let highRiskCount = 0;
@@ -81,7 +80,6 @@ export function buildClassReportWorkbook(
   students.forEach((s) => {
     const sum = studentSummaries.get(s.studentId);
     if (sum) {
-      totalCompRate += sum.completionRate;
       summaryTotalAssigned += sum.totalAssigned;
       summaryCompleted += sum.completedCount;
       summaryInProgress += sum.inProgressCount;
@@ -114,7 +112,7 @@ export function buildClassReportWorkbook(
   const classMinScore = validScores.length > 0 ? Math.min(...validScores) : null;
 
   const totalStudents = Math.max(1, students.length);
-  const avgClassCompRate = students.length > 0 ? (totalCompRate / students.length).toFixed(1) : "0";
+  const avgClassCompRate = classSubmissionProgress(students, studentSummaries).rate.toFixed(1);
   const avgClassScore = scoredStudentCount > 0 ? (totalScoreSum / scoredStudentCount).toFixed(1) : "-";
   const passRate = scoredStudentCount > 0 ? Number(((passedCount / scoredStudentCount) * 100).toFixed(1)) : 0;
 
@@ -176,7 +174,7 @@ export function buildClassReportWorkbook(
     ["1. CHỈ SỐ HỌC VỤ & TIẾN ĐỘ CỐT LÕI (KEY METRICS DASHBOARD)"],
     ["Chỉ Số Học Vụ", "Giá Trị", "Đơn Vị", "Mức Đánh Giá", "Khuyến Nghị Sư Phạm"],
     [
-      "Tỷ lệ hoàn thành bài tập trung bình toàn lớp",
+      "Tỷ lệ nộp bài tập chung",
       Number(avgClassCompRate),
       "%",
       Number(avgClassCompRate) >= 80 ? "Xuất sắc (>= 80%)" : Number(avgClassCompRate) >= 50 ? "Mức độ trung bình (50-79%)" : "Cần đôn đốc (< 50%)",
