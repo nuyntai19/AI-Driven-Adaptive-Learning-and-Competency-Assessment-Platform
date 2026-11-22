@@ -17,7 +17,7 @@ export interface ListCentersParams {
 }
 
 export const platformApi = {
-  listCenters: async (params: ListCentersParams = {}): Promise<PlatformCentersListData> => {
+  listCenters: async (params: ListCentersParams = {}, signal?: AbortSignal): Promise<PlatformCentersListData> => {
     const queryParams: Record<string, string | number> = {
       page: params.page ?? 1,
       pageSize: params.pageSize ?? 20,
@@ -33,6 +33,7 @@ export const platformApi = {
 
     const response = await httpClient.get<{ data: PlatformCentersListData }>("/platform/centers", {
       params: queryParams,
+      signal,
     });
     return response.data.data;
   },

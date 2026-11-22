@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
@@ -28,7 +28,15 @@ export const PlatformCentersPage: React.FC = () => {
   const [status, setStatus] = useState<string>("");
 
   const [searchInput, setSearchInput] = useState<string>("");
-  const [statusInput, setStatusInput] = useState<string>("");
+  useEffect(() => {
+    const nextSearch = searchInput.trim();
+    if (nextSearch === search) return;
+    const timeout = window.setTimeout(() => {
+      setSearch(nextSearch);
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput, search]);
 
   // Modals state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -82,7 +90,7 @@ export const PlatformCentersPage: React.FC = () => {
   // Main Centers Query
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["platform-centers", page, pageSize, search, status],
-    queryFn: () => platformApi.listCenters({ page, pageSize, search, status }),
+    queryFn: ({ signal }) => platformApi.listCenters({ page, pageSize, search, status }, signal),
   });
 
   const isQueryForbidden = isAxiosError(error) && error.response?.status === 403;
@@ -205,13 +213,6 @@ export const PlatformCentersPage: React.FC = () => {
     setNewManagerPassword("");
     setCreateModalError("");
     setShowCreatePassword(false);
-  };
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSearch(searchInput);
-    setStatus(statusInput);
-    setPage(1);
   };
 
   const handleToggleStatusConfirm = () => {
@@ -509,10 +510,11 @@ export const PlatformCentersPage: React.FC = () => {
       )}
 
       {/* Filter / Search Bar */}
-      <form onSubmit={handleSearchSubmit} className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row gap-3 items-center">
+      <div role="search" aria-label="Tìm và lọc trung tâm" className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col md:flex-row gap-3 items-center">
         <div className="relative flex-1 w-full">
           <input
-            type="text"
+            type="search"
+            aria-label="Tìm kiếm trung tâm"
             placeholder="Tìm kiếm theo mã, tên trung tâm hoặc người quản lý..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
@@ -523,21 +525,16 @@ export const PlatformCentersPage: React.FC = () => {
           </svg>
         </div>
         <select
-          value={statusInput}
-          onChange={(e) => setStatusInput(e.target.value)}
+          aria-label="Lọc trạng thái trung tâm"
+          value={status}
+          onChange={(e) => { setStatus(e.target.value); setSearch(searchInput.trim()); setPage(1); }}
           className="w-full md:w-48 px-3.5 py-2.5 text-sm border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">Tất cả trạng thái</option>
           <option value="Active">Đang hoạt động</option>
           <option value="Suspended">Tạm ngưng</option>
         </select>
-        <button
-          type="submit"
-          className="w-full md:w-auto px-6 py-2.5 text-sm font-semibold text-white bg-slate-800 dark:bg-slate-700 hover:bg-slate-900 dark:hover:bg-slate-600 rounded-xl transition-colors cursor-pointer"
-        >
-          Tìm kiếm
-        </button>
-      </form>
+      </div>
 
       {/* Data Table or Empty State */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
