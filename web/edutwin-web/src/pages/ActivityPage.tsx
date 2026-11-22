@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { httpClient } from "../api/httpClient";
 import { useAuthStore } from "../stores/authStore";
-import type { ApiCollectionResponse } from "../types/api";
+import type { ApiCollectionResponse, ApiResponse } from "../types/api";
 import { activitySourceLabels as sourceLabels, activityActionLabels as actionLabels, activityTitle, activityDescription, activityTargetLabel, activityStatus } from "../utils/activityPresentation";
 import { notificationDateBoundary } from "../utils/notificationHelpers";
 import { dateRangeError } from "../utils/dateRange";
@@ -14,10 +14,11 @@ interface Activity {
   beforeStatus: string | null; afterStatus: string | null; version: string | null; reason: string | null; link: string | null;
   targetLabel?: string | null;
 }
+interface ActivityFilterOption { source: string; action: string }
 const button = "rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:hover:bg-slate-800";
 export function ActivityPage({ embedded = false }: { embedded?: boolean }) {
   const user = useAuthStore(s => s.user);
-  return <ActivityView key={`${user?.centerId}:${user?.userId}`} embedded={embedded} />;
+  return <ActivityView key={`${user?.centerId}:${user?.userId}:${user?.accountType}:${user?.authorizationVersion}`} embedded={embedded} />;
 }
 function ActivityView({ embedded }: { embedded: boolean }) {
   const user = useAuthStore(s => s.user);
@@ -31,21 +32,29 @@ function ActivityView({ embedded }: { embedded: boolean }) {
   };
   const [expanded, setExpanded] = useState<string | null>(null);
   const administrative = user?.accountType === "CenterManager" || user?.accountType === "PlatformAdmin";
-  const query = useQuery({ queryKey: ["activity", user?.centerId, user?.userId, page, source, action, range.from, range.until],
+  const scopeKey = [user?.centerId, user?.userId, user?.accountType, user?.authorizationVersion];
+  const filterOptions = useQuery({ queryKey: ["activity-filter-options", ...scopeKey],
+    queryFn: async ({ signal }) => (await httpClient.get<ApiResponse<ActivityFilterOption[]>>("/activity/filter-options", { signal })).data,
+    retry: false, enabled: !!user });
+  const actionsForSource = (value: string) => Object.entries(actionLabels).filter(([action]) =>
+    filterOptions.data?.data.some(option => option.action === action && (!value || option.source === value)));
+  const actionOptions = actionsForSource(source);
+  const query = useQuery({ queryKey: ["activity", ...scopeKey, page, source, action, range.from, range.until],
     queryFn: async ({ signal }) => (await httpClient.get<ApiCollectionResponse<Activity>>("/activity", { signal, params: { page, pageSize: 20,
       source: source || undefined, action: action || undefined, from: notificationDateBoundary(range.from), until: notificationDateBoundary(range.until, true) } })).data,
     retry: false, enabled: !!user });
   const totalPages = Math.max(1, query.data?.meta.totalPages ?? 1);
   const Heading = embedded ? "h2" : "h1";
   return <section className={`notification-surface w-full min-w-0 text-base text-slate-900 dark:text-slate-100 ${embedded ? "" : "mx-auto max-w-[1500px] p-4 sm:p-6 lg:p-8"}`}>
-    <header className="mb-6 flex flex-wrap items-start justify-between gap-4"><div>{!embedded && <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Bằng chứng hoạt động</p>}<Heading className={embedded ? "text-xl font-bold" : "mt-2 text-2xl font-bold sm:text-3xl"}>{embedded ? "Tổng quan hoạt động" : "Nhật ký hoạt động"}</Heading><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400">{administrative ? "Metadata quản trị trong phạm vi được cấp. Không bao gồm bài làm, ảnh nháp hoặc điểm riêng của học sinh." : "Lịch sử có nguồn thật trong phạm vi của bạn. Đọc nhật ký không thay đổi bài làm, điểm hoặc trạng thái xử lý."}</p></div><button type="button" onClick={() => void query.refetch()} disabled={query.isFetching} className={button}>Làm mới</button></header>
+    <header className="mb-6 flex flex-wrap items-start justify-between gap-4"><div>{!embedded && <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Bằng chứng hoạt động</p>}<Heading className={embedded ? "text-xl font-bold" : "mt-2 text-2xl font-bold sm:text-3xl"}>{embedded ? "Tổng quan hoạt động" : "Nhật ký hoạt động"}</Heading><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400">{administrative ? "Metadata quản trị trong phạm vi được cấp. Không bao gồm bài làm, ảnh nháp hoặc điểm riêng của học sinh." : "Lịch sử có nguồn thật trong phạm vi của bạn. Đọc nhật ký không thay đổi bài làm, điểm hoặc trạng thái xử lý."}</p></div><button type="button" onClick={() => void Promise.all([query.refetch(), filterOptions.refetch()])} disabled={query.isFetching || filterOptions.isFetching} className={button}>Làm mới</button></header>
     <div className="mb-5 flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-      <label className="min-w-[180px] flex-1 text-xs font-medium text-slate-500">Nguồn lịch sử<select value={source} onChange={e => { setSource(e.target.value); setPage(1); }} className="mt-2 block w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:text-white"><option value="">Tất cả nguồn được phép</option>{Object.entries(sourceLabels).filter(([key]) => !administrative || ["Audit", "Curriculum", "Business"].includes(key)).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-      <label className="min-w-[180px] flex-1 text-xs font-medium text-slate-500">Hoạt động<select value={action} onChange={e => { setAction(e.target.value); setPage(1); }} className="mt-2 block w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm dark:border-slate-700"><option value="">Tất cả hoạt động</option>{Object.entries(actionLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+      <label className="min-w-[180px] flex-1 text-xs font-medium text-slate-500">Nguồn lịch sử<select value={source} onChange={e => { const next = e.target.value; setSource(next); if (!actionsForSource(next).some(([key]) => key === action)) setAction(""); setPage(1); }} className="mt-2 block w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:text-white"><option value="">Tất cả nguồn được phép</option>{Object.entries(sourceLabels).filter(([key]) => !administrative || ["Audit", "Curriculum", "Business"].includes(key)).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+      <label className="min-w-[180px] flex-1 text-xs font-medium text-slate-500">Hoạt động<select value={action} disabled={filterOptions.isPending || filterOptions.isError} onChange={e => { setAction(e.target.value); setPage(1); }} className="mt-2 block w-full rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm disabled:opacity-50 dark:border-slate-700"><option value="">{filterOptions.isPending ? "Đang tải loại hoạt động…" : "Tất cả hoạt động"}</option>{actionOptions.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
       <label className="text-xs font-medium text-slate-500">Từ ngày<DateInput value={from} onChange={value => changeRange(value, until)} className="mt-2 block rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm dark:border-slate-700" /></label>
       <label className="text-xs font-medium text-slate-500">Đến ngày<DateInput value={until} onChange={value => changeRange(from, value)} className="mt-2 block rounded-xl border border-slate-200 bg-transparent px-3 py-2.5 text-sm dark:border-slate-700" /></label>
       <button type="button" className={button} onClick={() => { setSource(""); setAction(""); setFrom(""); setUntil(""); setRange({ from: "", until: "" }); setPage(1); }}>Xóa bộ lọc</button>
     </div>
+    {filterOptions.isError && <p role="alert" className="mb-4 text-sm text-rose-600">Chưa tải được danh sách loại hoạt động. Bạn vẫn có thể xem nhật ký hoặc bấm Làm mới để thử lại.</p>}
     {rangeError && <p role="alert" className="mb-4 text-sm text-rose-600">{rangeError} Danh sách vẫn giữ khoảng ngày hợp lệ gần nhất.</p>}
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
       {query.isPending && <p role="status" className="p-12 text-center text-slate-500">Đang đọc các nguồn lịch sử…</p>}

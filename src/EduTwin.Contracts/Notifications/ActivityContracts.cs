@@ -13,3 +13,4 @@ public sealed record ActivityDto(string Source, string SourceId, DateTime Occurr
     string Action, string TargetType, string TargetId, string? BeforeStatus, string? AfterStatus,
     string? Version, string? Reason, string? Link, string? TargetLabel = null);
 public sealed record ActivityPage(IReadOnlyList<ActivityDto> Items, long TotalItems);
+public sealed record ActivityFilterOption(string Source, string Action);

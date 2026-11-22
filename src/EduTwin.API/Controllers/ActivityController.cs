@@ -18,6 +18,12 @@ public sealed class ActivityController(ActivityService service, TimeProvider clo
             TotalItems = result.Data.TotalItems, TotalPages = (int)Math.Ceiling(result.Data.TotalItems / (double)query.PageSize),
             Timestamp = clock.GetUtcNow().UtcDateTime, TraceId = HttpContext.TraceIdentifier } }) : Failure(result.ErrorCode!);
     }
+    [HttpGet("filter-options"), Authorize(Policy = CompositePermissionPolicies.ActivityRead)]
+    public async Task<IActionResult> FilterOptions(CancellationToken ct)
+    {
+        var result = await service.FilterOptionsAsync(ct);
+        return result.IsSuccess ? Ok(new { data = result.Data, meta = new { timestamp = clock.GetUtcNow().UtcDateTime, traceId = HttpContext.TraceIdentifier } }) : Failure(result.ErrorCode!);
+    }
     [HttpGet("{source}/{id}"), Authorize(Policy = CompositePermissionPolicies.ActivityRead)]
     public async Task<IActionResult> Detail(string source, string id, CancellationToken ct)
     {

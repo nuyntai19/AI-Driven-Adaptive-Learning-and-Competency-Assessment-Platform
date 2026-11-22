@@ -124,6 +124,20 @@ public sealed class ActivityService(EduTwinDbContext db, ITenantContext tenant)
         }
         return result;
     }
+    public async Task<NotificationResult<IReadOnlyList<ActivityFilterOption>>> FilterOptionsAsync(CancellationToken ct)
+    {
+        if (!Identity) return new(null, ErrorCodes.ResourceNotFound);
+        var options = new HashSet<ActivityFilterOption>();
+        // Reuse the exact tenant/role/ownership predicates used by the journal itself.
+        // Do not derive choices from just one page or from the current date/action filter.
+        foreach (var query in Queries())
+        {
+            var pairs = await query.Select(r => new { r.Source, r.Action }).Distinct().ToArrayAsync(ct);
+            foreach (var pair in pairs)
+                if (!string.IsNullOrWhiteSpace(pair.Action)) options.Add(new(pair.Source, pair.Action));
+        }
+        return new(options.OrderBy(o => o.Source, StringComparer.Ordinal).ThenBy(o => o.Action, StringComparer.Ordinal).ToArray());
+    }
     public async Task<NotificationResult<ActivityPage>> ListAsync(ActivityQuery query, CancellationToken ct)
     {
         if (!Identity) return new(null, ErrorCodes.ResourceNotFound);
