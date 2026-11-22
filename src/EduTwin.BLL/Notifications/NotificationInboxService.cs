@@ -34,7 +34,8 @@ public sealed class NotificationInboxService(EduTwinDbContext db, ITenantContext
         if (query.Page < 1 || query.PageSize is < 1 or > 100 || (long)(query.Page - 1) * query.PageSize > int.MaxValue)
             return new(null, ErrorCodes.ValidationFailed);
         if (query.Priority is not (null or "Normal" or "Important" or "Urgent") || query.Category is not (null or "Information" or "Request" or "System") ||
-            query.From > query.Until || query.From is { Kind: not DateTimeKind.Utc } || query.Until is { Kind: not DateTimeKind.Utc }) return new(null, ErrorCodes.ValidationFailed);
+            query.From > query.Until || query.From is { Kind: not DateTimeKind.Utc } || query.Until is { Kind: not DateTimeKind.Utc } ||
+            query.Search is { Length: > 200 }) return new(null, ErrorCodes.ValidationFailed);
         var rows = Own().AsNoTracking().Where(x => x.HiddenAt == null);
         if (query.UnreadOnly) rows = rows.Where(x => x.ReadAt == null);
         if (query.From is { } from) rows = rows.Where(x => x.DeliveredAt >= from);
@@ -42,6 +43,17 @@ public sealed class NotificationInboxService(EduTwinDbContext db, ITenantContext
         // Correlated exclusively with an OWN delivery; the relay message belongs to its source tenant.
         var messages = db.NotificationMessages.IgnoreQueryFilters();
         var actions = db.NotificationMessageActions.IgnoreQueryFilters();
+        if (query.Search?.Trim().ToLowerInvariant() is { Length: > 0 } search)
+        {
+            // Search the text visible to this recipient, including lifecycle tombstones,
+            // rather than revealing matches in withdrawn original content.
+            rows = rows.Where(x =>
+                (!actions.Any(a => a.MessageId == x.Event.MessageId) &&
+                    (x.Event.Title.ToLower().Contains(search) || x.Event.Body.ToLower().Contains(search))) ||
+                actions.Any(a => a.MessageId == x.Event.MessageId &&
+                    ((a.Kind == "Retracted" ? "Thông báo đã được thu hồi" : "Thông báo đã được đính chính").ToLower().Contains(search) ||
+                     ("Nội dung gốc không còn áp dụng. " + a.Reason).ToLower().Contains(search))));
+        }
         if (query.Priority is { } priority) rows = rows.Where(x => x.Event.MessageId == null ? priority == "Normal" : messages.Any(m => m.MessageId == x.Event.MessageId && m.Priority == priority));
         if (query.Category is { } category) rows = rows.Where(x => x.Event.MessageId == null ? category == "System" : messages.Any(m => m.MessageId == x.Event.MessageId && m.Category == category));
         if (query.NeedsAcknowledgement) rows = rows.Where(x => x.AcknowledgedAt == null && messages.Any(m => m.MessageId == x.Event.MessageId && m.RequiresAcknowledgement) &&

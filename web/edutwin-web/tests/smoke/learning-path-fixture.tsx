@@ -21,9 +21,10 @@ import '../../src/index.css';
 const scenario = new URLSearchParams(location.search).get('scenario') ?? 'goal';
 const submissionCase = new URLSearchParams(location.search).get('submissions');
 const teacher = scenario.startsWith('teacher');
+const managerNotifications = scenario === 'notifications-search';
 useAuthStore.getState().setSession('fixture-only-not-a-real-token', {
   userId: 'fixture-user', centerId: 'fixture-center', centerName: 'Fixture', username: 'fixture', displayName: 'Fixture',
-  role: teacher ? 'Teacher' : 'Student', accountType: teacher ? 'Teacher' : 'Student', roles: [],
+  role: managerNotifications ? 'CenterManager' : teacher ? 'Teacher' : 'Student', accountType: managerNotifications ? 'CenterManager' : teacher ? 'Teacher' : 'Student', roles: [],
   permissions: scenario === 'teacher-denied' ? [] : Object.values(permissions), authorizationVersion: 1,
 });
 const record: any = { requests: [], accepted: false, closed: false, unknown: [] };
@@ -96,6 +97,10 @@ const notices = Array.from({ length: 21 }, (_, i) => ({
   body: "Bạn được giao bài tập này.", deliveredAt: "2026-11-18T10:00:00Z", readAt: "2026-11-18T10:01:00Z",
   priority: "Normal", category: "Information", lifecycleStatus: "Active", senderName: "Giảng viên",
 }));
+if (managerNotifications) {
+  Object.assign(notices[0], { title: 'Yêu cầu học phí', body: 'Gửi bảng tổng hợp trước thứ hai.', category: 'Request', priority: 'Important' });
+  Object.assign(notices[20], { title: 'Lịch tuần mới', body: 'Thông tin học phí của kỳ tới.', category: 'Information', priority: 'Urgent' });
+}
 if (scenario === "notifications" || scenario === "focus") document.documentElement.classList.add("student-theme", "dark");
 httpClient.defaults.adapter = async config => {
   const url = config.url ?? ''; const method = config.method ?? 'get';
@@ -104,7 +109,12 @@ httpClient.defaults.adapter = async config => {
   let data: any;
   if (url === "/notifications") {
     const page = Number(config.params.page);
-    data = { data: notices.slice((page - 1) * 20, page * 20), meta: { page, pageSize: 20, totalItems: notices.length, totalPages: Math.ceil(notices.length / 20) } };
+    const filters = config.params;
+    const search = (filters.search ?? '').trim().toLocaleLowerCase('vi');
+    const filtered = notices.filter(n => (!search || `${n.title}\n${n.body}`.toLocaleLowerCase('vi').includes(search)) &&
+      (!filters.category || n.category === filters.category) && (!filters.priority || n.priority === filters.priority) &&
+      (!filters.from || n.deliveredAt >= filters.from) && (!filters.until || n.deliveredAt <= filters.until) && (!filters.unreadOnly || !n.readAt));
+    data = { data: filtered.slice((page - 1) * 20, page * 20), meta: { page, pageSize: 20, totalItems: filtered.length, totalPages: Math.ceil(filtered.length / 20) } };
   }
   else if (url === "/notifications/summary") data = envelope({ unreadCount: 0 });
   else if (url.endsWith("/hide") && url.startsWith("/notifications/")) {
@@ -187,7 +197,7 @@ const component = scenario.startsWith('goal') ? <GoalAndProposalModal isOpen sub
   : scenario === "teacher-grading" ? <TeacherThemeScope className="p-4"><AssignmentGradingWorkspace actor="Teacher" /></TeacherThemeScope>
   : teacher ? <TeacherThemeScope className="p-4"><Routes><Route path="/giao-vien/bai-tap/:id" element={<TeacherAssignmentEditorView />} /></Routes></TeacherThemeScope>
   : (timeline || examSchedule) ? <StudentLearningPathPage />
-  : scenario === "notifications" ? <NotificationsPage />
+  : scenario.startsWith("notifications") ? <NotificationsPage />
   : scenario === "focus" ? <StudentFocusStudio />
   : <MissionPlayerModal isOpen mission={mission} subjectId="subject" onClose={() => { record.closed = true; }} onResumeMission={() => {}} />;
 createRoot(document.getElementById('root')!).render(<QueryClientProvider client={query}><MemoryRouter initialEntries={[teacher ? '/giao-vien/bai-tap/exam' : '/hoc-tap/lo-trinh-hoc-tap?subjectId=subject&classId=class' + (examSchedule ? '&examId=upcoming' : '')]}>{component}</MemoryRouter></QueryClientProvider>);

@@ -13,6 +13,7 @@ public sealed class NotificationListQuery
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 20;
     public bool UnreadOnly { get; set; }
+    public string? Search { get; set; }
     public string? Priority { get; set; }
     public string? Category { get; set; }
     public DateTime? From { get; set; }

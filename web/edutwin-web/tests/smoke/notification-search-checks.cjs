@@ -1,0 +1,37 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+module.exports = async ({ page, evaluate, waitFor, fill, port }) => {
+  await waitFor("document.body.textContent.includes('Trang 1 / 2')");
+  await evaluate("Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Sau →')).click()");
+  await waitFor("document.body.textContent.includes('Trang 2 / 2')");
+  await evaluate("document.querySelector('details summary').click()");
+  await fill('input[type=search]', '  HỌC PHÍ  ');
+  await waitFor("document.querySelectorAll('li').length === 2 && document.body.textContent.includes('Trang 1 / 1')");
+  assert.match(await evaluate("document.querySelector('ul').textContent"), /Yêu cầu học phí/);
+  assert.match(await evaluate("document.querySelector('ul').textContent"), /Lịch tuần mới/);
+  assert.equal(await evaluate("window.__verification.requests.filter(r => r.url === '/notifications').at(-1).params.search"), 'HỌC PHÍ');
+  const select = async (index, value) => {
+    await evaluate(`(() => { const e = document.querySelectorAll('details select')[${index}]; e.value = '${value}'; e.dispatchEvent(new Event('change', {bubbles:true})); })()`);
+  };
+  await select(0, 'Request');
+  await select(1, 'Important');
+  await waitFor("document.querySelectorAll('li').length === 1 && document.querySelector('ul').textContent.includes('Yêu cầu học phí')");
+  await waitFor("window.__verification.requests.filter(r => r.url === '/notifications').at(-1).params.priority === 'Important'");
+  assert.equal(await evaluate("window.__verification.requests.filter(r => r.url === '/notifications').at(-1).params.category"), 'Request');
+  await evaluate(`(() => { document.querySelectorAll('input[type=date]').forEach(e => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'2026-11-18'); e.dispatchEvent(new Event('change',{bubbles:true})); }); })()`);
+  await waitFor("!!window.__verification.requests.filter(r => r.url === '/notifications').at(-1).params.from && !!window.__verification.requests.filter(r => r.url === '/notifications').at(-1).params.until");
+  assert.equal(await evaluate("window.__verification.requests.filter(r => r.url === '/notifications').at(-1).params.search"), 'HỌC PHÍ');
+  await waitFor("document.querySelectorAll('li').length === 1");
+  const shot = await page('Page.captureScreenshot', {format:'png',captureBeyondViewport:true});
+  fs.writeFileSync(path.resolve(__dirname,'../../../../scratch/notification-search.png'),Buffer.from(shot.data,'base64'));
+  await fill('input[type=search]', 'Không có kết quả này');
+  await waitFor("document.body.textContent.includes('Không tìm thấy thông báo phù hợp')");
+  await evaluate("Array.from(document.querySelectorAll('button')).find(b => b.textContent === 'Xóa bộ lọc').click()");
+  await waitFor("document.body.textContent.includes('Trang 1 / 2') && document.querySelector('input[type=search]').value === ''");
+  assert.equal(await evaluate("document.querySelectorAll('details select')[0].value"),'');
+  assert.equal(await evaluate("document.querySelectorAll('details select')[1].value"),'');
+  assert.equal(await evaluate("Array.from(document.querySelectorAll('input[type=date]')).every(e => !e.value)"),true);
+  assert.equal(await evaluate("window.__verification.requests.some(r => r.method !== 'get')"),false);
+  console.log('PASS: manager search matches title and body beyond current page, resets page, combines category/priority, and clears all filters without mutations.');
+};

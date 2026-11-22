@@ -20,7 +20,7 @@ export interface NotificationItem {
 export interface NotificationDraft { title: string; body: string; audienceKind: string; targetIds: string[];
   priority?: "Normal" | "Important" | "Urgent"; category?: "Information" | "Request";
   requiresAcknowledgement?: boolean; allowReply?: boolean; correctionOfMessageId?: string | null; correctionReason?: string | null }
-export interface NotificationFilters { priority?: string; category?: string; from?: string; until?: string; needsAcknowledgement?: boolean }
+export interface NotificationFilters { search?: string; priority?: string; category?: string; from?: string; until?: string; needsAcknowledgement?: boolean }
 export interface NotificationReply { replyId: string; body: string; senderName: string; createdAt: string }
 export interface NotificationAudienceOption { kind: string; label: string; choices: { id: string; label: string }[] }
 export interface NotificationPreview { token: string; recipientCount: number; recipientNames: string[]; expiresAt: string }

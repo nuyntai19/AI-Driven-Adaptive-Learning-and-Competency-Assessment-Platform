@@ -39,11 +39,31 @@ function OwnNotifications() {
   }
   const [success, setSuccess] = useState(false);
   const [correction, setCorrection] = useState<NotificationSent | null>(null);
+  const [refreshStatus, setRefreshStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
+  const refreshing = useRef(false);
+  async function refresh() {
+    if (refreshing.current) return;
+    if (!navigator.onLine) { setRefreshStatus("error"); return; }
+    refreshing.current = true;
+    setRefreshStatus("pending");
+    try {
+      // Dispatch tracking has a separate cache; refresh both within this account only.
+      const results = await Promise.allSettled([
+        client.invalidateQueries({ queryKey: key }, { throwOnError: true }),
+        client.invalidateQueries({ queryKey: ["notification-operations", user?.centerId, user?.userId] }, { throwOnError: true }),
+      ]);
+      setRefreshStatus(results.some(result => result.status === "rejected") ? "error" : "success");
+    } finally {
+      refreshing.current = false;
+    }
+  }
   return <section className={`notification-surface w-full min-w-0 text-base text-slate-900 dark:text-slate-100 ${user?.accountType === "PlatformAdmin" ? "" : "mx-auto max-w-[1500px] p-4 sm:p-6 lg:p-8"}`}>
     <header className="mb-7 flex flex-wrap items-start justify-between gap-5">
       <div className="flex min-w-0 items-start gap-4"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400"><NotificationIcon className="h-6 w-6" /></span><div><h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Trung tâm thông báo</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">{access.send ? "Nhận cập nhật và gửi thông báo đến đúng người trong phạm vi của bạn." : "Hộp thư riêng của bạn. Thông báo không bị lọc mất khi đổi môn hoặc lớp."}</p></div></div>
-      <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void client.invalidateQueries({ queryKey: key })} className={button}><NotificationIcon kind="refresh" className="h-4 w-4" />Làm mới</button>{access.send && <button type="button" onClick={() => { setCorrection(null); setView("compose"); setSuccess(false); }} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-500/20 hover:bg-indigo-700"><NotificationIcon kind="send" className="h-4 w-4" />Soạn thông báo</button>}</div>
+      <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void refresh()} disabled={refreshStatus === "pending"} aria-busy={refreshStatus === "pending"} className={button}><NotificationIcon kind="refresh" className={`h-4 w-4 ${refreshStatus === "pending" ? "animate-spin" : ""}`} />{refreshStatus === "pending" ? "Đang làm mới…" : "Làm mới"}</button>{access.send && <button type="button" onClick={() => { setCorrection(null); setView("compose"); setSuccess(false); }} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-indigo-500/20 hover:bg-indigo-700"><NotificationIcon kind="send" className="h-4 w-4" />Soạn thông báo</button>}</div>
     </header>
+    {refreshStatus === "success" && <p role="status" className="mb-5 text-sm text-emerald-700 dark:text-emerald-300">Đã cập nhật thông báo mới nhất.</p>}
+    {refreshStatus === "error" && <p role="alert" className="mb-5 text-sm text-rose-600 dark:text-rose-400">Chưa làm mới được đầy đủ thông báo. Vui lòng kiểm tra kết nối và thử lại.</p>}
     {success && <p role="status" className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">Thông báo đã được tiếp nhận. Hệ thống đang phân phối; bạn có thể xem trạng thái trong Đã gửi.</p>}
     <nav aria-label="Hộp thông báo" className="mb-5 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800">
       <button type="button" onClick={() => setView("received")} aria-current={view === "received" ? "page" : undefined} className={`border-b-2 px-4 py-3 text-sm font-semibold ${view === "received" ? "border-indigo-600 text-indigo-600 dark:text-indigo-400" : "border-transparent text-slate-500"}`}>Đã nhận {summary.data && summary.data.data.unreadCount > 0 && <span className="ml-2 rounded-full bg-indigo-100 px-2 py-0.5 text-xs dark:bg-indigo-500/20">{summary.data.data.unreadCount}</span>}</button>
@@ -53,8 +73,8 @@ function OwnNotifications() {
     {view === "operations" && operations ? <NotificationOperations /> : view === "compose" && access.send ? <NotificationComposer key={correction?.messageId ?? "new"} correction={correction} queryKey={key} onCancel={() => setView("received")} onSent={() => { setSuccess(true); setView("sent"); void client.invalidateQueries({ queryKey: key }); }} /> : view === "sent" && access.sent ? <SentInbox key={params.get("sent") ?? "sent-inbox"} onCorrect={item => { setCorrection(item); setView("compose"); setSuccess(false); }} /> : <ReceivedInbox />}
   </section>;
 }
-function EmptyInbox({ sent = false, unread = false }: { sent?: boolean; unread?: boolean }) {
-  return <div className={`${card} px-6 py-16 text-center sm:py-20`}><span className="mx-auto grid h-20 w-20 place-items-center rounded-3xl border border-indigo-100 bg-indigo-50 text-indigo-400 dark:border-indigo-500/20 dark:bg-indigo-500/10"><NotificationIcon kind={sent ? "send" : unread ? "check" : "bell"} className="h-9 w-9" /></span><h2 className="mt-6 text-lg font-semibold">{sent ? "Bạn chưa gửi thông báo nào" : unread ? "Bạn đã đọc hết thông báo" : "Hộp thư của bạn đang trống"}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">{sent ? "Chọn Soạn thông báo để gửi nội dung mới. Các bản đã gửi và trạng thái phân phối sẽ được giữ tại đây." : unread ? "Chọn Tất cả để xem lại những thông báo đã đọc." : "Chưa có thông báo được gửi đến bạn. Khi có cập nhật, chuông sẽ hiển thị số chưa đọc."}</p></div>;
+function EmptyInbox({ sent = false, unread = false, filtered = false }: { sent?: boolean; unread?: boolean; filtered?: boolean }) {
+  return <div className={`${card} px-6 py-16 text-center sm:py-20`}><span className="mx-auto grid h-20 w-20 place-items-center rounded-3xl border border-indigo-100 bg-indigo-50 text-indigo-400 dark:border-indigo-500/20 dark:bg-indigo-500/10"><NotificationIcon kind={sent ? "send" : unread ? "check" : "bell"} className="h-9 w-9" /></span><h2 className="mt-6 text-lg font-semibold">{filtered ? "Không tìm thấy thông báo phù hợp" : sent ? "Bạn chưa gửi thông báo nào" : unread ? "Bạn đã đọc hết thông báo" : "Hộp thư của bạn đang trống"}</h2><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">{filtered ? "Thử từ khóa khác hoặc xóa bộ lọc để xem lại thông báo." : sent ? "Chọn Soạn thông báo để gửi nội dung mới. Các bản đã gửi và trạng thái phân phối sẽ được giữ tại đây." : unread ? "Chọn Tất cả để xem lại những thông báo đã đọc." : "Chưa có thông báo được gửi đến bạn. Khi có cập nhật, chuông sẽ hiển thị số chưa đọc."}</p></div>;
 }
 function Paging({ page, totalPages, busy, onPage }: { page: number; totalPages: number; busy: boolean; onPage: (page: number) => void }) {
   return <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 dark:border-slate-800"><button type="button" disabled={busy || page <= 1} onClick={() => onPage(page - 1)} className={button}>← Trước</button><span className="text-xs text-slate-500">Trang {page} / {Math.max(1, totalPages)}</span><button type="button" disabled={busy || page >= totalPages} onClick={() => onPage(page + 1)} className={button}>Sau →</button></div>;
@@ -70,8 +90,15 @@ function ReceivedInbox() {
   const rangeError = dateRangeError(notificationDateInput(filters.from), notificationDateInput(filters.until));
   const changeFilters = (value: NotificationFilters) => {
     setFilters(value);
-    if (!dateRangeError(notificationDateInput(value.from), notificationDateInput(value.until))) { setRequestFilters(value); setPage(1); }
   };
+  useEffect(() => {
+    if (dateRangeError(notificationDateInput(filters.from), notificationDateInput(filters.until))) return;
+    const timeout = setTimeout(() => {
+      setRequestFilters({ ...filters, search: filters.search?.trim() || undefined });
+      setPage(1);
+    }, 250);
+    return () => clearTimeout(timeout);
+  }, [filters]);
   const list = useQuery({ queryKey: [...key, "list", page, unreadOnly, requestFilters], queryFn: ({ signal }) => notificationsApi.list(page, 20, unreadOnly, signal, requestFilters), enabled: access.read, retry: false });
   const detail = useQuery({ queryKey: [...key, "detail", id], queryFn: ({ signal }) => notificationsApi.detail(id!, signal), enabled: access.read && !!id, retry: false });
   const lastPage = list.data?.meta.totalPages;
@@ -93,7 +120,7 @@ function ReceivedInbox() {
     {rangeError && <p role="alert" className="mb-4 text-sm text-rose-600">{rangeError} Danh sách vẫn giữ bộ lọc hợp lệ gần nhất.</p>}
     {read.isError && <p role="alert" className="mb-4 text-sm text-rose-600 dark:text-rose-400">Chưa đánh dấu đọc được. Bạn có thể thử lại; dữ liệu học tập không bị thay đổi.</p>}
     <div className={id ? "grid gap-5 lg:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.2fr)]" : ""}>
-      {empty ? <EmptyInbox unread={unreadOnly} /> : <div className={card}>
+      {empty ? <EmptyInbox unread={unreadOnly} filtered={Object.values(requestFilters).some(Boolean)} /> : <div className={card}>
         {list.isPending && <p role="status" className="p-10 text-center text-sm text-slate-500">Đang tải hộp thư…</p>}
         {list.isError && <p role="alert" className="p-10 text-center text-sm text-rose-600">Không tải được hộp thư. Hãy thử làm mới.</p>}
         {list.isSuccess && <ul className="divide-y divide-slate-100 dark:divide-slate-800">{list.data.data.map(item => <li key={item.deliveryId}><button type="button" onClick={() => setParams({ notification: item.deliveryId })} aria-current={id === item.deliveryId ? "true" : undefined} className={`flex w-full gap-4 p-5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/70 ${id === item.deliveryId ? "bg-indigo-50 dark:bg-indigo-500/10" : ""}`}>
