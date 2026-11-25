@@ -40,13 +40,55 @@ public static class SeedExtensions
         return services;
     }
 
-    public static async Task ApplyMigrationsAndSeedAsync(this IServiceProvider services, IConfiguration config, bool isDevelopment)
+    public static async Task ApplyMigrationsAndSeedAsync(
+        this IServiceProvider services,
+        IConfiguration config,
+        bool isDevelopment,
+        bool isStagingSeedAllowed = false,
+        bool? seedEnabledOverride = null)
     {
         using var scope = services.CreateScope();
 
         // 1. Migrate database schema
+        // Managed MySQL 8.4 providers (e.g. Aiven) enable sql_require_primary_key=ON by default,
+        // which blocks historical migrations creating temporary preflight tables without a PK.
+        // Scope the session override strictly to MigrateAsync without altering any historical migration.
         var dbContext = scope.ServiceProvider.GetRequiredService<EduTwinDbContext>();
-        await dbContext.Database.MigrateAsync();
+        var isMySql = dbContext.Database.ProviderName?.Contains("MySql", StringComparison.OrdinalIgnoreCase) == true;
+        var connection = isMySql ? dbContext.Database.GetDbConnection() : null;
+        var openedForMigration = false;
+        if (connection is not null)
+        {
+            if (connection.State != System.Data.ConnectionState.Open)
+            {
+                await connection.OpenAsync();
+                openedForMigration = true;
+            }
+            await using var disableReqPk = connection.CreateCommand();
+            disableReqPk.CommandText = "SET SESSION sql_require_primary_key = 0;";
+            try { await disableReqPk.ExecuteNonQueryAsync(); } catch { /* Provider may not support variable */ }
+        }
+        try
+        {
+            await dbContext.Database.MigrateAsync();
+        }
+        finally
+        {
+            if (connection is not null && connection.State == System.Data.ConnectionState.Open)
+            {
+                try
+                {
+                    await using var restoreReqPk = connection.CreateCommand();
+                    restoreReqPk.CommandText = "SET SESSION sql_require_primary_key = DEFAULT;";
+                    await restoreReqPk.ExecuteNonQueryAsync();
+                }
+                catch { /* Best-effort restore */ }
+                if (openedForMigration)
+                {
+                    await connection.CloseAsync();
+                }
+            }
+        }
 
         // 2. Ensure Root Tenant PLATFORM and Platform Administrator are provisioned
         var platformAdminProvisioner = scope.ServiceProvider.GetRequiredService<PlatformAdminProvisioner>();
@@ -57,13 +99,13 @@ public static class SeedExtensions
         // custom roles, revoked assignments and inactive roles/permissions.
         await scope.ServiceProvider.GetRequiredService<DefaultSystemRolePermissionBackfill>().EnsureAsync();
 
-        // 3. Demo/Development data seeding (only if enabled in configuration)
-        bool seedEnabled = config.GetValue<bool>("Seed:Enabled");
+        // 3. Demo/Development data seeding (only if enabled in configuration or explicit init command)
+        bool seedEnabled = seedEnabledOverride ?? config.GetValue<bool>("Seed:Enabled");
         if (!seedEnabled) return;
 
-        if (!isDevelopment)
+        if (!isDevelopment && !isStagingSeedAllowed)
         {
-            throw new InvalidOperationException("Seeding is only allowed in Development environment.");
+            throw new InvalidOperationException("Seeding is only allowed in Development environment or with explicit StagingInit:AllowSeed.");
         }
 
         await scope.ServiceProvider.GetRequiredService<SeedQuestionGradeBackfill>().EnsureAsync();

@@ -30,7 +30,8 @@ using EduTwin.BLL.Notifications;
 using EduTwin.API.Notifications;
 
 var repairMathGrading = args.Contains("--repair-math-grading", StringComparer.Ordinal);
-var builder = WebApplication.CreateBuilder(args.Where(arg => arg != "--repair-math-grading").ToArray());
+var initStaging = args.Contains("--init-staging", StringComparer.Ordinal);
+var builder = WebApplication.CreateBuilder(args.Where(arg => arg != "--repair-math-grading" && arg != "--init-staging").ToArray());
 
 // --- Service Registration ---
 builder.Services.AddControllers()
@@ -218,17 +219,19 @@ builder.Services.AddRateLimiter(options =>
 var app = builder.Build();
 
 // --- Initialization ---
-bool isDev = app.Environment.IsDevelopment();
+var seedDecision = StagingSeedPolicy.Evaluate(app.Configuration, app.Environment.EnvironmentName, initStaging);
 
-bool seedEnabled = app.Configuration.GetValue<bool>("Seed:Enabled");
+await app.Services.ApplyMigrationsAndSeedAsync(
+    app.Configuration,
+    seedDecision.IsDevelopment,
+    seedDecision.IsStagingSeedAllowed,
+    seedDecision.ShouldSeed);
 
-if (seedEnabled && !isDev)
+if (initStaging)
 {
-    // R11: Strict startup guard
-    throw new InvalidOperationException("CRITICAL SECURITY ERROR: Seeding is enabled in a non-Development environment! Shutting down to protect data.");
+    Console.WriteLine("Staging database initialization and seeding completed successfully.");
+    return;
 }
-
-await app.Services.ApplyMigrationsAndSeedAsync(app.Configuration, isDev);
 
 // Explicit local maintenance command, never an HTTP endpoint or background job.
 // Run only after a database backup; evidence/history are appended, never deleted.

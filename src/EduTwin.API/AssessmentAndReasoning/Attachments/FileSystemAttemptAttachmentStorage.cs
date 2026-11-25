@@ -396,20 +396,80 @@ public sealed class FileSystemAttemptAttachmentStorage : IAttemptAttachmentStora
         }
     }
 
+    internal string RootPath => _rootPath;
+
+    internal string ResolveSafePath(string relativePath) => GetSafePath(relativePath);
+
     private string GetTenantPath(Guid centerId, string folder, string fileName) =>
         GetSafePath($"tenants/{centerId:D}/{folder}/{fileName}");
 
     private string GetSafePath(string relativePath)
     {
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            throw new InvalidOperationException("Attachment storage path cannot be empty.");
+        }
+
+        var normalized = relativePath.Trim();
+        if (normalized.Contains('\0') ||
+            normalized.Contains("%2e", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("%2f", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("%5c", StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith('/') ||
+            normalized.StartsWith('\\') ||
+            Path.IsPathRooted(normalized))
+        {
+            throw new InvalidOperationException("Attachment storage path contains forbidden traversal or rooted characters.");
+        }
+
+        var segments = normalized.Replace('\\', '/').Split('/', StringSplitOptions.None);
+        foreach (var segment in segments)
+        {
+            if (string.IsNullOrEmpty(segment) || segment == "." || segment == ".." || segment.Contains(':'))
+            {
+                throw new InvalidOperationException("Attachment storage path contains invalid segments.");
+            }
+        }
+
         var rootWithSeparator = _rootPath.EndsWith(Path.DirectorySeparatorChar)
             ? _rootPath
             : _rootPath + Path.DirectorySeparatorChar;
-        var path = Path.GetFullPath(Path.Combine(_rootPath, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        var path = Path.GetFullPath(Path.Combine(_rootPath, normalized.Replace('/', Path.DirectorySeparatorChar)));
         if (!path.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("Attachment storage path escaped the configured root.");
         }
+
+        EnsureNoReparsePoint(path);
         return path;
+    }
+
+    private void EnsureNoReparsePoint(string fullPath)
+    {
+        var current = fullPath;
+        while (!string.IsNullOrEmpty(current) &&
+               current.Length > _rootPath.Length &&
+               !string.Equals(current, _rootPath, StringComparison.OrdinalIgnoreCase))
+        {
+            if (File.Exists(current))
+            {
+                var attrs = File.GetAttributes(current);
+                if (attrs.HasFlag(FileAttributes.ReparsePoint))
+                {
+                    throw new InvalidOperationException("Attachment storage path cannot traverse a symbolic link or reparse point.");
+                }
+            }
+            else if (Directory.Exists(current))
+            {
+                var attrs = File.GetAttributes(current);
+                if (attrs.HasFlag(FileAttributes.ReparsePoint))
+                {
+                    throw new InvalidOperationException("Attachment storage directory cannot be a symbolic link or reparse point.");
+                }
+            }
+
+            current = Path.GetDirectoryName(current);
+        }
     }
 
     private static void EnsureNonce(string uploadNonce)

@@ -39,10 +39,41 @@ public class EduTwinRuntimeSeeder
 
     public async Task SeedAsync()
     {
-        var password = _config["Seed:CenterManagerPassword"];
-        if (string.IsNullOrWhiteSpace(password) || password.Length < 12)
+        var isDevelopment = RuntimeEnvironmentSecurity.IsDevelopment(_config);
+        var centerManagerPassword = _config["Seed:CenterManagerPassword"];
+        RuntimeEnvironmentSecurity.EnsureSecureCredential(centerManagerPassword, "Seed:CenterManagerPassword", isDevelopment);
+
+        var teacherPassword = _config["Seed:TeacherPassword"];
+        var studentPassword = _config["Seed:StudentPassword"];
+
+        if (!string.IsNullOrWhiteSpace(teacherPassword))
         {
-            throw new InvalidOperationException("Secure Seed:CenterManagerPassword is required and must be at least 12 characters.");
+            RuntimeEnvironmentSecurity.EnsureSecureCredential(teacherPassword, "Seed:TeacherPassword", isDevelopment);
+        }
+
+        if (!string.IsNullOrWhiteSpace(studentPassword))
+        {
+            RuntimeEnvironmentSecurity.EnsureSecureCredential(studentPassword, "Seed:StudentPassword", isDevelopment);
+        }
+
+        var effectiveTeacherPassword = string.IsNullOrWhiteSpace(teacherPassword) ? centerManagerPassword! : teacherPassword;
+        var effectiveStudentPassword = string.IsNullOrWhiteSpace(studentPassword) ? centerManagerPassword! : studentPassword;
+
+        if (!isDevelopment && RuntimeEnvironmentSecurity.IsStaging(_config))
+        {
+            if (string.IsNullOrWhiteSpace(teacherPassword) || string.IsNullOrWhiteSpace(studentPassword))
+            {
+                throw new InvalidOperationException(
+                    "CRITICAL SECURITY ERROR: In Staging, Seed:TeacherPassword and Seed:StudentPassword must be explicitly configured instead of sharing Seed:CenterManagerPassword across all roles.");
+            }
+
+            if (string.Equals(centerManagerPassword, teacherPassword, StringComparison.Ordinal) ||
+                string.Equals(centerManagerPassword, studentPassword, StringComparison.Ordinal) ||
+                string.Equals(teacherPassword, studentPassword, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "CRITICAL SECURITY ERROR: In Staging, seeded CenterManager, Teacher, and Student roles must use distinct passwords.");
+            }
         }
 
         var statusA = await _evaluator.EvaluateTenantAsync(true);
@@ -76,7 +107,7 @@ public class EduTwinRuntimeSeeder
 
         // Apply password hashes (R08 & R18)
         var applicator = new SeedPasswordApplicator(_passwordHasher);
-        applicator.ApplyHashes(plan, dataA, dataB, password);
+        applicator.ApplyHashes(plan, dataA, dataB, centerManagerPassword!, effectiveTeacherPassword, effectiveStudentPassword);
 
         // Validate DAGs (R10)
         if (dataA != null) _dagValidator.ValidateDag(dataA.Edges);
@@ -166,18 +197,32 @@ public class SeedPasswordApplicator
     private readonly IPasswordHasher<User> _passwordHasher;
     public SeedPasswordApplicator(IPasswordHasher<User> passwordHasher) => _passwordHasher = passwordHasher;
 
-    public void ApplyHashes(SeedExecutionPlan plan, SeedDataContainer? dataA, SeedDataContainer? dataB, string password)
+    public void ApplyHashes(
+        SeedExecutionPlan plan,
+        SeedDataContainer? dataA,
+        SeedDataContainer? dataB,
+        string centerManagerPassword,
+        string? teacherPassword = null,
+        string? studentPassword = null)
     {
         if (plan.HasConflict || plan.IsNoOp) return;
-        if (plan.ShouldSeedA && dataA != null) ApplyPasswordHashes(dataA, password);
-        if (plan.ShouldSeedB && dataB != null) ApplyPasswordHashes(dataB, password);
+        var resolvedTeacher = string.IsNullOrWhiteSpace(teacherPassword) ? centerManagerPassword : teacherPassword;
+        var resolvedStudent = string.IsNullOrWhiteSpace(studentPassword) ? centerManagerPassword : studentPassword;
+        if (plan.ShouldSeedA && dataA != null) ApplyPasswordHashes(dataA, centerManagerPassword, resolvedTeacher, resolvedStudent);
+        if (plan.ShouldSeedB && dataB != null) ApplyPasswordHashes(dataB, centerManagerPassword, resolvedTeacher, resolvedStudent);
     }
 
-    private void ApplyPasswordHashes(SeedDataContainer data, string password)
+    private void ApplyPasswordHashes(SeedDataContainer data, string centerManagerPassword, string teacherPassword, string studentPassword)
     {
         foreach (var user in data.Users)
         {
-            user.PasswordHash = _passwordHasher.HashPassword(user, password);
+            var rolePassword = user.RoleName switch
+            {
+                EduTwin.Contracts.IdentityAndTenancy.UserRole.Teacher => teacherPassword,
+                EduTwin.Contracts.IdentityAndTenancy.UserRole.Student => studentPassword,
+                _ => centerManagerPassword
+            };
+            user.PasswordHash = _passwordHasher.HashPassword(user, rolePassword);
         }
     }
 }

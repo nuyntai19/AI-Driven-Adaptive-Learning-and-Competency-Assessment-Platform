@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using EduTwin.BLL.Platform;
@@ -21,7 +22,8 @@ public sealed class PlatformAdminProvisioner(
     AuthorizationBootstrapper authBootstrapper,
     IOptions<PlatformBootstrapOptions> options,
     TimeProvider timeProvider,
-    ILogger<PlatformAdminProvisioner> logger)
+    ILogger<PlatformAdminProvisioner> logger,
+    IConfiguration? configuration = null)
 {
     public static readonly Guid ReservedPlatformCenterId =
         AuthorizationBootstrapper.ReservedPlatformCenterId;
@@ -108,10 +110,11 @@ public sealed class PlatformAdminProvisioner(
 
         // 3. Create initial PlatformAdmin user if missing
         var bootstrapOptions = options.Value;
-        if (string.IsNullOrWhiteSpace(bootstrapOptions.AdminPassword) || bootstrapOptions.AdminPassword.Length < 12)
-        {
-            throw new InvalidOperationException("Missing or invalid PlatformBootstrap:AdminPassword configuration (must be at least 12 characters). PlatformAdmin cannot be provisioned.");
-        }
+        var isDevelopment = RuntimeEnvironmentSecurity.IsDevelopment(configuration);
+        RuntimeEnvironmentSecurity.EnsureSecureCredential(
+            bootstrapOptions.AdminPassword,
+            "PlatformBootstrap:AdminPassword",
+            isDevelopment);
 
         var newAdmin = new User
         {

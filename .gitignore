@@ -46,3 +46,6 @@ folder ko dc push/
 # Generated local experiments and test fixtures; reusable harnesses live in scripts/e2e.
 # Files already tracked in scratch remain tracked.
 /scratch/
+
+# === Root Accidental Lockfile Guard ===
+/package-lock.json

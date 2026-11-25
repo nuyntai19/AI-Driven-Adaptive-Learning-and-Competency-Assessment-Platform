@@ -22,20 +22,27 @@ namespace EduTwin.API.AssessmentAndReasoning.Attachments;
 /// </summary>
 public sealed class AttachmentOrphanCleanupWorker : BackgroundService
 {
+    private const int CloudListPageSize = 100;
+    private const int MaxCloudPagesPerPrefix = 20;
+    private const int MaxCloudDeleteRetries = 2;
+
     private readonly string _rootPath;
+    private readonly string _bucketName;
     private readonly TimeSpan _gracePeriod;
     private readonly TimeSpan _tempGracePeriod;
     private readonly TimeSpan _interval;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<AttachmentOrphanCleanupWorker> _logger;
+    private readonly ICloudObjectStorageClient? _cloudClient;
 
     public AttachmentOrphanCleanupWorker(
         IOptions<AttachmentStorageOptions> options,
         IWebHostEnvironment environment,
         IServiceScopeFactory scopeFactory,
         TimeProvider timeProvider,
-        ILogger<AttachmentOrphanCleanupWorker> logger)
+        ILogger<AttachmentOrphanCleanupWorker> logger,
+        ICloudObjectStorageClient? cloudClient = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(environment);
@@ -44,12 +51,16 @@ public sealed class AttachmentOrphanCleanupWorker : BackgroundService
         _rootPath = Path.GetFullPath(string.IsNullOrWhiteSpace(configuredRoot)
             ? Path.Combine(environment.ContentRootPath, "storage")
             : configuredRoot);
+        _bucketName = string.IsNullOrWhiteSpace(options.Value.BucketName)
+            ? "edutwin-attachments"
+            : options.Value.BucketName.Trim();
         _gracePeriod = TimeSpan.FromHours(Math.Max(AttachmentStorageOptions.MinimumGracePeriodHours, options.Value.GracePeriodHours));
         _tempGracePeriod = _gracePeriod.Add(TimeSpan.FromHours(AttachmentStorageOptions.TempSafetyMarginHours));
         _interval = TimeSpan.FromMinutes(Math.Max(1, options.Value.CleanupIntervalMinutes));
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _timeProvider = timeProvider ?? TimeProvider.System;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _cloudClient = cloudClient;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -104,18 +115,8 @@ public sealed class AttachmentOrphanCleanupWorker : BackgroundService
     /// </summary>
     public async Task<int> SweepOrphansOnceAsync(DateTime utcNow, CancellationToken cancellationToken = default)
     {
-        if (!Directory.Exists(_rootPath))
-        {
-            return 0;
-        }
-
-        var tenantsRoot = Path.Combine(_rootPath, "tenants");
-        if (!Directory.Exists(tenantsRoot))
-        {
-            return 0;
-        }
-
         HashSet<string>? referencedKeys = null;
+        List<Guid>? centerIds = null;
         try
         {
             await using var scope = _scopeFactory.CreateAsyncScope();
@@ -130,6 +131,15 @@ public sealed class AttachmentOrphanCleanupWorker : BackgroundService
                 .Where(k => !string.IsNullOrWhiteSpace(k))
                 .Select(NormalizeStorageKey)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (_cloudClient?.IsConfigured == true)
+            {
+                centerIds = await dbContext.Centers
+                    .IgnoreQueryFilters()
+                    .AsNoTracking()
+                    .Select(c => c.CenterId)
+                    .ToListAsync(cancellationToken);
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -139,83 +149,242 @@ public sealed class AttachmentOrphanCleanupWorker : BackgroundService
         {
             _logger.LogError(ex, "Failed to query referenced attempt attachment keys from database. Permanent orphan cleanup will be skipped for this sweep (Fail-Closed).");
             referencedKeys = null;
+            centerIds = null;
         }
 
         var deletedCount = 0;
-        var tenantDirs = Directory.GetDirectories(tenantsRoot);
-        var rootWithSeparator = _rootPath.EndsWith(Path.DirectorySeparatorChar)
-            ? _rootPath
-            : _rootPath + Path.DirectorySeparatorChar;
 
-        foreach (var tenantDir in tenantDirs)
+        if (Directory.Exists(_rootPath))
+        {
+            var tenantsRoot = Path.Combine(_rootPath, "tenants");
+            if (Directory.Exists(tenantsRoot))
+            {
+                var tenantDirs = Directory.GetDirectories(tenantsRoot);
+                var rootWithSeparator = _rootPath.EndsWith(Path.DirectorySeparatorChar)
+                    ? _rootPath
+                    : _rootPath + Path.DirectorySeparatorChar;
+
+                foreach (var tenantDir in tenantDirs)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var tenantDirInfo = new DirectoryInfo(tenantDir);
+                    if (tenantDirInfo.Attributes.HasFlag(FileAttributes.ReparsePoint) || tenantDirInfo.LinkTarget is not null)
+                    {
+                        _logger.LogWarning("Skipping reparse point or symlink directory: {TenantDir}", tenantDir);
+                        continue;
+                    }
+
+                    // 1. Temporary attachments sweep (*.png in attempt-attachments-temp older than temp grace period)
+                    deletedCount += SweepDirectoryFiles(
+                        tenantDir,
+                        "attempt-attachments-temp",
+                        rootWithSeparator,
+                        searchPattern: "*.png",
+                        shouldDelete: fileInfo => utcNow - fileInfo.LastWriteTimeUtc > _tempGracePeriod,
+                        logPrefix: "temporary",
+                        cancellationToken);
+
+                    // 2. Abandoned staging files sweep (*.staging.*.tmp in attempt-attachments older than grace period)
+                    deletedCount += SweepDirectoryFiles(
+                        tenantDir,
+                        "attempt-attachments",
+                        rootWithSeparator,
+                        searchPattern: "*.tmp",
+                        shouldDelete: fileInfo =>
+                        {
+                            if (utcNow - fileInfo.LastWriteTimeUtc <= _gracePeriod)
+                            {
+                                return false;
+                            }
+
+                            return fileInfo.Name.Contains(".staging.", StringComparison.OrdinalIgnoreCase);
+                        },
+                        logPrefix: "abandoned staging",
+                        cancellationToken);
+
+                    // 3. Permanent attachments sweep (*.png in attempt-attachments older than grace period with no DB reference)
+                    // Fail-closed invariant: only sweep permanent files when referencedKeys was successfully queried from DB.
+                    if (referencedKeys is not null)
+                    {
+                        deletedCount += SweepDirectoryFiles(
+                            tenantDir,
+                            "attempt-attachments",
+                            rootWithSeparator,
+                            searchPattern: "*.png",
+                            shouldDelete: fileInfo =>
+                            {
+                                if (utcNow - fileInfo.LastWriteTimeUtc <= _gracePeriod)
+                                {
+                                    return false;
+                                }
+
+                                var relativeKey = NormalizeStorageKey(Path.GetRelativePath(_rootPath, fileInfo.FullName));
+                                if (!IsValidPermanentStorageKey(relativeKey))
+                                {
+                                    return false;
+                                }
+
+                                return !referencedKeys.Contains(relativeKey);
+                            },
+                            logPrefix: "unreferenced permanent",
+                            cancellationToken);
+                    }
+                }
+            }
+        }
+
+        if (_cloudClient?.IsConfigured == true && centerIds is not null)
+        {
+            deletedCount += await SweepCloudOrphansAsync(utcNow, centerIds, referencedKeys, cancellationToken);
+        }
+
+        return deletedCount;
+    }
+
+    private async Task<int> SweepCloudOrphansAsync(
+        DateTime utcNow,
+        IReadOnlyList<Guid> centerIds,
+        HashSet<string>? referencedKeys,
+        CancellationToken cancellationToken)
+    {
+        var deleted = 0;
+
+        foreach (var centerId in centerIds)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var tenantDirInfo = new DirectoryInfo(tenantDir);
-            if (tenantDirInfo.Attributes.HasFlag(FileAttributes.ReparsePoint) || tenantDirInfo.LinkTarget is not null)
-            {
-                _logger.LogWarning("Skipping reparse point or symlink directory: {TenantDir}", tenantDir);
-                continue;
-            }
-
-            // 1. Temporary attachments sweep (*.png in attempt-attachments-temp older than temp grace period)
-            deletedCount += SweepDirectoryFiles(
-                tenantDir,
-                "attempt-attachments-temp",
-                rootWithSeparator,
-                searchPattern: "*.png",
-                shouldDelete: fileInfo => utcNow - fileInfo.LastWriteTimeUtc > _tempGracePeriod,
-                logPrefix: "temporary",
-                cancellationToken);
-
-            // 2. Abandoned staging files sweep (*.staging.*.tmp in attempt-attachments older than grace period)
-            deletedCount += SweepDirectoryFiles(
-                tenantDir,
-                "attempt-attachments",
-                rootWithSeparator,
-                searchPattern: "*.tmp",
-                shouldDelete: fileInfo =>
+            // 1. Temporary cloud objects older than temp grace period
+            deleted += await SweepCloudPrefixAsync(
+                prefix: $"tenants/{centerId:D}/attempt-attachments-temp",
+                shouldDelete: (fullKey, obj) =>
                 {
-                    if (utcNow - fileInfo.LastWriteTimeUtc <= _gracePeriod)
+                    if (!IsValidTemporaryStorageKey(fullKey))
                     {
                         return false;
                     }
 
-                    return fileInfo.Name.Contains(".staging.", StringComparison.OrdinalIgnoreCase);
+                    var timestamp = obj.UpdatedAtUtc ?? obj.CreatedAtUtc;
+                    return timestamp.HasValue && utcNow - timestamp.Value > _tempGracePeriod;
                 },
-                logPrefix: "abandoned staging",
+                logPrefix: "cloud temporary",
                 cancellationToken);
 
-            // 3. Permanent attachments sweep (*.png in attempt-attachments older than grace period with no DB reference)
-            // Fail-closed invariant: only sweep permanent files when referencedKeys was successfully queried from DB.
+            // 2. Permanent cloud objects older than grace period with no DB reference (Fail-Closed)
             if (referencedKeys is not null)
             {
-                deletedCount += SweepDirectoryFiles(
-                    tenantDir,
-                    "attempt-attachments",
-                    rootWithSeparator,
-                    searchPattern: "*.png",
-                    shouldDelete: fileInfo =>
+                deleted += await SweepCloudPrefixAsync(
+                    prefix: $"tenants/{centerId:D}/attempt-attachments",
+                    shouldDelete: (fullKey, obj) =>
                     {
-                        if (utcNow - fileInfo.LastWriteTimeUtc <= _gracePeriod)
+                        if (!IsValidPermanentStorageKey(fullKey))
                         {
                             return false;
                         }
 
-                        var relativeKey = NormalizeStorageKey(Path.GetRelativePath(_rootPath, fileInfo.FullName));
-                        if (!IsValidPermanentStorageKey(relativeKey))
+                        var timestamp = obj.UpdatedAtUtc ?? obj.CreatedAtUtc;
+                        if (!timestamp.HasValue || utcNow - timestamp.Value <= _gracePeriod)
                         {
                             return false;
                         }
 
-                        return !referencedKeys.Contains(relativeKey);
+                        return !referencedKeys.Contains(fullKey);
                     },
-                    logPrefix: "unreferenced permanent",
+                    logPrefix: "cloud unreferenced permanent",
                     cancellationToken);
             }
         }
 
-        return deletedCount;
+        return deleted;
+    }
+
+    private async Task<int> SweepCloudPrefixAsync(
+        string prefix,
+        Func<string, CloudStorageObjectInfo, bool> shouldDelete,
+        string logPrefix,
+        CancellationToken cancellationToken)
+    {
+        var deleted = 0;
+        var offset = 0;
+
+        for (var page = 0; page < MaxCloudPagesPerPrefix; page++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IReadOnlyList<CloudStorageObjectInfo> items;
+            try
+            {
+                items = await _cloudClient!.ListObjectsAsync(_bucketName, prefix, CloudListPageSize, offset, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Failed to list cloud attachments under prefix {Prefix}.", prefix);
+                break;
+            }
+
+            if (items.Count == 0)
+            {
+                break;
+            }
+
+            foreach (var item in items)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var fullKey = NormalizeStorageKey($"{prefix}/{item.Name}");
+                if (!shouldDelete(fullKey, item))
+                {
+                    continue;
+                }
+
+                if (await TryDeleteCloudWithBoundedRetryAsync(fullKey, logPrefix, cancellationToken))
+                {
+                    deleted++;
+                }
+            }
+
+            if (items.Count < CloudListPageSize)
+            {
+                break;
+            }
+
+            offset += CloudListPageSize;
+        }
+
+        return deleted;
+    }
+
+    private async Task<bool> TryDeleteCloudWithBoundedRetryAsync(string fullKey, string logPrefix, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; attempt <= MaxCloudDeleteRetries; attempt++)
+        {
+            try
+            {
+                await _cloudClient!.DeleteAsync(_bucketName, fullKey, cancellationToken);
+                _logger.LogInformation("Deleted {LogPrefix} attachment: {StorageKey}", logPrefix, fullKey);
+                return true;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                if (attempt == MaxCloudDeleteRetries)
+                {
+                    _logger.LogWarning(ex, "Failed to delete {LogPrefix} attachment {StorageKey} after {Attempts} attempts.", logPrefix, fullKey, attempt);
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsValidTemporaryStorageKey(string relativeKey)
+    {
+        var parts = relativeKey.Split('/');
+        if (parts.Length != 4) return false;
+        if (!string.Equals(parts[0], "tenants", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!Guid.TryParse(parts[1], out var centerId) || centerId == Guid.Empty) return false;
+        if (!string.Equals(parts[2], "attempt-attachments-temp", StringComparison.OrdinalIgnoreCase)) return false;
+        var fileName = parts[3];
+        if (!fileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) return false;
+        var nonce = fileName[..^4];
+        return Guid.TryParseExact(nonce, "N", out _) || Guid.TryParse(nonce, out _);
     }
 
     private int SweepDirectoryFiles(
